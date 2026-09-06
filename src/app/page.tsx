@@ -683,7 +683,6 @@ export default function Home() {
                   <ReplayPanel key={code ?? "none"} code={code} />
                 ) : null}
                 {enabledModules.datasource ? <DataSourcePanel /> : null}
-                {enabledModules.disclaimer ? <DisclaimerFooter quote={quote} /> : null}
               </div>
             ) : (
               <div className="flex min-h-[420px] items-center justify-center rounded-xl border border-dashed bg-white p-8 text-center shadow-sm">
@@ -695,6 +694,7 @@ export default function Home() {
                 </div>
               </div>
             )}
+            <DisclaimerFooter quote={quote} />
           </div>
         </section>
       </div>

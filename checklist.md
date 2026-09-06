@@ -415,3 +415,23 @@ corepack pnpm build
 
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
 - 页面加载后确认学习台右上角时间每秒变化；收拢侧栏后鼠标移到最左边缘应自动展开，移出后自动收拢；点击窄轨/侧栏控件可手动展开或收拢。
+
+## 免责声明固定至右侧底部（2026-09-06，待验收）
+
+- 目标：将“免责声明”从功能选项中移除，改为固定在右侧信息区底部始终展示。
+- 分支：`feature/move-disclaimer-footer`
+
+### 验收项
+
+- [x] 功能选项列表中不再出现“免责声明”模块
+- [x] 无论是否勾选功能模块，右侧区域底部始终展示免责声明与数据更新时间
+- [x] 全选/清空功能模块时不会影响免责声明展示
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+- [ ] 功能分支已推送并合并回 `main`
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 页面加载后确认左侧没有免责声明选项；清空模块时右侧底部仍显示免责声明，勾选模块后免责声明仍在内容区最下方。
