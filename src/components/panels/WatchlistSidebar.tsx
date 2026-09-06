@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Toast } from "@/components/ui/toast";
+import { normalizeStockCode } from "@/lib/market";
 import type { WatchlistItem } from "@/lib/shared/types";
 
 const DEFAULT_GROUP = "默认";
@@ -71,6 +74,12 @@ export function WatchlistSidebar({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDeleteCode, setPendingDeleteCode] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
+
+  const showToast = (message: string) => {
+    setToast({ id: Date.now(), message });
+  };
 
   const loadWatchlist = useCallback(async () => {
     setLoading(true);
@@ -105,6 +114,12 @@ export function WatchlistSidebar({
       return;
     }
 
+    const normalizedCode = normalizeStockCode(code);
+    if (!normalizedCode) {
+      showToast("请输入合法的沪深北 A 股代码（6 位数字）。");
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
@@ -112,7 +127,7 @@ export function WatchlistSidebar({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          code,
+          code: normalizedCode,
           note: noteInput,
           group: groupInput,
         }),
@@ -129,10 +144,7 @@ export function WatchlistSidebar({
   };
 
   const handleDelete = async (code: string) => {
-    if (!window.confirm(`确认删除自选股 ${code} 吗？`)) {
-      return;
-    }
-
+    setPendingDeleteCode(null);
     setSaving(true);
     setError(null);
     try {
@@ -148,6 +160,10 @@ export function WatchlistSidebar({
     } finally {
       setSaving(false);
     }
+  };
+
+  const requestDelete = (code: string) => {
+    setPendingDeleteCode(code);
   };
 
   const handleMove = async (code: string, offset: -1 | 1) => {
@@ -384,7 +400,7 @@ export function WatchlistSidebar({
                                 type="button"
                                 className="rounded border px-1.5 py-1 text-xs text-red-600 hover:bg-red-50"
                                 disabled={saving}
-                                onClick={() => void handleDelete(item.code)}
+                                onClick={() => requestDelete(item.code)}
                               >
                                 删除
                               </button>
@@ -425,6 +441,19 @@ export function WatchlistSidebar({
           })}
         </div>
       )}
+      <ConfirmDialog
+        open={Boolean(pendingDeleteCode)}
+        title="确认删除自选股"
+        description={pendingDeleteCode ? `确认删除自选股 ${pendingDeleteCode} 吗？` : ""}
+        loading={saving}
+        onCancel={() => setPendingDeleteCode(null)}
+        onConfirm={() => {
+          if (pendingDeleteCode) {
+            void handleDelete(pendingDeleteCode);
+          }
+        }}
+      />
+      {toast ? <Toast key={toast.id} message={toast.message} /> : null}
     </section>
   );
 }

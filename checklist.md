@@ -455,3 +455,26 @@ corepack pnpm build
 
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
 - 页面勾选“对话助手”并发送包含 Markdown 的测试消息，确认助手回复按 Markdown 结构展示。
+
+## 自选股代码校验与删除弹窗（2026-09-06，待验收）
+
+- 目标：自选股新增时校验沪深北 A 股代码并用渐隐悬浮窗提示；所有删除操作使用页面正中间的自定义确认弹窗，替代浏览器默认 confirm。
+- 分支：`feature/watchlist-validation-delete-dialogs`
+
+### 验收项
+
+- [x] 自选股新增时只接受 6 位沪深北 A 股代码
+- [x] 非法代码通过页面悬浮窗提示，并在约 2 秒后渐进消失
+- [x] 自选股删除使用页面正中间的自定义确认弹窗
+- [x] 历史复盘删除使用页面正中间的自定义确认弹窗
+- [x] 周期内 AI 分析删除使用页面正中间的自定义确认弹窗
+- [x] 系统内不再使用浏览器默认 `window.confirm`
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+- [ ] 功能分支已推送并合并回 `main`
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 在自选股输入非 A 股代码（如 123456），确认出现渐隐悬浮提示；分别删除自选股、历史复盘记录、周期内 AI 分析，确认确认框居中显示。
