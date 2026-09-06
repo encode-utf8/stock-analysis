@@ -3,11 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { Button } from "@/components/ui/button";
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
 import { ChartPanel } from "@/components/panels/ChartPanel";
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
 import { DataSourcePanel } from "@/components/panels/DataSourcePanel";
 import { DisclaimerFooter } from "@/components/panels/DisclaimerFooter";
+import {
+  ALL_MODULE_VISIBILITY,
+  DEFAULT_MODULE_VISIBILITY,
+  FunctionOptionsSidebar,
+  type ModuleKey,
+} from "@/components/panels/FunctionOptionsSidebar";
 import { IndicatorsPanel } from "@/components/panels/IndicatorsPanel";
 import { NewsPanel } from "@/components/panels/NewsPanel";
 import {
@@ -16,7 +23,6 @@ import {
 } from "@/components/panels/ObservabilityPanel";
 import { QuotePanel } from "@/components/panels/QuotePanel";
 import { ReplayPanel } from "@/components/panels/ReplayPanel";
-import { StockSearchPanel } from "@/components/panels/StockSearchPanel";
 import { TimelinePanel } from "@/components/panels/TimelinePanel";
 import { WatchlistPanel } from "@/components/panels/WatchlistPanel";
 
@@ -42,6 +48,7 @@ interface ConversationTimeline {
 }
 
 const REQUEST_TIMEOUT_MS = 20_000;
+const DEFAULT_STOCK_CODE = "600519";
 
 async function apiFetch<T>(url: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController();
@@ -68,7 +75,11 @@ async function apiFetch<T>(url: string, init?: RequestInit, timeoutMs = REQUEST_
 }
 
 export default function Home() {
-  const [input, setInput] = useState("600519");
+  const [input, setInput] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [enabledModules, setEnabledModules] = useState<Record<ModuleKey, boolean>>(
+    DEFAULT_MODULE_VISIBILITY,
+  );
   const [code, setCode] = useState<string | null>(null);
   const [stock, setStock] = useState<Stock | null>(null);
   const [quote, setQuote] = useState<MarketQuote | null>(null);
@@ -93,6 +104,18 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<string | null>(null);
   const activeCodeRef = useRef<string | null>(null);
+
+  const toggleModule = (key: ModuleKey) => {
+    setEnabledModules((previous) => ({ ...previous, [key]: !previous[key] }));
+  };
+
+  const selectAllModules = () => {
+    setEnabledModules(ALL_MODULE_VISIBILITY);
+  };
+
+  const clearAllModules = () => {
+    setEnabledModules(DEFAULT_MODULE_VISIBILITY);
+  };
 
   const loadObservability = useCallback(async () => {
     try {
@@ -248,7 +271,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => void refreshStock("600519"), 0);
+    const timer = setTimeout(() => void refreshStock(DEFAULT_STOCK_CODE), 0);
     return () => clearTimeout(timer);
   }, [refreshStock]);
 
@@ -268,10 +291,11 @@ export default function Home() {
   }, [code, period, adjust, loadChart]);
 
   const handleSearch = () => {
-    const nextInput = input.trim();
-    if (!nextInput || loading) {
+    const nextInput = input.trim() || DEFAULT_STOCK_CODE;
+    if (loading) {
       return;
     }
+    setInput(nextInput);
     void refreshStock(nextInput);
   };
 
@@ -508,93 +532,142 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-muted/40 px-4 py-8 text-foreground">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <header className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">个股盘面分析与 AI 学习台</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                输入 6 位沪深北 A 股代码，查看行情、资讯、AI 报告并进行多轮追问。
-              </p>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              当前时间：{currentTime ?? "正在同步..."}
-            </div>
-          </div>
-        </header>
-
-        <StockSearchPanel
-          input={input}
-          loading={loading}
-          code={code}
-          onInputChange={(value) => setInput(value)}
-          onSearch={handleSearch}
-          onRefresh={() => void handleRefresh()}
-          onCleanup={() => void handleCleanup()}
-        />
-
-        {error ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
+    <main className="min-h-screen bg-muted/40 text-foreground">
+      <div className="mx-auto flex min-h-screen max-w-[1440px]">
+        {sidebarOpen ? (
+          <FunctionOptionsSidebar
+            input={input}
+            loading={loading}
+            code={code}
+            enabledModules={enabledModules}
+            onInputChange={(value) => setInput(value)}
+            onSearch={handleSearch}
+            onRefresh={() => void handleRefresh()}
+            onCleanup={() => void handleCleanup()}
+            onToggleModule={toggleModule}
+            onSelectAll={selectAllModules}
+            onClearAll={clearAllModules}
+            onClose={() => setSidebarOpen(false)}
+          />
         ) : null}
 
-        {stock && quote ? (
-          <>
-            <QuotePanel stock={stock} quote={quote} />
-            <ChartPanel
-              stock={stock}
-              quote={quote}
-              klines={klines}
-              period={period}
-              adjust={adjust}
-              loading={chartLoading}
-              onPeriodChange={(value) => setPeriod(value)}
-              onAdjustChange={(value) => setAdjust(value)}
-            />
-            <IndicatorsPanel indicators={indicators} klines={klines} />
-            <section className="grid gap-4 lg:grid-cols-2">
-              <NewsPanel
-                news={news}
-                loading={newsLoading}
-                analysisLoading={analysisLoading}
-                newsRangeDays={newsRangeDays}
-                onRangeChange={setNewsRangeDays}
-                onSearch={() => void handleNewsSearch()}
-                onGenerateAnalysis={() => void handleAnalysis()}
-              />
-              <AnalysisPanel reports={reports} loading={reportsLoading} />
-            </section>
-            <ChatPanel
-              code={code}
-              conversationId={conversationId}
-              messages={messages}
-              input={chatInput}
-              loading={chatLoading}
-              onInputChange={(value) => setChatInput(value)}
-              onSubmit={handleChatSubmit}
-            />
-            <TimelinePanel
-              conversations={conversations}
-              conversationId={conversationId}
-              onSelectConversation={(id) => void loadConversationTimeline(id)}
-            />
-          </>
-        ) : null}
+        <section className="min-w-0 flex-1 px-4 py-8">
+          <div className="mx-auto flex max-w-6xl flex-col gap-6">
+            <header className="rounded-xl border bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-start gap-3">
+                  {!sidebarOpen ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSidebarOpen(true)}
+                    >
+                      功能选项
+                    </Button>
+                  ) : null}
+                  <div>
+                    <h1 className="text-2xl font-semibold tracking-tight">个股盘面分析与 AI 学习台</h1>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      在左侧功能选项页勾选模块，按需查看行情、资讯、AI 报告与多轮追问。
+                    </p>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  当前时间：{currentTime ?? "正在同步..."}
+                </div>
+              </div>
+            </header>
 
-        <ObservabilityPanel
-          observability={observability}
-          onRefresh={() => void loadObservability()}
-        />
-        <WatchlistPanel
-          activeCode={code}
-          onSelect={handleWatchlistSelect}
-          onClearActive={handleWatchlistClear}
-        />
-        <ReplayPanel key={code ?? "none"} code={code} />
-        <DataSourcePanel />
-        <DisclaimerFooter quote={quote} />
+            {error ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            ) : null}
+
+            {Object.values(enabledModules).some(Boolean) ? (
+              <div className="flex flex-col gap-6">
+                {stock && quote && enabledModules.quote ? (
+                  <QuotePanel stock={stock} quote={quote} />
+                ) : null}
+                {stock && quote && enabledModules.chart ? (
+                  <ChartPanel
+                    stock={stock}
+                    quote={quote}
+                    klines={klines}
+                    period={period}
+                    adjust={adjust}
+                    loading={chartLoading}
+                    onPeriodChange={(value) => setPeriod(value)}
+                    onAdjustChange={(value) => setAdjust(value)}
+                  />
+                ) : null}
+                {enabledModules.indicators ? (
+                  <IndicatorsPanel indicators={indicators} klines={klines} />
+                ) : null}
+                {stock && quote && enabledModules.news ? (
+                  <NewsPanel
+                    news={news}
+                    loading={newsLoading}
+                    analysisLoading={analysisLoading}
+                    newsRangeDays={newsRangeDays}
+                    onRangeChange={setNewsRangeDays}
+                    onSearch={() => void handleNewsSearch()}
+                    onGenerateAnalysis={() => void handleAnalysis()}
+                  />
+                ) : null}
+                {stock && quote && enabledModules.analysis ? (
+                  <AnalysisPanel reports={reports} loading={reportsLoading} />
+                ) : null}
+                {code && enabledModules.chat ? (
+                  <ChatPanel
+                    code={code}
+                    conversationId={conversationId}
+                    messages={messages}
+                    input={chatInput}
+                    loading={chatLoading}
+                    onInputChange={(value) => setChatInput(value)}
+                    onSubmit={handleChatSubmit}
+                  />
+                ) : null}
+                {code && enabledModules.timeline ? (
+                  <TimelinePanel
+                    conversations={conversations}
+                    conversationId={conversationId}
+                    onSelectConversation={(id) => void loadConversationTimeline(id)}
+                  />
+                ) : null}
+                {enabledModules.observability ? (
+                  <ObservabilityPanel
+                    observability={observability}
+                    onRefresh={() => void loadObservability()}
+                  />
+                ) : null}
+                {enabledModules.watchlist ? (
+                  <WatchlistPanel
+                    activeCode={code}
+                    onSelect={handleWatchlistSelect}
+                    onClearActive={handleWatchlistClear}
+                  />
+                ) : null}
+                {enabledModules.replay ? (
+                  <ReplayPanel key={code ?? "none"} code={code} />
+                ) : null}
+                {enabledModules.datasource ? <DataSourcePanel /> : null}
+                {enabledModules.disclaimer ? <DisclaimerFooter quote={quote} /> : null}
+              </div>
+            ) : (
+              <div className="flex min-h-[420px] items-center justify-center rounded-xl border border-dashed bg-white p-8 text-center shadow-sm">
+                <div>
+                  <h2 className="text-lg font-semibold">请选择功能模块</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    在左侧“功能选项”中勾选需要展示的信息区；留空股票代码时默认展示 600519。
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );
