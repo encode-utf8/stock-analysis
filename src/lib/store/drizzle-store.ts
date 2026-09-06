@@ -365,6 +365,9 @@ export function createDrizzleStore(): Store {
             },
           });
       },
+      async deleteById(id) {
+        await db.delete(schema.analysisReports).where(eq(schema.analysisReports.id, id));
+      },
     },
     conversations: {
       async getById(id) {
@@ -395,6 +398,9 @@ export function createDrizzleStore(): Store {
           })
           .onConflictDoNothing();
       },
+      async delete(id) {
+        await db.delete(schema.conversations).where(eq(schema.conversations.id, id));
+      },
     },
     messages: {
       async listByConversation(conversationId) {
@@ -417,6 +423,11 @@ export function createDrizzleStore(): Store {
             createdAt: toDate(message.created_at),
           })
           .onConflictDoNothing();
+      },
+      async deleteByConversation(conversationId) {
+        await db
+          .delete(schema.messages)
+          .where(eq(schema.messages.conversationId, conversationId));
       },
     },
     jobRuns: {

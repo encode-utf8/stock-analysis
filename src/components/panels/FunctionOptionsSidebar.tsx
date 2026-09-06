@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { WatchlistSidebar } from "@/components/panels/WatchlistSidebar";
 
 export const MODULE_OPTIONS = [
   { key: "quote", label: "行情概览" },
@@ -11,7 +12,6 @@ export const MODULE_OPTIONS = [
   { key: "chat", label: "对话助手" },
   { key: "timeline", label: "历史会话时间线" },
   { key: "observability", label: "系统可观测性" },
-  { key: "watchlist", label: "自选股" },
   { key: "replay", label: "历史复盘" },
   { key: "datasource", label: "数据源与调度" },
   { key: "disclaimer", label: "免责声明" },
@@ -32,12 +32,15 @@ interface FunctionOptionsSidebarProps {
   input: string;
   loading: boolean;
   code: string | null;
+  activeCode: string | null;
   enabledModules: Record<ModuleKey, boolean>;
   onInputChange: (value: string) => void;
   onSearch: () => void;
   onRefresh: () => void;
   onCleanup: () => void;
   onToggleModule: (key: ModuleKey) => void;
+  onWatchlistSelect: (code: string) => void;
+  onWatchlistClearActive: () => void;
   onSelectAll: () => void;
   onClearAll: () => void;
   onClose: () => void;
@@ -48,12 +51,15 @@ export function FunctionOptionsSidebar({
   input,
   loading,
   code,
+  activeCode,
   enabledModules,
   onInputChange,
   onSearch,
   onRefresh,
   onCleanup,
   onToggleModule,
+  onWatchlistSelect,
+  onWatchlistClearActive,
   onSelectAll,
   onClearAll,
   onClose,
@@ -109,6 +115,14 @@ export function FunctionOptionsSidebar({
               清理到期资讯
             </Button>
           </div>
+        </section>
+
+        <section className="border-t pt-4">
+          <WatchlistSidebar
+            activeCode={activeCode}
+            onSelect={onWatchlistSelect}
+            onClearActive={onWatchlistClearActive}
+          />
         </section>
 
         <section className="space-y-2">

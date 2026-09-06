@@ -176,6 +176,7 @@ export const watchlist = pgTable("watchlist", {
   code: text("code").primaryKey(),
   name: text("name").notNull(),
   exchange: text("exchange").notNull(),
+  group: text("group").notNull().default("默认"),
   sortOrder: integer("sort_order").notNull().default(0),
   note: text("note"),
   addedAt: timestamp("added_at", { withTimezone: true }).notNull(),

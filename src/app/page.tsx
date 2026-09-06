@@ -24,7 +24,6 @@ import {
 import { QuotePanel } from "@/components/panels/QuotePanel";
 import { ReplayPanel } from "@/components/panels/ReplayPanel";
 import { TimelinePanel } from "@/components/panels/TimelinePanel";
-import { WatchlistPanel } from "@/components/panels/WatchlistPanel";
 
 import type {
   AdjustType,
@@ -381,6 +380,22 @@ export default function Home() {
     }
   };
 
+  const handleDeleteReport = async (reportId: string) => {
+    if (!code) {
+      return;
+    }
+
+    try {
+      await apiFetch<{ id: string }>(
+        `/api/stocks/${encodeURIComponent(code)}/reports/${encodeURIComponent(reportId)}`,
+        { method: "DELETE" },
+      );
+      setReports((previous) => previous.filter((report) => report.id !== reportId));
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "分析报告删除失败。");
+    }
+  };
+
   const handleRefresh = async () => {
     if (!code) {
       return;
@@ -539,12 +554,15 @@ export default function Home() {
             input={input}
             loading={loading}
             code={code}
+            activeCode={code}
             enabledModules={enabledModules}
             onInputChange={(value) => setInput(value)}
             onSearch={handleSearch}
             onRefresh={() => void handleRefresh()}
             onCleanup={() => void handleCleanup()}
             onToggleModule={toggleModule}
+            onWatchlistSelect={handleWatchlistSelect}
+            onWatchlistClearActive={handleWatchlistClear}
             onSelectAll={selectAllModules}
             onClearAll={clearAllModules}
             onClose={() => setSidebarOpen(false)}
@@ -617,7 +635,11 @@ export default function Home() {
                   />
                 ) : null}
                 {stock && quote && enabledModules.analysis ? (
-                  <AnalysisPanel reports={reports} loading={reportsLoading} />
+                  <AnalysisPanel
+                    reports={reports}
+                    loading={reportsLoading}
+                    onDelete={handleDeleteReport}
+                  />
                 ) : null}
                 {code && enabledModules.chat ? (
                   <ChatPanel
@@ -641,13 +663,6 @@ export default function Home() {
                   <ObservabilityPanel
                     observability={observability}
                     onRefresh={() => void loadObservability()}
-                  />
-                ) : null}
-                {enabledModules.watchlist ? (
-                  <WatchlistPanel
-                    activeCode={code}
-                    onSelect={handleWatchlistSelect}
-                    onClearActive={handleWatchlistClear}
                   />
                 ) : null}
                 {enabledModules.replay ? (

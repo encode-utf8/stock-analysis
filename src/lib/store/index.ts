@@ -57,6 +57,7 @@ export interface NewsItemRepository {
 export interface AnalysisReportRepository {
   listByCode(code: string): Promise<AnalysisReport[]>;
   insert(report: AnalysisReport): Promise<void>;
+  deleteById(id: string): Promise<void>;
 }
 
 /** 会话仓库接口。 */
@@ -64,12 +65,14 @@ export interface ConversationRepository {
   getById(id: string): Promise<Conversation | null>;
   listByCode(code: string): Promise<Conversation[]>;
   create(conversation: Conversation): Promise<void>;
+  delete(id: string): Promise<void>;
 }
 
 /** 消息仓库接口。 */
 export interface MessageRepository {
   listByConversation(conversationId: string): Promise<Message[]>;
   insert(message: Message): Promise<void>;
+  deleteByConversation(conversationId: string): Promise<void>;
 }
 
 /** 任务运行记录仓库接口。 */
@@ -182,6 +185,9 @@ export function createMemoryStore(): Store {
       async insert(report) {
         reports.set(report.id, clone(report));
       },
+      async deleteById(id) {
+        reports.delete(id);
+      },
     },
     conversations: {
       async getById(id) {
@@ -197,6 +203,9 @@ export function createMemoryStore(): Store {
       async create(conversation) {
         conversations.set(conversation.id, clone(conversation));
       },
+      async delete(id) {
+        conversations.delete(id);
+      },
     },
     messages: {
       async listByConversation(conversationId) {
@@ -207,6 +216,13 @@ export function createMemoryStore(): Store {
       },
       async insert(message) {
         messages.set(message.id, clone(message));
+      },
+      async deleteByConversation(conversationId) {
+        for (const [id, message] of messages) {
+          if (message.conversation_id === conversationId) {
+            messages.delete(id);
+          }
+        }
       },
     },
     jobRuns: {

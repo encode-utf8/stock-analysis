@@ -7,6 +7,7 @@ export interface WatchlistItem {
   code: string;
   name: string;
   exchange: string;
+  group: string;
   added_at: string;
   sort_order: number;
   note: string | null;

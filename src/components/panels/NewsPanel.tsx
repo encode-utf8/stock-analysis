@@ -42,7 +42,7 @@ export function NewsPanel({
   const visibleNews = news.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
   return (
-    <div className="flex h-[560px] flex-col rounded-xl border bg-white p-4 shadow-sm">
+    <div className="flex flex-col rounded-xl border bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold">资讯与影响周期</h2>
         <Button type="button" variant="outline" size="sm" onClick={onGenerateAnalysis} disabled={analysisLoading}>
@@ -65,11 +65,17 @@ export function NewsPanel({
           {loading ? "搜索中..." : "搜索资讯"}
         </Button>
       </div>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+      <div
+        className={
+          news.length > 0
+            ? "min-h-0 max-h-[560px] space-y-3 overflow-y-auto pr-1"
+            : "min-h-0 space-y-3"
+        }
+      >
         {loading && news.length === 0 ? (
           <p className="text-sm text-muted-foreground">资讯加载中...</p>
         ) : news.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无资讯。</p>
+          <p className="text-sm text-muted-foreground">无资讯。</p>
         ) : visibleNews.map((item) => (
           <div key={item.id} className="rounded-lg border p-3">
             <div className="flex items-start justify-between gap-2">
@@ -91,15 +97,17 @@ export function NewsPanel({
           </div>
         ))}
       </div>
-      <div className="mt-3 flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
-        <Button type="button" variant="outline" size="sm" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={currentPage === 0}>
-          上一页
-        </Button>
-        <span>第 {currentPage + 1} / {totalPages} 页 · 共 {news.length} 条</span>
-        <Button type="button" variant="outline" size="sm" onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))} disabled={currentPage >= totalPages - 1}>
-          下一页
-        </Button>
-      </div>
+      {news.length > 0 ? (
+        <div className="mt-3 flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
+          <Button type="button" variant="outline" size="sm" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={currentPage === 0}>
+            上一页
+          </Button>
+          <span>第 {currentPage + 1} / {totalPages} 页 · 共 {news.length} 条</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))} disabled={currentPage >= totalPages - 1}>
+            下一页
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

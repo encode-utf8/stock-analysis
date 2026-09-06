@@ -20,13 +20,17 @@ interface ReplayApiPayload<T> {
   error?: { message?: string };
 }
 
-async function apiFetch<T>(url: string, signal?: AbortSignal): Promise<T> {
+async function apiFetch<T>(
+  url: string,
+  init?: RequestInit,
+  signal?: AbortSignal,
+): Promise<T> {
   const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8_000);
   const abortFromParent = () => controller.abort();
   signal?.addEventListener("abort", abortFromParent);
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { ...init, signal: controller.signal });
     const payload = (await response.json().catch(() => null)) as ReplayApiPayload<T> | null;
     if (!payload?.success || payload.data === undefined) {
       throw new Error(payload?.error?.message ?? "请求失败。");
@@ -64,7 +68,15 @@ function MarkdownContent({ content }: { content: string }) {
   );
 }
 
-function TimelineEventCard({ event }: { event: ReplayTimelineEvent }) {
+function TimelineEventCard({
+  event,
+  onDelete,
+  deleting,
+}: {
+  event: ReplayTimelineEvent;
+  onDelete: () => void;
+  deleting: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const roleLabel: Record<string, string> = {
     user: "用户",
@@ -82,22 +94,35 @@ function TimelineEventCard({ event }: { event: ReplayTimelineEvent }) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="w-full rounded-lg border p-3 text-left transition hover:bg-muted/30"
-      >
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-          <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {event.type === "analysis" ? "AI 分析" : "对话"}
-          </span>
-          <span className="font-medium">{formatDateTime(event.occurred_at)}</span>
-          <span className="text-xs text-muted-foreground">{metaText}</span>
+      <div className="rounded-lg border p-3 transition hover:bg-muted/30">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="w-full text-left"
+        >
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+              {event.type === "analysis" ? "AI 分析" : "对话"}
+            </span>
+            <span className="font-medium">{formatDateTime(event.occurred_at)}</span>
+            <span className="text-xs text-muted-foreground">{metaText}</span>
+          </div>
+          <p className="line-clamp-3 text-sm leading-6 text-muted-foreground">
+            {toPreviewText(previewText) || "无内容"}
+          </p>
+        </button>
+        <div className="mt-2 flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onDelete}
+            disabled={deleting}
+          >
+            {deleting ? "删除中..." : "删除记录"}
+          </Button>
         </div>
-        <p className="line-clamp-3 text-sm leading-6 text-muted-foreground">
-          {toPreviewText(previewText) || "无内容"}
-        </p>
-      </button>
+      </div>
 
       {open ? (
         <div
@@ -176,6 +201,7 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
   const [stats, setStats] = useState<ReplaySummary | null>(null);
   const [timeline, setTimeline] = useState<ReplayTimeline | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadReplay = useCallback(
@@ -185,6 +211,7 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
         try {
           const data = await apiFetch<ReplaySummary>(
             `/api/replay/stats?code=${encodeURIComponent(code)}&days=${nextDays}`,
+            undefined,
             signal,
           );
           if (isActive()) {
@@ -201,6 +228,7 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
         try {
           const data = await apiFetch<ReplayTimeline>(
             `/api/replay/timeline?code=${encodeURIComponent(code)}&days=${nextDays}`,
+            undefined,
             signal,
           );
           if (isActive()) {
@@ -255,6 +283,28 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
     setQueryCode(nextCode);
     setQueryNonce((value) => value + 1);
   }
+
+  const handleDeleteEvent = async (event: ReplayTimelineEvent) => {
+    const isAnalysis = event.type === "analysis";
+    const label = isAnalysis ? "该 AI 分析记录" : "该对话记录";
+    if (!window.confirm(`确认删除${label}吗？`)) {
+      return;
+    }
+
+    setDeletingId(event.id);
+    setError(null);
+    try {
+      const url = isAnalysis
+        ? `/api/stocks/${encodeURIComponent(event.code)}/reports/${encodeURIComponent(event.report.id)}`
+        : `/api/conversations/${encodeURIComponent(event.conversation.id)}`;
+      await apiFetch<{ id: string }>(url, { method: "DELETE" });
+      await loadReplay(queryCode ?? event.code, queryDays, () => true);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "记录删除失败。");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <section className="rounded-xl border bg-white p-4 shadow-sm">
@@ -368,7 +418,12 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
               <p className="text-sm text-muted-foreground">该时间段内暂无分析与对话记录。</p>
             ) : (
               timeline.events.map((event) => (
-                <TimelineEventCard key={`${event.type}-${event.id}`} event={event} />
+                <TimelineEventCard
+                  key={`${event.type}-${event.id}`}
+                  event={event}
+                  onDelete={() => void handleDeleteEvent(event)}
+                  deleting={deletingId === event.id}
+                />
               ))
             )}
           </div>
