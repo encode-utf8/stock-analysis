@@ -366,3 +366,29 @@ corepack pnpm build
 
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
 - 页面加载后不搜索资讯，确认资讯区高度收缩；生成 AI 分析后只出现一条当前结果并可删除；在历史复盘时间线删除记录后列表刷新；在左侧添加不同分组自选股并展开/收起分组。
+
+## Docker 本地 PostgreSQL 环境（2026-09-06，待验收）
+
+- 目标：使用 Windows Docker Desktop 启动本地 PostgreSQL，替代远程 Neon；项目配置与启动方式同步调整。
+- 分支：`feature/docker-postgres-env`
+
+### 验收项
+
+- [x] 新增 `docker-compose.yml`，定义本地 PostgreSQL 16 服务与数据卷
+- [x] 提供 `scripts/db-up.ps1` 与 `scripts/db-down.ps1` 便捷脚本
+- [x] `.env.example` 切换为本地 `localhost` 连接串，不再默认 `sslmode=require`
+- [x] `.env` 的 `DATABASE_URL` 指向本地 Docker PostgreSQL
+- [x] `hasRealDatabaseUrl()` 允许识别 `localhost/127.0.0.1` 的真实数据库配置
+- [x] `docker compose up -d postgres` 成功启动并健康检查通过
+- [x] `corepack pnpm db:migrate` 成功应用全部迁移
+- [x] 数据库可连通，真实 PostgreSQL 存储路径可用
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+- [ ] 功能分支已推送并合并回 `main`
+
+### 验证方式
+
+- `docker compose up -d postgres && docker compose ps`
+- `corepack pnpm db:migrate`
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
