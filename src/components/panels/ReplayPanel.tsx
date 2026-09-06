@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatDateTime } from "@/lib/format";
 import type { ReplaySummary } from "@/lib/shared/types";
 import type { ReplayTimeline, ReplayTimelineEvent } from "@/lib/replay";
@@ -202,6 +203,7 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
   const [timeline, setTimeline] = useState<ReplayTimeline | null>(null);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDeleteEvent, setPendingDeleteEvent] = useState<ReplayTimelineEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadReplay = useCallback(
@@ -284,13 +286,13 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
     setQueryNonce((value) => value + 1);
   }
 
+  const requestDeleteEvent = (event: ReplayTimelineEvent) => {
+    setPendingDeleteEvent(event);
+  };
+
   const handleDeleteEvent = async (event: ReplayTimelineEvent) => {
     const isAnalysis = event.type === "analysis";
-    const label = isAnalysis ? "该 AI 分析记录" : "该对话记录";
-    if (!window.confirm(`确认删除${label}吗？`)) {
-      return;
-    }
-
+    setPendingDeleteEvent(null);
     setDeletingId(event.id);
     setError(null);
     try {
@@ -421,7 +423,7 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
                 <TimelineEventCard
                   key={`${event.type}-${event.id}`}
                   event={event}
-                  onDelete={() => void handleDeleteEvent(event)}
+                  onDelete={() => requestDeleteEvent(event)}
                   deleting={deletingId === event.id}
                 />
               ))
@@ -429,6 +431,22 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
           </div>
         </div>
       ) : null}
+      <ConfirmDialog
+        open={Boolean(pendingDeleteEvent)}
+        title="确认删除复盘记录"
+        description={
+          pendingDeleteEvent
+            ? `确认删除${pendingDeleteEvent.type === "analysis" ? "该 AI 分析记录" : "该对话记录"}吗？`
+            : ""
+        }
+        loading={Boolean(deletingId)}
+        onCancel={() => setPendingDeleteEvent(null)}
+        onConfirm={() => {
+          if (pendingDeleteEvent) {
+            void handleDeleteEvent(pendingDeleteEvent);
+          }
+        }}
+      />
     </section>
   );
 }

@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatDateTime } from "@/lib/format";
 import type { AnalysisReport } from "@/lib/shared/types";
 
@@ -28,6 +30,7 @@ export function AnalysisPanel({
   loading,
   onDelete,
 }: AnalysisPanelProps) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const latestReport = reports[0] ?? null;
   const hasReport = Boolean(latestReport);
 
@@ -40,7 +43,7 @@ export function AnalysisPanel({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => onDelete(latestReport.id)}
+            onClick={() => setConfirmOpen(true)}
           >
             删除当前结果
           </Button>
@@ -67,6 +70,18 @@ export function AnalysisPanel({
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={confirmOpen}
+        title="确认删除当前分析结果"
+        description="删除后无法恢复，是否继续？"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          if (latestReport) {
+            onDelete(latestReport.id);
+          }
+          setConfirmOpen(false);
+        }}
+      />
     </div>
   );
 }

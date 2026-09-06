@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Toast } from "@/components/ui/toast";
+import { normalizeStockCode } from "@/lib/market";
 import type { WatchlistItem } from "@/lib/shared/types";
 
 /** 统一响应包装结构。 */
@@ -62,6 +65,12 @@ export function WatchlistPanel({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDeleteCode, setPendingDeleteCode] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
+
+  const showToast = (message: string) => {
+    setToast({ id: Date.now(), message });
+  };
 
   const loadWatchlist = useCallback(async () => {
     setLoading(true);
@@ -92,13 +101,19 @@ export function WatchlistPanel({
       return;
     }
 
+    const normalizedCode = normalizeStockCode(code);
+    if (!normalizedCode) {
+      showToast("请输入合法的沪深北 A 股代码（6 位数字）。");
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
       await apiFetch<WatchlistItem>("/api/watchlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, note: noteInput }),
+        body: JSON.stringify({ code: normalizedCode, note: noteInput }),
       });
       setCodeInput("");
       setNoteInput("");
@@ -111,10 +126,7 @@ export function WatchlistPanel({
   };
 
   const handleDelete = async (code: string) => {
-    if (!window.confirm(`确认删除自选股 ${code} 吗？`)) {
-      return;
-    }
-
+    setPendingDeleteCode(null);
     setSaving(true);
     setError(null);
     try {
@@ -130,6 +142,10 @@ export function WatchlistPanel({
     } finally {
       setSaving(false);
     }
+  };
+
+  const requestDelete = (code: string) => {
+    setPendingDeleteCode(code);
   };
 
   const handleMove = async (index: number, offset: -1 | 1) => {
@@ -306,7 +322,7 @@ export function WatchlistPanel({
                       type="button"
                       className="rounded border px-2 py-1 text-xs text-red-600 hover:bg-red-50"
                       disabled={saving}
-                      onClick={() => void handleDelete(item.code)}
+                      onClick={() => requestDelete(item.code)}
                     >
                       删除
                     </button>
@@ -342,6 +358,19 @@ export function WatchlistPanel({
           })}
         </ul>
       )}
+      <ConfirmDialog
+        open={Boolean(pendingDeleteCode)}
+        title="确认删除自选股"
+        description={pendingDeleteCode ? `确认删除自选股 ${pendingDeleteCode} 吗？` : ""}
+        loading={saving}
+        onCancel={() => setPendingDeleteCode(null)}
+        onConfirm={() => {
+          if (pendingDeleteCode) {
+            void handleDelete(pendingDeleteCode);
+          }
+        }}
+      />
+      {toast ? <Toast key={toast.id} message={toast.message} /> : null}
     </section>
   );
 }
