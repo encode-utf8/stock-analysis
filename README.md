@@ -15,7 +15,7 @@
 
 - Web/Agent：Next.js App Router + TypeScript + Tailwind CSS + shadcn/ui
 - 行情侧车：Python 3.12 + FastAPI + AkShare/Tencent
-- 数据库：Drizzle ORM + Supabase/Neon PostgreSQL
+- 数据库：Drizzle ORM + Docker PostgreSQL（本地）
 - 包管理：Node 20+，pnpm
 
 ## 环境要求
@@ -23,7 +23,8 @@
 - Node.js 20+
 - pnpm，或可用的 `corepack`
 - Python 3.12+（一键启动脚本会优先使用 `stock-analysis` conda 环境或项目 `.venv`）
-- 可选外部服务：DeepSeek、Tavily、Supabase/Neon PostgreSQL、Cloudflare R2
+- 推荐本地服务：Docker Desktop（PostgreSQL 16）
+- 可选外部服务：DeepSeek、Tavily、Cloudflare R2
 
 ## 快速开始
 
@@ -31,6 +32,20 @@
 cp .env.example .env
 corepack enable
 corepack pnpm install
+```
+
+Windows PowerShell 启动本地 PostgreSQL 并执行迁移：
+
+```powershell
+./scripts/db-up.ps1
+corepack pnpm db:migrate
+```
+
+Linux/macOS 或不想使用脚本时：
+
+```bash
+docker compose up -d postgres
+corepack pnpm db:migrate
 ```
 
 Windows 推荐双击 `start.bat`，或在项目根目录运行：
@@ -122,7 +137,7 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 | `DEEPSEEK_BASE_URL` | 可选 | OpenAI 兼容接口地址，默认 `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | 可选 | 默认 `deepseek-chat` |
 | `TAVILY_API_KEY` | 可选 | 外部资讯搜索；未配置时使用确定性资讯 |
-| `DATABASE_URL` | 可选 | PostgreSQL 连接串；未配置时使用内存，自选股使用本地文件回退 |
+| `DATABASE_URL` | 可选 | 本地 Docker PostgreSQL 连接串；未配置时使用内存，自选股使用本地文件回退 |
 | `R2_ACCOUNT_ID` | 可选 | Cloudflare R2 账户 ID |
 | `R2_ACCESS_KEY_ID` | 可选 | R2 访问密钥 |
 | `R2_SECRET_ACCESS_KEY` | 可选 | R2 访问密钥 |
@@ -130,7 +145,7 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 | `R2_PUBLIC_URL` | 可选 | R2 公共访问地址 |
 | `DATA_SERVICE_URL` | 可选 | 行情侧车地址，默认 `http://127.0.0.1:8000` |
 
-> `DATABASE_URL` 未携带端口时会自动补默认端口 `5432`，兼容部分 Neon/Supabase 连接串。
+> `DATABASE_URL` 未携带端口时会自动补默认端口 `5432`；本地 Docker 配置默认使用 `postgresql://postgres:postgres@localhost:5432/stock_analysis`。
 
 ## 数据与降级
 
@@ -149,12 +164,24 @@ corepack pnpm build
 corepack pnpm dev
 ```
 
-数据库相关命令仅在配置真实 `DATABASE_URL` 后使用：
+先启动本地数据库：
+
+```powershell
+./scripts/db-up.ps1
+```
+
+再执行数据库相关命令（仅在配置真实 `DATABASE_URL` 后使用）：
 
 ```bash
 corepack pnpm db:generate
 corepack pnpm db:migrate
 corepack pnpm db:studio
+```
+
+停止本地数据库：
+
+```powershell
+./scripts/db-down.ps1
 ```
 
 ## 健康检查

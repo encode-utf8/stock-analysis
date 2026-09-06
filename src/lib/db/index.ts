@@ -16,11 +16,7 @@ export function hasRealDatabaseUrl(): boolean {
 
   try {
     const parsed = new URL(url);
-    const isRemoteHost =
-      parsed.hostname !== "localhost" &&
-      parsed.hostname !== "127.0.0.1" &&
-      parsed.hostname !== "::1";
-    return isRemoteHost;
+    return Boolean(parsed.hostname && parsed.username);
   } catch {
     return false;
   }
