@@ -10,11 +10,18 @@ import type { WatchlistItem } from "@/lib/shared/types";
 
 /** 本地持久化自选股文件；数据库不可用时保证重启后仍保留。 */
 const WATCHLIST_FILE = path.join(process.cwd(), ".data", "watchlist.json");
+const DEFAULT_WATCHLIST_GROUP = "默认";
+
+/** 空分组或旧数据缺省分组统一归入默认分组。 */
+function normalizeGroup(group: string | null | undefined): string {
+  return group?.trim() || DEFAULT_WATCHLIST_GROUP;
+}
 
 /** 自选股新增请求。 */
 export interface WatchlistAddInput {
   code: string;
   note?: string | null;
+  group?: string | null;
 }
 
 /** 自选股备注更新请求。 */
@@ -44,6 +51,7 @@ function mapRow(row: typeof schema.watchlist.$inferSelect): WatchlistItem {
     code: row.code,
     name: row.name,
     exchange: row.exchange,
+    group: normalizeGroup(row.group),
     added_at: row.addedAt.toISOString(),
     sort_order: row.sortOrder,
     note: row.note,
@@ -63,13 +71,18 @@ async function loadWatchlistFile(): Promise<WatchlistItem[]> {
     if (!Array.isArray(parsed)) {
       return [];
     }
-    return parsed.filter(
-      (item): item is WatchlistItem =>
-        Boolean(item) &&
-        typeof item === "object" &&
-        typeof (item as WatchlistItem).code === "string" &&
-        typeof (item as WatchlistItem).name === "string",
-    );
+    return parsed
+      .filter(
+        (item): item is WatchlistItem =>
+          Boolean(item) &&
+          typeof item === "object" &&
+          typeof (item as WatchlistItem).code === "string" &&
+          typeof (item as WatchlistItem).name === "string",
+      )
+      .map((item) => ({
+        ...item,
+        group: normalizeGroup((item as WatchlistItem).group),
+      }));
   } catch {
     return [];
   }
@@ -196,6 +209,7 @@ function createDrizzleWatchlistRepository(): WatchlistRepository {
           code: item.code,
           name: item.name,
           exchange: item.exchange,
+          group: item.group,
           sortOrder: item.sort_order,
           note: item.note,
           addedAt: new Date(item.added_at),
@@ -205,6 +219,7 @@ function createDrizzleWatchlistRepository(): WatchlistRepository {
           set: {
             name: item.name,
             exchange: item.exchange,
+            group: item.group,
             sortOrder: item.sort_order,
             note: item.note,
           },
@@ -288,6 +303,7 @@ export function buildWatchlistItem(
       code,
       name: stock.name,
       exchange,
+      group: normalizeGroup(input.group),
       added_at: new Date().toISOString(),
       sort_order: 0,
       note,

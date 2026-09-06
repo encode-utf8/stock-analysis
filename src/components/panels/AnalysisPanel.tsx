@@ -3,12 +3,14 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/format";
 import type { AnalysisReport } from "@/lib/shared/types";
 
 interface AnalysisPanelProps {
   reports: AnalysisReport[];
   loading: boolean;
+  onDelete: (reportId: string) => void;
 }
 
 /** Markdown 渲染容器。 */
@@ -20,29 +22,49 @@ function MarkdownContent({ content }: { content: string }) {
   );
 }
 
-/** 周期内 AI 分析面板。 */
-export function AnalysisPanel({ reports, loading }: AnalysisPanelProps) {
+/** 周期内 AI 分析面板：只展示当前最新结果，无结果时自适应缩小。 */
+export function AnalysisPanel({
+  reports,
+  loading,
+  onDelete,
+}: AnalysisPanelProps) {
+  const latestReport = reports[0] ?? null;
+  const hasReport = Boolean(latestReport);
+
   return (
-    <div className="flex h-[560px] flex-col rounded-xl border bg-white p-4 shadow-sm">
-      <h2 className="text-lg font-semibold">周期内 AI 分析</h2>
-      <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-        {loading && reports.length === 0 ? (
+    <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">周期内 AI 分析</h2>
+        {latestReport ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onDelete(latestReport.id)}
+          >
+            删除当前结果
+          </Button>
+        ) : null}
+      </div>
+
+      <div className={hasReport ? "mt-3 max-h-[560px] overflow-y-auto pr-1" : "mt-3"}>
+        {loading && !hasReport ? (
           <p className="text-sm text-muted-foreground">历史报告加载中...</p>
-        ) : reports.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无历史报告，点击“生成 AI 分析”开始。</p>
+        ) : !latestReport ? (
+          <p className="text-sm text-muted-foreground">暂无分析结果，点击“生成 AI 分析”开始。</p>
         ) : (
-          reports.map((report) => (
-            <div key={report.id} className="rounded-lg border p-3">
-              <div className="mb-3 flex items-center justify-between text-sm">
-                <span className="font-medium">{formatDateTime(report.created_at)}</span>
-                <span className="text-xs text-muted-foreground">{report.news_refs.length} 条引用</span>
-              </div>
-              <MarkdownContent content={report.content} />
-              <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                {report.risk_note}
-              </p>
+          <div className="rounded-lg border p-3">
+            <div className="mb-3 flex items-center justify-between text-sm">
+              <span className="font-medium">{formatDateTime(latestReport.created_at)}</span>
+              <span className="text-xs text-muted-foreground">
+                {latestReport.news_refs.length} 条引用
+              </span>
             </div>
-          ))
+            <MarkdownContent content={latestReport.content} />
+            <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {latestReport.risk_note}
+            </p>
+          </div>
         )}
       </div>
     </div>

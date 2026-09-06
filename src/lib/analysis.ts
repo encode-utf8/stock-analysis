@@ -591,3 +591,15 @@ export async function* streamAnalysis(
 export async function listReports(code: string): Promise<AnalysisReport[]> {
   return store.analysisReports.listByCode(code);
 }
+
+/** 删除指定股票下的一条分析报告；不存在时返回 false。 */
+export async function deleteReport(code: string, reportId: string): Promise<boolean> {
+  const reports = await store.analysisReports.listByCode(code);
+  const exists = reports.some((report) => report.id === reportId);
+  if (!exists) {
+    return false;
+  }
+
+  await store.analysisReports.deleteById(reportId);
+  return true;
+}

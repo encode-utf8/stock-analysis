@@ -755,6 +755,18 @@ export async function listConversations(code: string): Promise<Conversation[]> {
   return store.conversations.listByCode(code);
 }
 
+/** 删除会话及其消息；不存在时返回 false。 */
+export async function deleteConversation(conversationId: string): Promise<boolean> {
+  const conversation = await store.conversations.getById(conversationId);
+  if (!conversation) {
+    return false;
+  }
+
+  await store.messages.deleteByConversation(conversationId);
+  await store.conversations.delete(conversationId);
+  return true;
+}
+
 /** 非流式入口，供需要一次性结果的调用方使用。 */
 export async function runChat(request: ChatRequest): Promise<{
   conversationId: string;
