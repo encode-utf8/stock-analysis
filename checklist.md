@@ -472,7 +472,7 @@ corepack pnpm build
 - [x] `corepack pnpm typecheck` 通过
 - [x] `corepack pnpm lint` 通过
 - [x] `corepack pnpm build` 通过
-- [ ] 功能分支已推送并合并回 `main`
+- [x] 功能分支已推送并合并回 `main`
 
 ### 验证方式
 
