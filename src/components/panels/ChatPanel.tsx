@@ -23,6 +23,7 @@ interface ChatPanelProps {
   loading: boolean;
   onInputChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onStop: () => void;
 }
 
 /** 对话助手面板。 */
@@ -34,6 +35,7 @@ export function ChatPanel({
   loading,
   onInputChange,
   onSubmit,
+  onStop,
 }: ChatPanelProps) {
   return (
     <section className="rounded-xl border bg-white p-4 shadow-sm">
@@ -121,6 +123,11 @@ export function ChatPanel({
         <Button type="submit" disabled={!code || loading || !input.trim()}>
           {loading ? "回复中..." : "发送"}
         </Button>
+        {loading ? (
+          <Button type="button" variant="outline" onClick={onStop}>
+            停止回复
+          </Button>
+        ) : null}
       </form>
     </section>
   );

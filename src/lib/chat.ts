@@ -428,8 +428,14 @@ function toLimit(value: unknown, fallback: number): number {
 }
 
 /** 流式请求 DeepSeek，逐块产出 delta 与 tool_calls。 */
-async function* streamDeepSeekCompletion(messages: OpenAiMessage[]): AsyncGenerator<DeepSeekStreamChunk> {
+async function* streamDeepSeekCompletion(messages: OpenAiMessage[], signal?: AbortSignal): AsyncGenerator<DeepSeekStreamChunk> {
   const controller = new AbortController();
+  const abortFromSignal = () => controller.abort();
+  if (signal?.aborted) {
+    controller.abort();
+  } else {
+    signal?.addEventListener("abort", abortFromSignal, { once: true });
+  }
   const timer = setTimeout(() => controller.abort(), 60_000);
 
   try {
@@ -536,6 +542,7 @@ async function* streamDeepSeekCompletion(messages: OpenAiMessage[]): AsyncGenera
     yield { type: "finish", finishReason };
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abortFromSignal);
   }
 }
 
@@ -617,7 +624,7 @@ function sanitizeForbiddenPromises(text: string): string {
 }
 
 /** 流式执行对话，产出 SSE 事件。 */
-export async function* streamChat(request: ChatRequest): AsyncGenerator<ChatStreamEvent> {
+export async function* streamChat(request: ChatRequest, signal?: AbortSignal): AsyncGenerator<ChatStreamEvent> {
   const conversation = await resolveConversation(request.code, request.conversationId);
   const history = await store.messages.listByConversation(conversation.id);
 
@@ -655,26 +662,33 @@ export async function* streamChat(request: ChatRequest): AsyncGenerator<ChatStre
       const roundToolCalls: OpenAiToolCall[] = [];
       let roundContent = "";
 
-      for await (const chunk of streamDeepSeekCompletion(llmMessages)) {
-        if (chunk.type === "delta") {
-          roundContent += chunk.content;
-          content += chunk.content;
-          yield { type: "delta", content: chunk.content };
-        } else if (chunk.type === "tool_calls") {
-          for (const raw of chunk.toolCalls) {
-            if (!raw.id || !raw.function?.name) {
-              continue;
+      try {
+        for await (const chunk of streamDeepSeekCompletion(llmMessages, signal)) {
+          if (chunk.type === "delta") {
+            roundContent += chunk.content;
+            content += chunk.content;
+            yield { type: "delta", content: chunk.content };
+          } else if (chunk.type === "tool_calls") {
+            for (const raw of chunk.toolCalls) {
+              if (!raw.id || !raw.function?.name) {
+                continue;
+              }
+              roundToolCalls.push({
+                id: raw.id,
+                type: "function",
+                function: {
+                  name: raw.function.name,
+                  arguments: raw.function.arguments ?? "{}",
+                },
+              });
             }
-            roundToolCalls.push({
-              id: raw.id,
-              type: "function",
-              function: {
-                name: raw.function.name,
-                arguments: raw.function.arguments ?? "{}",
-              },
-            });
           }
         }
+      } catch (error) {
+        if (signal?.aborted) {
+          break;
+        }
+        throw error;
       }
 
       if (roundToolCalls.length === 0) {
@@ -715,6 +729,9 @@ export async function* streamChat(request: ChatRequest): AsyncGenerator<ChatStre
     }
   }
 
+  if (signal?.aborted && !content.trim()) {
+    return;
+  }
   const assistantMessage: Message = {
     id: assistantMessageId,
     conversation_id: conversation.id,

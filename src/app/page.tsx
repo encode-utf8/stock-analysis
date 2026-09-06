@@ -102,7 +102,13 @@ export default function Home() {
   const [chatInput, setChatInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<string | null>(null);
+  const [replayRefreshToken, setReplayRefreshToken] = useState(0);
+  const [lastDeletedReportId, setLastDeletedReportId] = useState<string | null>(null);
   const activeCodeRef = useRef<string | null>(null);
+  const analysisAbortRef = useRef<AbortController | null>(null);
+  const chatAbortRef = useRef<AbortController | null>(null);
+  const analysisDraftIdRef = useRef<string | null>(null);
+  const analysisRealReportIdRef = useRef<string | null>(null);
 
   const toggleModule = (key: ModuleKey) => {
     setEnabledModules((previous) => ({ ...previous, [key]: !previous[key] }));
@@ -301,12 +307,16 @@ export default function Home() {
   };
 
   const handleAnalysis = async () => {
-    if (!code || analysisLoading) {
+    if (!code || analysisLoading || analysisAbortRef.current) {
       return;
     }
+    const controller = new AbortController();
+    const draftId = `analysis-stream-${Date.now()}`;
+    analysisAbortRef.current = controller;
+    analysisDraftIdRef.current = draftId;
+    analysisRealReportIdRef.current = null;
     setAnalysisLoading(true);
     setError(null);
-    const draftId = `analysis-stream-${Date.now()}`;
     const draftReport: AnalysisReport = {
       id: draftId,
       code,
@@ -324,6 +334,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: "请生成当前盘面与资讯分析。", news }),
+        signal: controller.signal,
       });
       if (!response.ok || !response.body) {
         throw new Error("分析接口响应异常。");
@@ -340,7 +351,9 @@ export default function Home() {
         }
         const event = JSON.parse(dataLine.slice(6)) as AnalysisStreamEvent;
 
-        if (event.type === "delta" && event.content) {
+        if (event.type === "meta" && event.data?.reportId) {
+          analysisRealReportIdRef.current = event.data.reportId;
+        } else if (event.type === "delta" && event.content) {
           setReports((previous) =>
             previous.map((item) =>
               item.id === draftId
@@ -375,15 +388,57 @@ export default function Home() {
 
       await loadObservability();
     } catch (nextError) {
+      if (nextError instanceof Error && nextError.name === "AbortError") {
+        return;
+      }
       setError(nextError instanceof Error ? nextError.message : "分析生成失败。");
       setReports((previous) => previous.filter((item) => item.id !== draftId));
     } finally {
+      if (analysisAbortRef.current === controller) {
+        analysisAbortRef.current = null;
+        analysisDraftIdRef.current = null;
+        analysisRealReportIdRef.current = null;
+      }
       setAnalysisLoading(false);
     }
   };
 
+  const stopAnalysis = async () => {
+    if (!code) {
+      return;
+    }
+    const reportId = analysisRealReportIdRef.current;
+    if (reportId) {
+      try {
+        const response = await fetch(
+          `/api/stocks/${encodeURIComponent(code)}/analysis/stop`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reportId }),
+          },
+        );
+        if (response.ok) {
+          setAnalysisLoading(false);
+          return;
+        }
+      } catch {
+        // 停止接口不可用时退回前端中断，仍会停止生成。
+      }
+    }
+    analysisAbortRef.current?.abort();
+    setAnalysisLoading(false);
+  };
+
   const handleDeleteReport = async (reportId: string) => {
     if (!code) {
+      return;
+    }
+
+    if (analysisDraftIdRef.current === reportId) {
+      analysisAbortRef.current?.abort();
+      setReports((previous) => previous.filter((report) => report.id !== reportId));
+      setAnalysisLoading(false);
       return;
     }
 
@@ -393,6 +448,8 @@ export default function Home() {
         { method: "DELETE" },
       );
       setReports((previous) => previous.filter((report) => report.id !== reportId));
+      setReplayRefreshToken((value) => value + 1);
+      setLastDeletedReportId(reportId);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "分析报告删除失败。");
     }
@@ -441,6 +498,8 @@ export default function Home() {
     }
 
     const userText = chatInput.trim();
+    const controller = new AbortController();
+    chatAbortRef.current = controller;
     setChatInput("");
     setChatLoading(true);
     const localUserId = `local-user-${Date.now()}`;
@@ -456,6 +515,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, conversationId, message: userText }),
+        signal: controller.signal,
       });
       if (!response.ok || !response.body) {
         throw new Error("对话接口响应异常。");
@@ -525,11 +585,22 @@ export default function Home() {
 
       await Promise.all([loadObservability(), loadConversations(code)]);
     } catch (nextError) {
+      if (nextError instanceof Error && nextError.name === "AbortError") {
+        return;
+      }
       setError(nextError instanceof Error ? nextError.message : "对话生成失败。");
       setMessages((previous) => previous.filter((message) => message.id !== assistantId));
     } finally {
+      if (chatAbortRef.current === controller) {
+        chatAbortRef.current = null;
+      }
       setChatLoading(false);
     }
+  };
+
+  const stopChat = () => {
+    chatAbortRef.current?.abort();
+    setChatLoading(false);
   };
 
   const loadConversationTimeline = async (id: string) => {
@@ -646,6 +717,7 @@ export default function Home() {
                     onRangeChange={setNewsRangeDays}
                     onSearch={() => void handleNewsSearch()}
                     onGenerateAnalysis={() => void handleAnalysis()}
+                    onStopAnalysis={stopAnalysis}
                   />
                 ) : null}
                 {stock && quote && enabledModules.analysis ? (
@@ -664,6 +736,7 @@ export default function Home() {
                     loading={chatLoading}
                     onInputChange={(value) => setChatInput(value)}
                     onSubmit={handleChatSubmit}
+                    onStop={stopChat}
                   />
                 ) : null}
                 {code && enabledModules.timeline ? (
@@ -680,7 +753,7 @@ export default function Home() {
                   />
                 ) : null}
                 {enabledModules.replay ? (
-                  <ReplayPanel key={code ?? "none"} code={code} />
+                  <ReplayPanel key={code ?? "none"} code={code} refreshToken={replayRefreshToken} deletedReportId={lastDeletedReportId} />
                 ) : null}
                 {enabledModules.datasource ? <DataSourcePanel /> : null}
               </div>

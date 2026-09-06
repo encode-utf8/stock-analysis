@@ -353,12 +353,18 @@ interface DeepSeekStreamResponse {
 async function* streamDeepSeekAnalysis(messages: {
   system: string;
   user: string;
-}): AsyncGenerator<string> {
+}, signal?: AbortSignal): AsyncGenerator<string> {
   if (!deepSeekConfigured()) {
     return;
   }
 
   const controller = new AbortController();
+  const abortFromSignal = () => controller.abort();
+  if (signal?.aborted) {
+    controller.abort();
+  } else {
+    signal?.addEventListener("abort", abortFromSignal, { once: true });
+  }
   const timer = setTimeout(() => controller.abort(), analysisTimeoutMs());
 
   try {
@@ -437,6 +443,7 @@ async function* streamDeepSeekAnalysis(messages: {
     throw error;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abortFromSignal);
   }
 }
 
@@ -533,11 +540,31 @@ export async function runAnalysis(
   return persistReport(report);
 }
 
+/** 流式分析活动，供停止接口中止并决定是否保存已生成内容。 */
+interface ActiveAnalysisStream {
+  controller: AbortController;
+  persistOnAbort: boolean;
+}
+
+const activeAnalysisStreams = new Map<string, ActiveAnalysisStream>();
+
+/** 请求停止正在生成的 AI 分析；成功时会将已生成内容落盘。 */
+export function requestStopAnalysis(reportId: string): boolean {
+  const active = activeAnalysisStreams.get(reportId);
+  if (!active) {
+    return false;
+  }
+  active.persistOnAbort = true;
+  active.controller.abort();
+  return true;
+}
+
 /** 流式触发一次 AI 分析，边生成边返回分块，并在结束时返回持久化报告。 */
 export async function* streamAnalysis(
   code: string,
   prompt?: string,
   news: NewsItem[] = [],
+  signal?: AbortSignal,
 ): AsyncGenerator<AnalysisStreamEvent> {
   recordTaskRun("analysis");
 
@@ -549,42 +576,69 @@ export async function* streamAnalysis(
   ]);
 
   const reportId = buildReportId(code);
-  yield { type: "meta", data: { reportId } };
+  const controller = new AbortController();
+  const active: ActiveAnalysisStream = { controller, persistOnAbort: false };
+  activeAnalysisStreams.set(reportId, active);
 
-  const fallbackContent = buildFallbackReport(code, stock.name, quote, indicators, news, klines);
-  const messages = buildAnalysisMessages(stock, quote, indicators, news, klines, prompt ?? "");
-  let llmContent: string | null = null;
-  let streamedContent = "";
+  const abortFromRequest = () => controller.abort();
+  if (signal?.aborted) {
+    controller.abort();
+  } else {
+    signal?.addEventListener("abort", abortFromRequest, { once: true });
+  }
 
-  if (deepSeekConfigured()) {
-    try {
-      for await (const chunk of streamDeepSeekAnalysis(messages)) {
-        streamedContent += chunk;
-        yield { type: "delta", content: chunk };
+  try {
+    yield { type: "meta", data: { reportId } };
+
+    const fallbackContent = buildFallbackReport(code, stock.name, quote, indicators, news, klines);
+    const messages = buildAnalysisMessages(stock, quote, indicators, news, klines, prompt ?? "");
+    let llmContent: string | null = null;
+    let streamedContent = "";
+
+    if (deepSeekConfigured()) {
+      try {
+        for await (const chunk of streamDeepSeekAnalysis(messages, controller.signal)) {
+          streamedContent += chunk;
+          yield { type: "delta", content: chunk };
+        }
+        if (
+          streamedContent.trim() &&
+          !hasForbiddenPromise(streamedContent) &&
+          isConcreteAnalysis(streamedContent, stock.code, stock.name, quote, news)
+        ) {
+          llmContent = streamedContent;
+        }
+      } catch {
+        llmContent = null;
       }
-      if (
-        streamedContent.trim() &&
-        !hasForbiddenPromise(streamedContent) &&
-        isConcreteAnalysis(streamedContent, stock.code, stock.name, quote, news)
-      ) {
-        llmContent = streamedContent;
-      }
-    } catch {
-      llmContent = null;
     }
+
+    if (controller.signal.aborted) {
+      if (active.persistOnAbort && streamedContent.trim()) {
+        const content = finalizeContent(streamedContent, news);
+        const report = await persistReport(
+          buildReport(code, quote, indicators, klines, news, content, reportId),
+        );
+        yield { type: "done", data: { report } };
+      }
+      return;
+    }
+
+    const baseContent = llmContent ?? fallbackContent;
+    const content = finalizeContent(baseContent, news);
+
+    if (!llmContent) {
+      yield { type: "delta", content: content };
+    }
+
+    const report = await persistReport(
+      buildReport(code, quote, indicators, klines, news, content, reportId),
+    );
+    yield { type: "done", data: { report } };
+  } finally {
+    activeAnalysisStreams.delete(reportId);
+    signal?.removeEventListener("abort", abortFromRequest);
   }
-
-  const baseContent = llmContent ?? fallbackContent;
-  const content = finalizeContent(baseContent, news);
-
-  if (!llmContent) {
-    yield { type: "delta", content: content };
-  }
-
-  const report = await persistReport(
-    buildReport(code, quote, indicators, klines, news, content, reportId),
-  );
-  yield { type: "done", data: { report } };
 }
 
 /** 获取历史报告时间线。 */

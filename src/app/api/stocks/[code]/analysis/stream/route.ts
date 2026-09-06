@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
       };
 
       try {
-        for await (const event of streamAnalysis(code, body.prompt, body.news ?? [])) {
+        for await (const event of streamAnalysis(code, body.prompt, body.news ?? [], request.signal)) {
           send(event);
         }
       } catch (error) {

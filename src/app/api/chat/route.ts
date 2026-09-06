@@ -39,7 +39,7 @@ export async function POST(request: NextRequest): Promise<Response> {
           code,
           conversationId: body?.conversationId,
           message,
-        })) {
+        }, request.signal)) {
           send(event);
         }
       } catch (error) {
