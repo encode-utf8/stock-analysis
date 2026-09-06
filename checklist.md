@@ -435,3 +435,23 @@ corepack pnpm build
 
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
 - 页面加载后确认左侧没有免责声明选项；清空模块时右侧底部仍显示免责声明，勾选模块后免责声明仍在内容区最下方。
+
+## 对话助手 Markdown 展示（2026-09-06，待验收）
+
+- 目标：将对话助手中的助手消息从纯文本 `<pre>` 展示改为 Markdown 渲染，支持标题、列表、引用、代码块、表格等格式。
+- 分支：`feature/chat-markdown-render`
+
+### 验收项
+
+- [x] 对话助手引入 `react-markdown` 与 `remark-gfm`
+- [x] 助手消息内容使用 Markdown 渲染，用户消息保持原样
+- [x] 标题、列表、引用、代码块、表格等 Markdown 语法可正常展示
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+- [ ] 功能分支已推送并合并回 `main`
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 页面勾选“对话助手”并发送包含 Markdown 的测试消息，确认助手回复按 Markdown 结构展示。
