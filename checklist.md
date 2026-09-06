@@ -392,3 +392,26 @@ corepack pnpm build
 - `docker compose up -d postgres && docker compose ps`
 - `corepack pnpm db:migrate`
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+
+## 左侧栏悬停收拢与学习台实时时间（2026-09-06，待验收）
+
+- 目标：将“功能选项”改为语雀/飞书式左侧栏，支持点击开合与光标移动到边缘时感应展开；学习台右上角时间改为实时刷新。
+- 分支：`feature/sidebar-hover-collapse-live-clock`
+
+### 验收项
+
+- [x] 左侧功能栏不再使用单独的“功能选项”按钮作为唯一展开入口
+- [x] 侧栏收拢后保留可点击的窄轨区域，点击可展开
+- [x] 鼠标移动到收拢后的左边缘时侧栏自动展开
+- [x] 鼠标移出侧栏且未锁定展开时，侧栏自动收拢
+- [x] 侧栏展开后可通过边缘/标题区控件再次收拢
+- [x] 学习台右上角“当前时间”每秒钟自动刷新，而不是仅显示页面打开时间
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+- [ ] 功能分支已推送并合并回 `main`
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 页面加载后确认学习台右上角时间每秒变化；收拢侧栏后鼠标移到最左边缘应自动展开，移出后自动收拢；点击窄轨/侧栏控件可手动展开或收拢。

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import { Button } from "@/components/ui/button";
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
 import { ChartPanel } from "@/components/panels/ChartPanel";
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
@@ -76,6 +75,7 @@ async function apiFetch<T>(url: string, init?: RequestInit, timeoutMs = REQUEST_
 export default function Home() {
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarPeek, setSidebarPeek] = useState(false);
   const [enabledModules, setEnabledModules] = useState<Record<ModuleKey, boolean>>(
     DEFAULT_MODULE_VISIBILITY,
   );
@@ -275,10 +275,12 @@ export default function Home() {
   }, [refreshStock]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const updateCurrentTime = () => {
       setCurrentTime(new Date().toLocaleString("zh-CN", { hour12: false }));
-    }, 0);
-    return () => clearTimeout(timer);
+    };
+    updateCurrentTime();
+    const timer = setInterval(updateCurrentTime, 1_000);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -549,41 +551,53 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-muted/40 text-foreground">
       <div className="mx-auto flex min-h-screen max-w-[1440px]">
-        {sidebarOpen ? (
-          <FunctionOptionsSidebar
-            input={input}
-            loading={loading}
-            code={code}
-            activeCode={code}
-            enabledModules={enabledModules}
-            onInputChange={(value) => setInput(value)}
-            onSearch={handleSearch}
-            onRefresh={() => void handleRefresh()}
-            onCleanup={() => void handleCleanup()}
-            onToggleModule={toggleModule}
-            onWatchlistSelect={handleWatchlistSelect}
-            onWatchlistClearActive={handleWatchlistClear}
-            onSelectAll={selectAllModules}
-            onClearAll={clearAllModules}
-            onClose={() => setSidebarOpen(false)}
-          />
-        ) : null}
+        <div
+          className="relative shrink-0"
+          onMouseEnter={() => setSidebarPeek(true)}
+          onMouseLeave={() => setSidebarPeek(false)}
+        >
+          <div
+            className={"sticky top-0 h-screen overflow-hidden border-r border-border bg-white transition-[width] duration-300 ease-out " + (sidebarOpen || sidebarPeek ? "w-80" : "w-10")}
+          >
+            {sidebarOpen || sidebarPeek ? (
+              <FunctionOptionsSidebar
+                input={input}
+                loading={loading}
+                code={code}
+                activeCode={code}
+                enabledModules={enabledModules}
+                onInputChange={(value) => setInput(value)}
+                onSearch={handleSearch}
+                onRefresh={() => void handleRefresh()}
+                onCleanup={() => void handleCleanup()}
+                onToggleModule={toggleModule}
+                onWatchlistSelect={handleWatchlistSelect}
+                onWatchlistClearActive={handleWatchlistClear}
+                onSelectAll={selectAllModules}
+                onClearAll={clearAllModules}
+                pinned={sidebarOpen}
+                onToggle={() => setSidebarOpen((previous) => !previous)}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                aria-label="展开功能侧栏"
+                className="flex h-full w-full flex-col items-center pt-3 text-muted-foreground transition-colors hover:bg-accent"
+              >
+                <span className="text-xs font-medium tracking-[0.35em] [writing-mode:vertical-rl]">
+                  功能选项
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
 
         <section className="min-w-0 flex-1 px-4 py-8">
           <div className="mx-auto flex max-w-6xl flex-col gap-6">
             <header className="rounded-xl border bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-start gap-3">
-                  {!sidebarOpen ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSidebarOpen(true)}
-                    >
-                      功能选项
-                    </Button>
-                  ) : null}
+                <div>
                   <div>
                     <h1 className="text-2xl font-semibold tracking-tight">个股盘面分析与 AI 学习台</h1>
                     <p className="mt-1 text-sm text-muted-foreground">

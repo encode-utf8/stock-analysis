@@ -43,7 +43,8 @@ interface FunctionOptionsSidebarProps {
   onWatchlistClearActive: () => void;
   onSelectAll: () => void;
   onClearAll: () => void;
-  onClose: () => void;
+  pinned: boolean;
+  onToggle: () => void;
 }
 
 /** 左侧可隐藏功能选项页：顶部查询股票，下方勾选展示模块。 */
@@ -62,20 +63,26 @@ export function FunctionOptionsSidebar({
   onWatchlistClearActive,
   onSelectAll,
   onClearAll,
-  onClose,
+  pinned,
+  onToggle,
 }: FunctionOptionsSidebarProps) {
   const selectedCount = Object.values(enabledModules).filter(Boolean).length;
 
   return (
-    <aside className="sticky top-0 flex h-screen w-80 shrink-0 flex-col border-r border-border bg-white">
+    <aside className="flex h-screen w-full flex-col bg-white">
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold">功能选项</h2>
           <p className="text-xs text-muted-foreground">勾选模块后再展示对应信息区</p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={onClose}>
-          隐藏
-        </Button>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={pinned ? "收拢功能侧栏" : "固定展开功能侧栏"}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-lg leading-none text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <span aria-hidden="true">{pinned ? "«" : "»"}</span>
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
