@@ -2,6 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import type { FormEvent } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 /** 前端对话消息展示结构。 */
 export interface ChatViewMessage {
@@ -57,9 +59,17 @@ export function ChatPanel({
               }`}
             >
               {message.content ? (
-                <pre className="whitespace-pre-wrap break-words font-sans leading-6">
-                  {message.content}
-                </pre>
+                message.role === "assistant" ? (
+                  <div className="markdown-body">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <pre className="whitespace-pre-wrap break-words font-sans leading-6">
+                    {message.content}
+                  </pre>
+                )
               ) : (
                 <span className="text-muted-foreground">思考中...</span>
               )}
