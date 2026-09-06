@@ -14,6 +14,7 @@ interface NewsPanelProps {
   onRangeChange: (days: number) => void;
   onSearch: () => void;
   onGenerateAnalysis: () => void;
+  onStopAnalysis: () => void;
 }
 
 const PAGE_SIZE = 4;
@@ -35,6 +36,7 @@ export function NewsPanel({
   onRangeChange,
   onSearch,
   onGenerateAnalysis,
+  onStopAnalysis,
 }: NewsPanelProps) {
   const [page, setPage] = useState(0);
   const totalPages = Math.max(1, Math.ceil(news.length / PAGE_SIZE));
@@ -45,9 +47,16 @@ export function NewsPanel({
     <div className="flex flex-col rounded-xl border bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold">资讯与影响周期</h2>
-        <Button type="button" variant="outline" size="sm" onClick={onGenerateAnalysis} disabled={analysisLoading}>
-          {analysisLoading ? "生成中..." : "生成 AI 分析"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {analysisLoading ? (
+            <Button type="button" variant="outline" size="sm" onClick={onStopAnalysis}>
+              停止生成
+            </Button>
+          ) : null}
+          <Button type="button" variant="outline" size="sm" onClick={onGenerateAnalysis} disabled={analysisLoading}>
+            {analysisLoading ? "生成中..." : "生成 AI 分析"}
+          </Button>
+        </div>
       </div>
       <div className="mb-3 flex flex-wrap gap-2">
         <select

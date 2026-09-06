@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -31,7 +31,7 @@ async function apiFetch<T>(
   const abortFromParent = () => controller.abort();
   signal?.addEventListener("abort", abortFromParent);
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    const response = await fetch(url, { ...init, cache: "no-store", signal: controller.signal });
     const payload = (await response.json().catch(() => null)) as ReplayApiPayload<T> | null;
     if (!payload?.success || payload.data === undefined) {
       throw new Error(payload?.error?.message ?? "请求失败。");
@@ -190,10 +190,12 @@ function TimelineEventCard({
 
 interface ReplayPanelProps {
   code: string | null;
+  refreshToken?: number;
+  deletedReportId?: string | null;
 }
 
 /** 历史复盘与命中率统计面板，仅用于学习，不承诺任何收益。 */
-export function ReplayPanel({ code }: ReplayPanelProps) {
+export function ReplayPanel({ code, refreshToken = 0, deletedReportId = null }: ReplayPanelProps) {
   const [codeInput, setCodeInput] = useState(code ?? "600519");
   const [queryCode, setQueryCode] = useState<string | null>(null);
   const [days, setDays] = useState<number>(30);
@@ -205,6 +207,19 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDeleteEvent, setPendingDeleteEvent] = useState<ReplayTimelineEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const visibleTimeline = useMemo(() => {
+    if (!timeline || !deletedReportId) {
+      return timeline;
+    }
+    return {
+      ...timeline,
+      events: timeline.events.filter(
+        (event) =>
+          !(event.type === "analysis" && event.report.id === deletedReportId),
+      ),
+    };
+  }, [deletedReportId, timeline]);
 
   const loadReplay = useCallback(
     async (code: string, nextDays: number, isActive: () => boolean, signal?: AbortSignal) => {
@@ -270,7 +285,8 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [loadReplay, queryCode, queryDays, queryNonce]);
+  }, [loadReplay, queryCode, queryDays, queryNonce, refreshToken]);
+
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -352,7 +368,7 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
         </div>
       ) : null}
 
-      {loading && !stats && !timeline ? (
+      {loading && !stats && !visibleTimeline ? (
         <div
           className="mb-4 flex items-center gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-sm text-muted-foreground"
           aria-live="polite"
@@ -409,17 +425,17 @@ export function ReplayPanel({ code }: ReplayPanelProps) {
         </>
       ) : null}
 
-      {timeline ? (
+      {visibleTimeline ? (
         <div>
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-medium">历史分析与对话时间线</h3>
-            <span className="text-xs text-muted-foreground">{timeline.events.length} 个事件</span>
+            <span className="text-xs text-muted-foreground">{visibleTimeline.events.length} 个事件</span>
           </div>
           <div className="space-y-3">
-            {timeline.events.length === 0 ? (
+            {visibleTimeline.events.length === 0 ? (
               <p className="text-sm text-muted-foreground">该时间段内暂无分析与对话记录。</p>
             ) : (
-              timeline.events.map((event) => (
+              visibleTimeline.events.map((event) => (
                 <TimelineEventCard
                   key={`${event.type}-${event.id}`}
                   event={event}
