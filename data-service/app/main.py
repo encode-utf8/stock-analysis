@@ -15,6 +15,8 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, Query
 
+from .fund_routes import router as fund_router
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -32,6 +34,8 @@ app = FastAPI(
     description="FastAPI 行情服务，提供 AkShare 真实行情并支持确定性降级。",
     version="0.2.0",
 )
+
+app.include_router(fund_router)
 
 KlinePeriod = Literal["minute", "day", "week", "month"]
 AdjustType = Literal["qfq", "hfq", "none"]
