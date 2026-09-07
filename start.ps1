@@ -78,7 +78,7 @@ if ($shouldInstall) {
     Write-Step "已检测到前端依赖，跳过安装（需要强制安装请使用 --install）..."
 }
 
-Write-Step "定位 Python 行情侧车运行环境..."
+Write-Step "定位 Python 行情/基金数据侧车运行环境..."
 $pythonExe = $null
 
 if (Test-Command "conda.exe") {
@@ -122,13 +122,13 @@ if (-not $pythonExe) {
     }
 }
 
-Write-Step "检查并安装行情侧车基础依赖..."
+Write-Step "检查并安装行情/基金数据侧车基础依赖..."
 & $pythonExe -c "import fastapi, uvicorn, curl_cffi" *> $null
 if ($LASTEXITCODE -ne 0) {
     & $pythonExe -m pip install --upgrade pip
     & $pythonExe -m pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "pydantic-settings>=2.6" "curl_cffi>=0.10"
     if ($LASTEXITCODE -ne 0) {
-        throw "行情侧车基础依赖安装失败。"
+        throw "行情/基金数据侧车基础依赖安装失败。"
     }
 }
 
@@ -141,7 +141,7 @@ if ($LASTEXITCODE -ne 0) {
     }
 }
 
-Write-Step "启动 FastAPI 行情侧车..."
+Write-Step "启动 FastAPI 行情/基金数据侧车..."
 $dataArgs = @(
     "-m", "uvicorn",
     "app.main:app",
@@ -168,10 +168,10 @@ if (-not $dataHealthy) {
     if ($dataProcess -and -not $dataProcess.HasExited) {
         Stop-Process -Id $dataProcess.Id -Force -ErrorAction SilentlyContinue
     }
-    throw "行情侧车健康检查失败，请查看日志：$dataLog、$dataErr"
+    throw "行情/基金数据侧车健康检查失败，请查看日志：$dataLog、$dataErr"
 }
 
-Write-Step "行情侧车已就绪：http://127.0.0.1:8000/health"
+Write-Step "行情/基金数据侧车已就绪：http://127.0.0.1:8000/health"
 $env:DATA_SERVICE_URL = "http://127.0.0.1:8000"
 
 Write-Step "启动 Web 前端：http://127.0.0.1:3000"
@@ -185,14 +185,14 @@ if (-not $NoBrowser) {
 
 Write-Host ""
 Write-Host "  Web  前端：http://127.0.0.1:3000" -ForegroundColor Green
-Write-Host "  行情侧车：http://127.0.0.1:8000" -ForegroundColor Green
+Write-Host "  行情/基金数据侧车：http://127.0.0.1:8000" -ForegroundColor Green
 Write-Host "  停止服务：在终端按 Ctrl+C" -ForegroundColor Green
 Write-Host ""
 
 try {
     Invoke-Pnpm dev
 } finally {
-    Write-Step "正在停止行情侧车..."
+    Write-Step "正在停止行情/基金数据侧车..."
     if ($dataProcess -and -not $dataProcess.HasExited) {
         Stop-Process -Id $dataProcess.Id -Force -ErrorAction SilentlyContinue
     }

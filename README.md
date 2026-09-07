@@ -1,6 +1,6 @@
-# 个股盘面分析网站
+# 个股与基金盘面分析网站
 
-本地运行的个股盘面分析与 AI 学习工具。支持 A 股代码查询、行情/K 线/技术指标、资讯分析报告、多轮对话与历史回看。
+本地运行的个股/基金盘面分析与 AI 学习工具。支持 A 股与基金代码查询、行情/K 线/技术指标、基金净值/持仓/风险指标、资讯分析报告、多轮对话与历史回看。
 
 ## 当前能力
 
@@ -10,11 +10,13 @@
 - 持久化与清理：TTL 缓存复用、资讯软删除、任务日志与可观测性指标。
 - 降级：未配置外部密钥时自动使用确定性演示数据，并明确标注来源与更新时间。
 - 自选股：支持增删、备注、排序；数据库不可用时自动回退到本地 `.data/watchlist.json`，重启不丢失。
+- 基金工作台：支持基金档案、历史净值、场内实时/场外估算、季度持仓、回撤与风险指标。
+- 基金回撤：本地计算区间收益、年化收益、波动、夏普/索提诺/卡玛、最大回撤与回撤修复耗时，并在净值曲线中叠加区间矩形。
 
 ## 技术栈
 
 - Web/Agent：Next.js App Router + TypeScript + Tailwind CSS + shadcn/ui
-- 行情侧车：Python 3.12 + FastAPI + AkShare/Tencent
+- 行情/基金数据侧车：Python 3.12 + FastAPI + AkShare/Tencent
 - 数据库：Drizzle ORM + Docker PostgreSQL（本地）
 - 包管理：Node 20+，pnpm
 
@@ -64,7 +66,9 @@ chmod +x start.sh
 启动后访问：
 
 - Web 前端：http://127.0.0.1:3000
-- 行情侧车健康检查：http://127.0.0.1:8000/health
+- 行情/基金数据侧车健康检查：http://127.0.0.1:8000/health
+
+进入基金工作台：在页面顶部切换到“基金工作台”，输入 6 位基金代码（如 `510300`、`000001`、`110022`）即可查询。
 
 ## 启动参数
 
@@ -109,19 +113,19 @@ chmod +x stop.sh
 corepack pnpm dev
 ```
 
-行情侧车单独启动（Windows PowerShell）：
+行情/基金数据侧车单独启动（Windows PowerShell）：
 
 ```powershell
 corepack pnpm dev:data
 ```
 
-同时启动 Web 与行情侧车（依赖 PowerShell，适用于 Windows）：
+同时启动 Web 与行情/基金数据侧车（依赖 PowerShell，适用于 Windows）：
 
 ```powershell
 corepack pnpm dev:all
 ```
 
-Linux/macOS 建议使用 `./start.sh`，或手动启动行情侧车：
+Linux/macOS 建议使用 `./start.sh`，或手动启动行情/基金数据侧车：
 
 ```bash
 python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 8000
@@ -143,7 +147,7 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 | `R2_SECRET_ACCESS_KEY` | 可选 | R2 访问密钥 |
 | `R2_BUCKET_NAME` | 可选 | R2 桶名称 |
 | `R2_PUBLIC_URL` | 可选 | R2 公共访问地址 |
-| `DATA_SERVICE_URL` | 可选 | 行情侧车地址，默认 `http://127.0.0.1:8000` |
+| `DATA_SERVICE_URL` | 可选 | 行情/基金数据侧车地址，默认 `http://127.0.0.1:8000` |
 
 > `DATABASE_URL` 未携带端口时会自动补默认端口 `5432`；本地 Docker 配置默认使用 `postgresql://postgres:postgres@localhost:5432/stock_analysis`。
 
@@ -188,6 +192,7 @@ corepack pnpm db:studio
 
 - `GET http://127.0.0.1:3000/api/health`
 - `GET http://127.0.0.1:8000/health`
+- `GET http://127.0.0.1:3000/api/funds/510300/metrics?range=all`
 
 ## 免责声明
 

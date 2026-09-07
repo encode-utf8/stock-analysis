@@ -2,7 +2,7 @@
   "name": "stock-analysis-web",
   "version": "0.1.0",
   "private": true,
-  "description": "个股盘面分析网站（Next.js + FastAPI 行情侧车）",
+  "description": "个股与基金盘面分析网站（Next.js + FastAPI 行情/基金数据侧车）",
   "scripts": {
     "dev": "next dev",
     "dev:data": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-data.ps1",
