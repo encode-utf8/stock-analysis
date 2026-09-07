@@ -14,6 +14,7 @@ export type FundNavType = "unit" | "cumulative";
 const DEFAULT_DATA_SERVICE_URL = "http://127.0.0.1:8000";
 const PROFILE_TTL_MS = 24 * 60 * 60_000;
 const NAV_TTL_MS = 6 * 60 * 60_000;
+const PROFILE_CACHE_VERSION = "v2";
 const SIDE_CAR_TIMEOUT_MS = 10_000;
 const FUND_PROFILE_TIMEOUT_MS = 30_000;
 const FUND_NAV_TIMEOUT_MS = 20_000;
@@ -151,7 +152,8 @@ export async function getFundProfile(
   code: string,
   forceRefresh = false,
 ): Promise<FundProfile> {
-  const cacheKey = `fund:profile:${code}`;
+  const cacheKey = `fund:profile:${PROFILE_CACHE_VERSION}:${code}`;
+  const storeKey = `${PROFILE_CACHE_VERSION}:${code}`;
   if (forceRefresh) {
     cacheInvalidatePrefix(cacheKey);
   }
@@ -163,7 +165,7 @@ export async function getFundProfile(
 
   const loader = async (): Promise<FundProfile> => {
     if (!forceRefresh) {
-      const saved = fundProfileStore.get(code);
+      const saved = fundProfileStore.get(storeKey);
       if (
         saved &&
         saved.source !== "deterministic-fallback" &&
@@ -175,7 +177,7 @@ export async function getFundProfile(
 
     const sidecarProfile = await fetchFundProfileFromSidecar(code);
     const profile = sidecarProfile ?? buildDeterministicFundProfile(code);
-    fundProfileStore.set(code, profile);
+    fundProfileStore.set(storeKey, profile);
     return profile;
   };
 

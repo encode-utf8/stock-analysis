@@ -534,3 +534,35 @@ corepack pnpm build
 
 - 完成日期：2026-09-07
 - 结果：F1 全部验收通过；AkShare 实测 `510300`、`000001`、`110022`、`003376` 类型识别正确，净值接口返回 `source=akshare`，无侧车时 Next.js API 正确降级为 `deterministic-fallback`；已修复降级数据长期占用缓存及侧车首次加载基金名单超时的问题。
+
+## F2 实时/估算与持仓（2026-09-07）
+
+- 关联文档：`docs/fund-workbench-plan.md`、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-intraday-holdings`
+- 目标：实现场内实时行情、场外盘中估算、最新季度持仓与持仓面板。
+
+### 验收项
+
+- [x] FastAPI 侧车完成 `/fund/intraday`、`/fund/holdings`，区分场内 `realtime` 与场外 `estimate`
+- [x] 实现 `fund-intraday.ts` 与 `fund-holdings.ts` 数据编排，含缓存/降级
+- [x] 新增 `GET /api/funds/[code]/intraday` 与 `GET /api/funds/[code]/holdings`
+- [x] 完成基金实时/估算面板与季度持仓面板
+- [x] 场内 ETF 展示实时价，场外基金展示估算并显著标注“估算值，非官方净值”
+- [x] 持仓面板展示报告期、前十大资产与占比，并提示“持仓报告期，存在滞后”
+- [x] 至少覆盖 1 只场内 ETF、1 只场外基金，且无外部数据源时可确定性降级
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 使用场内 ETF（如 `510300`）与场外基金（如 `000001`），分别验证 `/api/funds/:code/intraday`、`/api/funds/:code/holdings`
+- 页面切换到基金工作台，确认 ETF 显示实时行情、场外显示盘中估算且标注清晰
+- 持仓面板确认报告期、前十大资产与占比完整，且明确提示披露滞后。
+
+### 完成记录
+
+- 完成日期：2026-09-07
+- 结果：F2 全部验收通过；`/fund/intraday` 对 `510300` 返回 `realtime`、对 `000008` 返回 `estimate`，`/fund/holdings` 对 `110022` 返回前十大持仓；Next.js API 已联调返回 `akshare`，无侧车时可确定性降级；`typecheck`、`lint`、`build` 均通过。
+- 补充：基金档案已接入 `fund_info_ths`，填充基金经理、基金公司、业绩基准、成立日期与最新规模；修复重复查询同一基金代码时净值/行情/持仓被清空但不重新加载的问题。
