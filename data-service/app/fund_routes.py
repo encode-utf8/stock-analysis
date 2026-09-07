@@ -37,6 +37,7 @@ KNOWN_FUNDS: dict[str, dict[str, str]] = {
     "110022": {"name": "易方达消费行业股票", "type": "stock", "trading_mode": "otc"},
     "161725": {"name": "招商中证白酒指数(LOF)", "type": "index", "trading_mode": "exchange"},
     "003376": {"name": "广发中债7-10年国开债指数A", "type": "bond", "trading_mode": "otc"},
+    "000008": {"name": "嘉实中证500ETF联接A", "type": "index", "trading_mode": "otc"},
 }
 
 
@@ -103,6 +104,222 @@ def _series_value(row: Any, names: list[str]) -> Any:
     return None
 
 
+def _series_value_contains(row: Any, keyword: str) -> Any:
+    """按列名关键字从 pandas 行或字典中取值，用于动态列名。"""
+    try:
+        if isinstance(row, dict):
+            for key, value in row.items():
+                if keyword in str(key):
+                    return value
+            return None
+        for column in row.index:
+            if keyword in str(column):
+                return row[column]
+        return None
+    except (AttributeError, TypeError):
+        return None
+
+
+def _curl_get_text(url: str, params: dict | None = None) -> str | None:
+    """使用 curl_cffi 获取文本，规避部分上游源的 TLS 指纹限制。"""
+    try:
+        from curl_cffi import requests as curl_requests
+
+        response = curl_requests.get(
+            url,
+            params=params,
+            timeout=15,
+            impersonate="chrome",
+        )
+        response.raise_for_status()
+        return response.text
+    except Exception:
+        return None
+
+
+def _tencent_fund_symbol(code: str) -> str:
+    """将 6 位基金代码转换为腾讯行情前缀代码。"""
+    if code.startswith(("5", "6", "9")):
+        return f"sh{code}"
+    return f"sz{code}"
+
+
+def _build_exchange_realtime(code: str) -> dict | None:
+    """通过腾讯行情构造场内基金实时快照。"""
+    symbol = _tencent_fund_symbol(code)
+    text = _curl_get_text(f"https://qt.gtimg.cn/q={symbol}")
+    if not text or '="' not in text:
+        return None
+
+    try:
+        payload = text.split('="', 1)[1].rsplit('"', 1)[0]
+        parts = payload.split("~")
+        if len(parts) < 47 or parts[2] not in (code, symbol[-6:]):
+            return None
+
+        price = _number(parts[3])
+        if price is None or price <= 0:
+            return None
+        prev_close = _number(parts[4], price) or price
+        open_price = _number(parts[5], prev_close) or prev_close
+        high = _number(parts[33], max(price, open_price, prev_close)) or max(price, open_price, prev_close)
+        low = _number(parts[34], min(price, open_price, prev_close)) or min(price, open_price, prev_close)
+        change_pct = _number(parts[32])
+        if change_pct is None:
+            change_pct = (price / prev_close - 1) * 100 if prev_close else 0.0
+        volume = int(_number(parts[6], 0.0) or 0.0) * 100
+        amount = int((_number(parts[37], 0.0) or 0.0) * 10000)
+        iopv = _number(parts[39])
+        premium_rate = _number(parts[43])
+        now = _now_utc()
+        return {
+            "code": code,
+            "mode": "realtime",
+            "ts": now.isoformat(),
+            "price": _round(price),
+            "estimated_nav": iopv,
+            "change_pct": _round(change_pct),
+            "open": _round(open_price),
+            "high": _round(high),
+            "low": _round(low),
+            "volume": volume,
+            "amount": amount,
+            "iopv": iopv,
+            "premium_rate": _round(premium_rate, 2) if premium_rate is not None else None,
+            "official_nav": None,
+            "official_nav_date": None,
+            "source": SOURCE_AKSHARE,
+            "fetched_at": now.isoformat(),
+        }
+    except Exception:
+        return None
+
+
+_ESTIMATION_ROWS: list[dict] | None = None
+_ESTIMATION_LOADED_AT: datetime | None = None
+
+
+def _estimation_rows() -> list[dict]:
+    """获取东方财富全市场盘中估算列表，并缓存 60 秒。"""
+    global _ESTIMATION_ROWS, _ESTIMATION_LOADED_AT
+
+    now = _now_utc()
+    if (
+        _ESTIMATION_ROWS is not None
+        and _ESTIMATION_LOADED_AT is not None
+        and now - _ESTIMATION_LOADED_AT < timedelta(seconds=60)
+    ):
+        return _ESTIMATION_ROWS
+
+    if not HAS_AKSHARE:
+        return []
+
+    try:
+        frame = ak.fund_value_estimation_em(symbol="全部")
+        if frame is None or frame.empty:
+            return []
+        _ESTIMATION_ROWS = frame.to_dict("records")
+        _ESTIMATION_LOADED_AT = now
+        return _ESTIMATION_ROWS
+    except Exception:
+        return []
+
+
+def _build_akshare_estimate(code: str) -> dict | None:
+    """通过 AkShare 构造场外基金盘中估算快照。"""
+    rows = _estimation_rows()
+    matched = next(
+        (
+            row
+            for row in rows
+            if str(_series_value(row, ["基金代码"])).zfill(6) == code
+        ),
+        None,
+    )
+    if matched is None:
+        return None
+
+    estimated_nav = _number(_series_value_contains(matched, "估算数据-估算值"))
+    if estimated_nav is None:
+        return None
+    change_text = str(_series_value_contains(matched, "估算数据-估算增长率") or "0")
+    change_pct = _number(change_text.replace("%", ""), 0.0) or 0.0
+    official_nav = _number(_series_value_contains(matched, "公布数据-单位净值"))
+    official_nav_date = None
+    now = _now_utc()
+    return {
+        "code": code,
+        "mode": "estimate",
+        "ts": now.isoformat(),
+        "price": None,
+        "estimated_nav": _round(estimated_nav),
+        "change_pct": _round(change_pct, 2),
+        "open": None,
+        "high": None,
+        "low": None,
+        "volume": None,
+        "amount": None,
+        "iopv": None,
+        "premium_rate": None,
+        "official_nav": official_nav,
+        "official_nav_date": official_nav_date,
+        "source": SOURCE_AKSHARE,
+        "fetched_at": now.isoformat(),
+    }
+
+
+def _build_akshare_holdings(code: str) -> dict | None:
+    """通过 AkShare 获取最新季度股票持仓并截取前十大。"""
+    if not HAS_AKSHARE:
+        return None
+
+    current_year = datetime.now(CHINA_TZ).year
+    frame = None
+    for year in (current_year, current_year - 1):
+        try:
+            candidate = ak.fund_portfolio_hold_em(symbol=code, date=str(year))
+            if candidate is not None and not candidate.empty:
+                frame = candidate
+                break
+        except Exception:
+            continue
+    if frame is None or frame.empty:
+        return None
+
+    quarter_name = str(frame["季度"].max())
+    latest = frame[frame["季度"] == quarter_name].copy()
+    latest["_weight"] = latest["占净值比例"].apply(lambda value: _number(value, 0.0) or 0.0)
+    latest = latest.sort_values("_weight", ascending=False)
+    top = latest.head(10)
+
+    top_holdings: list[dict] = []
+    for row in top.to_dict("records"):
+        top_holdings.append(
+            {
+                "code": str(_series_value(row, ["股票代码"]) or "") or None,
+                "name": str(_series_value(row, ["股票名称"]) or ""),
+                "weight_pct": _round(_number(row.get("_weight"), 0.0) or 0.0, 2),
+                "change_pct": None,
+                "industry": None,
+            }
+        )
+
+    weights = [item["weight_pct"] for item in top_holdings]
+    now = _now_utc()
+    return {
+        "code": code,
+        "report_date": quarter_name,
+        "published_at": None,
+        "top_holdings": top_holdings,
+        "asset_allocation": {},
+        "industry_allocation": {},
+        "top10_weight_pct": _round(sum(weights), 2) if weights else None,
+        "top1_weight_pct": _round(max(weights), 2) if weights else None,
+        "source": SOURCE_AKSHARE,
+        "fetched_at": now.isoformat(),
+    }
+
+
 def _classify_fund_type(code: str, type_label: str | None = None) -> str:
     """根据基金代码与类型文案识别基金类型。"""
     known = KNOWN_FUNDS.get(code)
@@ -143,6 +360,8 @@ def _classify_trading_mode(code: str, fund_type: str) -> str:
 
 _FUND_NAME_ROWS: list[dict] | None = None
 _FUND_NAME_LOADED_AT: datetime | None = None
+_FUND_BASIC_INFO_CACHE: dict[str, dict | None] = {}
+_FUND_BASIC_INFO_LOADED_AT: dict[str, datetime] = {}
 
 
 def _fund_name_rows() -> list[dict]:
@@ -171,8 +390,88 @@ def _fund_name_rows() -> list[dict]:
         return []
 
 
+def _parse_fund_scale(value: Any) -> float | None:
+    """从类似“24.06亿份（2026-06-30）”的文本中解析规模。"""
+    if value is None:
+        return None
+    text = str(value).strip()
+    for unit in ("亿", "万"):
+        if unit in text:
+            number = _number(text.split(unit, 1)[0], None)
+            if number is None:
+                return None
+            return number if unit == "亿" else number / 10_000
+    return _number(text, None)
+
+
+def _fund_basic_info(code: str) -> dict | None:
+    """按基金代码从同花顺获取基金基本信息，缓存 24 小时。"""
+    now = _now_utc()
+    if (
+        code in _FUND_BASIC_INFO_CACHE
+        and code in _FUND_BASIC_INFO_LOADED_AT
+        and now - _FUND_BASIC_INFO_LOADED_AT[code] < timedelta(hours=24)
+    ):
+        return _FUND_BASIC_INFO_CACHE[code]
+
+    if not HAS_AKSHARE:
+        _FUND_BASIC_INFO_CACHE[code] = None
+        _FUND_BASIC_INFO_LOADED_AT[code] = now
+        return None
+
+    try:
+        frame = ak.fund_info_ths(symbol=code)
+        if frame is None or frame.empty:
+            _FUND_BASIC_INFO_CACHE[code] = None
+            _FUND_BASIC_INFO_LOADED_AT[code] = now
+            return None
+
+        info: dict[str, Any] = {}
+        for row in frame.to_dict("records"):
+            field = str(_series_value(row, ["字段", "item"]) or "").strip()
+            value = _series_value(row, ["值", "value"])
+            if field:
+                info[field] = value
+
+        _FUND_BASIC_INFO_CACHE[code] = info
+        _FUND_BASIC_INFO_LOADED_AT[code] = now
+        return info
+    except Exception:
+        _FUND_BASIC_INFO_CACHE[code] = None
+        _FUND_BASIC_INFO_LOADED_AT[code] = now
+        return None
+
+
 def _build_akshare_fund_profile(code: str) -> dict | None:
     """通过 AkShare 基金名称列表构造基金档案。"""
+    basic_info = _fund_basic_info(code)
+    if basic_info:
+        known = KNOWN_FUNDS.get(code, {})
+        name = str(
+            basic_info.get("基金简称")
+            or basic_info.get("基金全称")
+            or known.get("name")
+            or f"基金 {code}"
+        )
+        type_label = str(basic_info.get("基金类型") or basic_info.get("投资类型") or "")
+        fund_type = _classify_fund_type(code, type_label)
+        trading_mode = _classify_trading_mode(code, fund_type)
+        now = _now_utc()
+        return {
+            "code": code,
+            "name": name,
+            "type": fund_type,
+            "trading_mode": trading_mode,
+            "manager": str(basic_info["基金经理"]) if basic_info.get("基金经理") else None,
+            "company": str(basic_info["基金管理人"]) if basic_info.get("基金管理人") else None,
+            "benchmark": str(basic_info["业绩比较基准"]) if basic_info.get("业绩比较基准") else None,
+            "establish_date": str(basic_info["成立日期"]) if basic_info.get("成立日期") else None,
+            "scale": _parse_fund_scale(basic_info.get("份额规模") or basic_info.get("成立规模")),
+            "risk_level": None,
+            "source": SOURCE_AKSHARE,
+            "fetched_at": now.isoformat(),
+        }
+
     rows = _fund_name_rows()
     if not rows:
         return None
@@ -341,6 +640,126 @@ def _build_fallback_fund_nav(code: str, start_date: str, end_date: str) -> list[
     return result
 
 
+def _build_fallback_fund_intraday(code: str) -> dict:
+    """构造确定性降级当日行情/估算数据。"""
+    fund_type = _classify_fund_type(code)
+    trading_mode = _classify_trading_mode(code, fund_type)
+    rng = _random(_seed(f"fund:intraday:{code}"))
+    now = _now_utc()
+
+    if trading_mode == "exchange":
+        price = round(0.8 + next(rng) * 4.5, 4)
+        change_pct = round((next(rng) - 0.48) * 2.6, 2)
+        previous_close = price / (1 + change_pct / 100)
+        open_price = round(previous_close * (1 + (next(rng) - 0.5) * 0.012), 4)
+        high = round(max(price, open_price, previous_close) * (1 + next(rng) * 0.008), 4)
+        low = round(min(price, open_price, previous_close) * (1 - next(rng) * 0.008), 4)
+        iopv = round(price * (1 + (next(rng) - 0.5) * 0.004), 4)
+        premium_rate = round((price / iopv - 1) * 100, 2) if iopv else None
+        return {
+            "code": code,
+            "mode": "realtime",
+            "ts": now.isoformat(),
+            "price": price,
+            "estimated_nav": iopv,
+            "change_pct": change_pct,
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "volume": int(next(rng) * 8_000_000),
+            "amount": int(next(rng) * 3_000_000_000),
+            "iopv": iopv,
+            "premium_rate": premium_rate,
+            "official_nav": None,
+            "official_nav_date": None,
+            "source": SOURCE_FALLBACK,
+            "fetched_at": now.isoformat(),
+        }
+
+    estimated_nav = round(1 + next(rng) * 3.2, 4)
+    change_pct = round((next(rng) - 0.48) * 2.2, 2)
+    official_nav = round(estimated_nav / (1 + change_pct / 100), 4)
+    return {
+        "code": code,
+        "mode": "estimate",
+        "ts": now.isoformat(),
+        "price": None,
+        "estimated_nav": estimated_nav,
+        "change_pct": change_pct,
+        "open": None,
+        "high": None,
+        "low": None,
+        "volume": None,
+        "amount": None,
+        "iopv": None,
+        "premium_rate": None,
+        "official_nav": official_nav,
+        "official_nav_date": None,
+        "source": SOURCE_FALLBACK,
+        "fetched_at": now.isoformat(),
+    }
+
+
+def _previous_quarter_end(value: Any) -> Any:
+    """返回当前日期之前最近一个季度末日期。"""
+    date_value = value
+    if isinstance(date_value, datetime):
+        date_value = date_value.date()
+    quarter_start_month = ((date_value.month - 1) // 3) * 3 + 1
+    return date_value.replace(year=date_value.year, month=quarter_start_month, day=1) - timedelta(days=1)
+
+
+def _build_fallback_fund_holdings(code: str) -> dict:
+    """构造确定性降级季度持仓数据。"""
+    today = _now_utc().astimezone(CHINA_TZ).date()
+    report_date = _previous_quarter_end(today).isoformat()
+    rng = _random(_seed(f"fund:holdings:{code}"))
+    names = [
+        "示例重仓资产一",
+        "示例重仓资产二",
+        "示例重仓资产三",
+        "示例重仓资产四",
+        "示例重仓资产五",
+        "示例重仓资产六",
+        "示例重仓资产七",
+        "示例重仓资产八",
+        "示例重仓资产九",
+        "示例重仓资产十",
+    ]
+    raw_weights = [1 + next(rng) * 5 for _ in names]
+    total = sum(raw_weights) or 1
+    weighted = sorted(
+        [(names[index], round(value / total * 58, 2)) for index, value in enumerate(raw_weights)],
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    weights = [item[1] for item in weighted]
+    names = [item[0] for item in weighted]
+    top_holdings = [
+        {
+            "code": None,
+            "name": names[index],
+            "weight_pct": weights[index],
+            "change_pct": None,
+            "industry": None,
+        }
+        for index in range(len(names))
+    ]
+    now = _now_utc()
+    return {
+        "code": code,
+        "report_date": report_date,
+        "published_at": None,
+        "top_holdings": top_holdings,
+        "asset_allocation": {},
+        "industry_allocation": {},
+        "top10_weight_pct": _round(sum(weights), 2),
+        "top1_weight_pct": _round(max(weights), 2),
+        "source": SOURCE_FALLBACK,
+        "fetched_at": now.isoformat(),
+    }
+
+
 @router.get("/profile")
 def fund_profile(code: str = Query(..., min_length=6, max_length=6)) -> dict:
     """基金档案与类型识别。"""
@@ -357,3 +776,19 @@ def fund_nav(
     """基金历史净值，始终返回单位与累计净值。"""
     del nav_type  # 前端可自行切换口径，侧车统一返回双口径数据。
     return _build_akshare_fund_nav(code, start, end) or _build_fallback_fund_nav(code, start, end)
+
+
+@router.get("/intraday")
+def fund_intraday(code: str = Query(..., min_length=6, max_length=6)) -> dict:
+    """基金当日行情：场内实时，场外盘中估算。"""
+    fund_type = _classify_fund_type(code)
+    trading_mode = _classify_trading_mode(code, fund_type)
+    if trading_mode == "exchange":
+        return _build_exchange_realtime(code) or _build_fallback_fund_intraday(code)
+    return _build_akshare_estimate(code) or _build_fallback_fund_intraday(code)
+
+
+@router.get("/holdings")
+def fund_holdings(code: str = Query(..., min_length=6, max_length=6)) -> dict:
+    """基金最新季度持仓与前十大重仓资产。"""
+    return _build_akshare_holdings(code) or _build_fallback_fund_holdings(code)

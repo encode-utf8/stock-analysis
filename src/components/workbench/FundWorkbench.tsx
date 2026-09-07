@@ -3,11 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { FundHoldingsPanel } from "@/components/panels/fund/FundHoldingsPanel";
+import { FundIntradayPanel } from "@/components/panels/fund/FundIntradayPanel";
 import { FundNavChartPanel } from "@/components/panels/fund/FundNavChartPanel";
 import { FundProfilePanel } from "@/components/panels/fund/FundProfilePanel";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import { DEFAULT_FUND_CODE, normalizeFundCode } from "@/lib/fund-market";
-import type { FundNavPoint, FundProfile } from "@/lib/shared/types";
+import type {
+  FundHoldings,
+  FundIntraday,
+  FundNavPoint,
+  FundProfile,
+} from "@/lib/shared/types";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -41,13 +48,20 @@ export default function FundWorkbench() {
   const [code, setCode] = useState<string | null>(null);
   const [profile, setProfile] = useState<FundProfile | null>(null);
   const [nav, setNav] = useState<FundNavPoint[]>([]);
+  const [intraday, setIntraday] = useState<FundIntraday | null>(null);
+  const [holdings, setHoldings] = useState<FundHoldings | null>(null);
   const [range, setRange] = useState<FundNavRange>("1y");
   const [navType, setNavType] = useState<FundNavType>("unit");
   const [loading, setLoading] = useState(false);
   const [navLoading, setNavLoading] = useState(false);
+  const [intradayLoading, setIntradayLoading] = useState(false);
+  const [holdingsLoading, setHoldingsLoading] = useState(false);
+  const [queryVersion, setQueryVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const activeProfileCodeRef = useRef<string | null>(null);
   const activeNavKeyRef = useRef<string | null>(null);
+  const activeIntradayCodeRef = useRef<string | null>(null);
+  const activeHoldingsCodeRef = useRef<string | null>(null);
 
   const loadNav = useCallback(async (nextCode: string, nextRange: FundNavRange, nextType: FundNavType) => {
     const navKey = `${nextCode}:${nextRange}:${nextType}`;
@@ -72,6 +86,48 @@ export default function FundWorkbench() {
     }
   }, []);
 
+  const loadIntraday = useCallback(async (nextCode: string) => {
+    activeIntradayCodeRef.current = nextCode;
+    setIntradayLoading(true);
+    try {
+      const data = await apiFetch<FundIntraday>(
+        `/api/funds/${encodeURIComponent(nextCode)}/intraday`,
+      );
+      if (activeIntradayCodeRef.current === nextCode) {
+        setIntraday(data);
+      }
+    } catch {
+      if (activeIntradayCodeRef.current === nextCode) {
+        setIntraday(null);
+      }
+    } finally {
+      if (activeIntradayCodeRef.current === nextCode) {
+        setIntradayLoading(false);
+      }
+    }
+  }, []);
+
+  const loadHoldings = useCallback(async (nextCode: string) => {
+    activeHoldingsCodeRef.current = nextCode;
+    setHoldingsLoading(true);
+    try {
+      const data = await apiFetch<FundHoldings>(
+        `/api/funds/${encodeURIComponent(nextCode)}/holdings`,
+      );
+      if (activeHoldingsCodeRef.current === nextCode) {
+        setHoldings(data);
+      }
+    } catch {
+      if (activeHoldingsCodeRef.current === nextCode) {
+        setHoldings(null);
+      }
+    } finally {
+      if (activeHoldingsCodeRef.current === nextCode) {
+        setHoldingsLoading(false);
+      }
+    }
+  }, []);
+
   const loadFund = useCallback(
     async (nextInput: string) => {
       const nextCode = normalizeFundCode(nextInput);
@@ -84,6 +140,8 @@ export default function FundWorkbench() {
       setLoading(true);
       setError(null);
       setNav([]);
+      setIntraday(null);
+      setHoldings(null);
       try {
         const profileData = await apiFetch<FundProfile>(
           `/api/funds/${encodeURIComponent(nextCode)}/profile`,
@@ -94,6 +152,7 @@ export default function FundWorkbench() {
           setLoading(false);
           setRange("1y");
           setNavType("unit");
+          setQueryVersion((version) => version + 1);
         }
       } catch (nextError) {
         if (activeProfileCodeRef.current === nextCode) {
@@ -116,7 +175,18 @@ export default function FundWorkbench() {
     }
     const timer = setTimeout(() => void loadNav(code, range, navType), 0);
     return () => clearTimeout(timer);
-  }, [code, range, navType, loadNav]);
+  }, [code, range, navType, queryVersion, loadNav]);
+
+  useEffect(() => {
+    if (!code) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      void loadIntraday(code);
+      void loadHoldings(code);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [code, queryVersion, loadIntraday, loadHoldings]);
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -162,6 +232,14 @@ export default function FundWorkbench() {
       ) : null}
 
       {profile ? <FundProfilePanel profile={profile} loading={loading} /> : null}
+
+      {code ? (
+        <FundIntradayPanel intraday={intraday} loading={intradayLoading} />
+      ) : null}
+
+      {code ? (
+        <FundHoldingsPanel holdings={holdings} loading={holdingsLoading} />
+      ) : null}
 
       {code ? (
         <FundNavChartPanel

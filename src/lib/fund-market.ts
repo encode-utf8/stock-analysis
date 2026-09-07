@@ -23,6 +23,7 @@ const KNOWN_FUNDS: Record<
   "110022": { name: "易方达消费行业股票", type: "stock", trading_mode: "otc" },
   "161725": { name: "招商中证白酒指数(LOF)", type: "index", trading_mode: "exchange" },
   "003376": { name: "广发中债7-10年国开债指数A", type: "bond", trading_mode: "otc" },
+  "000008": { name: "嘉实中证500ETF联接A", type: "index", trading_mode: "otc" },
 };
 
 /** 基金类型中文展示文案。 */
