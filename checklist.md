@@ -503,3 +503,34 @@ corepack pnpm build
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
 - `python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 8000`
 - 浏览器切换个股/基金工作台至少 3 次，确认个股状态不丢失且无报错。
+
+## F1 基金档案与历史净值（2026-09-07）
+
+- 关联文档：`docs/fund-workbench-plan.md`、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-nav`
+- 目标：实现基金代码校验与类型识别、档案/历史净值数据链路、基金档案与净值曲线面板。
+
+### 验收项
+
+- [x] 实现 `fund-market.ts`：6 位基金代码校验、场内/场外与基金类型识别、默认基金解析
+- [x] FastAPI 侧车完成 `/fund/profile`、`/fund/nav`，接入 AkShare 与基金确定性回退
+- [x] 实现 `fund-data.ts`：内存缓存、Store、侧车、确定性回退的编排顺序
+- [x] 新增 `GET /api/funds/[code]/profile` 与 `GET /api/funds/[code]/nav`
+- [x] 完成基金档案面板与历史净值曲线，支持区间、单位/累计净值切换
+- [x] 至少 3 只不同类型基金可查询并返回档案/净值
+- [x] 净值数据带 `source`、`fetched_at`，无外部数据源时确定性降级
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 使用场内 ETF、场外开放式基金、债券基金各一只，验证 `/api/funds/:code/profile` 与 `/api/funds/:code/nav` 返回正常
+- 页面切换到基金工作台，输入基金代码后查看档案与净值曲线，切换区间与净值口径
+- 停用数据服务时验证基金查询可确定性降级并标注来源。
+
+### 完成记录
+
+- 完成日期：2026-09-07
+- 结果：F1 全部验收通过；AkShare 实测 `510300`、`000001`、`110022`、`003376` 类型识别正确，净值接口返回 `source=akshare`，无侧车时 Next.js API 正确降级为 `deterministic-fallback`；已修复降级数据长期占用缓存及侧车首次加载基金名单超时的问题。

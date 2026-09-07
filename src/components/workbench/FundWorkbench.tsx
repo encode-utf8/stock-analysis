@@ -1,24 +1,189 @@
-/** 基金工作台空容器：F0 只提供可渲染骨架，基金数据面板在后续阶段接入。 */
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
+
+import { FundNavChartPanel } from "@/components/panels/fund/FundNavChartPanel";
+import { FundProfilePanel } from "@/components/panels/fund/FundProfilePanel";
+import type { FundNavRange, FundNavType } from "@/lib/fund-data";
+import { DEFAULT_FUND_CODE, normalizeFundCode } from "@/lib/fund-market";
+import type { FundNavPoint, FundProfile } from "@/lib/shared/types";
+
+const REQUEST_TIMEOUT_MS = 20_000;
+
+async function apiFetch<T>(url: string): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const payload = (await response.json().catch(() => null)) as {
+      success?: boolean;
+      data?: T;
+      error?: { message?: string };
+    } | null;
+    if (!payload?.success || payload.data === undefined) {
+      throw new Error(payload?.error?.message ?? "基金数据请求失败。");
+    }
+    return payload.data;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("基金数据请求超时，请稍后重试。");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 基金工作台容器：管理基金代码、档案与净值展示状态。 */
 export default function FundWorkbench() {
+  const [input, setInput] = useState(DEFAULT_FUND_CODE);
+  const [code, setCode] = useState<string | null>(null);
+  const [profile, setProfile] = useState<FundProfile | null>(null);
+  const [nav, setNav] = useState<FundNavPoint[]>([]);
+  const [range, setRange] = useState<FundNavRange>("1y");
+  const [navType, setNavType] = useState<FundNavType>("unit");
+  const [loading, setLoading] = useState(false);
+  const [navLoading, setNavLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const activeProfileCodeRef = useRef<string | null>(null);
+  const activeNavKeyRef = useRef<string | null>(null);
+
+  const loadNav = useCallback(async (nextCode: string, nextRange: FundNavRange, nextType: FundNavType) => {
+    const navKey = `${nextCode}:${nextRange}:${nextType}`;
+    activeNavKeyRef.current = navKey;
+    setNavLoading(true);
+    try {
+      const data = await apiFetch<FundNavPoint[]>(
+        `/api/funds/${encodeURIComponent(nextCode)}/nav?range=${nextRange}&type=${nextType}`,
+      );
+      if (activeNavKeyRef.current === navKey) {
+        setNav(data);
+      }
+    } catch (nextError) {
+      if (activeNavKeyRef.current === navKey) {
+        setNav([]);
+        setError(nextError instanceof Error ? nextError.message : "净值加载失败。");
+      }
+    } finally {
+      if (activeNavKeyRef.current === navKey) {
+        setNavLoading(false);
+      }
+    }
+  }, []);
+
+  const loadFund = useCallback(
+    async (nextInput: string) => {
+      const nextCode = normalizeFundCode(nextInput);
+      if (!nextCode) {
+        setError("请输入 6 位基金代码。");
+        return;
+      }
+
+      activeProfileCodeRef.current = nextCode;
+      setLoading(true);
+      setError(null);
+      setNav([]);
+      try {
+        const profileData = await apiFetch<FundProfile>(
+          `/api/funds/${encodeURIComponent(nextCode)}/profile`,
+        );
+        if (activeProfileCodeRef.current === nextCode) {
+          setCode(nextCode);
+          setProfile(profileData);
+          setLoading(false);
+          setRange("1y");
+          setNavType("unit");
+        }
+      } catch (nextError) {
+        if (activeProfileCodeRef.current === nextCode) {
+          setError(nextError instanceof Error ? nextError.message : "基金查询失败。");
+          setLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const timer = setTimeout(() => void loadFund(DEFAULT_FUND_CODE), 0);
+    return () => clearTimeout(timer);
+  }, [loadFund]);
+
+  useEffect(() => {
+    if (!code) {
+      return;
+    }
+    const timer = setTimeout(() => void loadNav(code, range, navType), 0);
+    return () => clearTimeout(timer);
+  }, [code, range, navType, loadNav]);
+
+  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextInput = input.trim() || DEFAULT_FUND_CODE;
+    setInput(nextInput);
+    void loadFund(nextInput);
+  };
+
   return (
     <section className="mx-auto flex min-w-0 flex-1 max-w-6xl flex-col gap-6 px-4 py-8">
       <header className="rounded-xl border bg-white p-5 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">基金分析与 AI 学习台</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            基金工作台骨架已就绪，基金档案、历史净值、盘中行情、持仓与风险指标将在后续阶段接入。
-          </p>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">基金分析与 AI 学习台</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              输入 6 位基金代码，查看基金档案与历史净值走势。
+            </p>
+          </div>
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <input
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="基金代码，如 510300"
+              maxLength={6}
+              inputMode="numeric"
+              className="w-44 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+            >
+              {loading ? "查询中" : "查询"}
+            </button>
+          </form>
         </div>
       </header>
 
-      <div className="flex min-h-[420px] items-center justify-center rounded-xl border border-dashed bg-white p-8 text-center shadow-sm">
-        <div>
-          <h2 className="text-lg font-semibold">基金面板待接入</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            本阶段已冻结基金领域类型与工作台切换骨架，后续将在 F1/F2 阶段补齐查询与展示能力。
-          </p>
+      {error ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
         </div>
-      </div>
+      ) : null}
+
+      {profile ? <FundProfilePanel profile={profile} loading={loading} /> : null}
+
+      {code ? (
+        <FundNavChartPanel
+          nav={nav}
+          range={range}
+          navType={navType}
+          loading={navLoading}
+          onRangeChange={(value) => setRange(value)}
+          onNavTypeChange={(value) => setNavType(value)}
+        />
+      ) : null}
+
+      {!profile && !loading ? (
+        <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-dashed bg-white p-8 text-center shadow-sm">
+          <div>
+            <h2 className="text-lg font-semibold">基金面板待查询</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              输入基金代码后，这里将展示基金档案与历史净值。
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <footer className="text-center text-xs text-muted-foreground">
         基金行情、净值、持仓与 AI 输出可能存在延迟或误差，仅供学习参考，不构成投资建议。
