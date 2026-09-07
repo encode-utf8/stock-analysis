@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 
-import type { FundNavPoint } from "@/lib/shared/types";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import { formatDateTime } from "@/lib/format";
+import type { FundNavPoint, FundRiskMetrics } from "@/lib/shared/types";
 
 interface FundNavChartPanelProps {
   nav: FundNavPoint[];
   range: FundNavRange;
   navType: FundNavType;
+  riskMetrics?: FundRiskMetrics | null;
   loading: boolean;
   onRangeChange: (range: FundNavRange) => void;
   onNavTypeChange: (navType: FundNavType) => void;
@@ -25,12 +26,102 @@ function fundSourceLabel(source: string): string {
   return source;
 }
 
+interface ChartRegion {
+  startIndex: number;
+  endIndex: number;
+  lowValue: number;
+  highValue: number;
+}
+
+function navIndexAtOrAfter(nav: FundNavPoint[], date: string): number | null {
+  if (nav.length === 0) {
+    return null;
+  }
+  const index = nav.findIndex((point) => point.nav_date >= date);
+  return index >= 0 ? index : nav.length - 1;
+}
+
+function navValueAt(nav: FundNavPoint[], index: number, navType: FundNavType): number {
+  const point = nav[index];
+  return navType === "unit" ? point.unit_nav : point.cumulative_nav;
+}
+
+function findDrawdownRegion(
+  nav: FundNavPoint[],
+  navType: FundNavType,
+  metrics: FundRiskMetrics | null,
+  range: FundNavRange,
+): ChartRegion | null {
+  if (!metrics || metrics.range !== range || nav.length < 2) {
+    return null;
+  }
+
+  const startIndex = navIndexAtOrAfter(nav, metrics.max_drawdown_start);
+  const endIndex = navIndexAtOrAfter(nav, metrics.max_drawdown_end);
+  if (startIndex === null || endIndex === null || endIndex <= startIndex) {
+    return null;
+  }
+
+  let lowValue = Number.POSITIVE_INFINITY;
+  let highValue = Number.NEGATIVE_INFINITY;
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    const value = navValueAt(nav, index, navType);
+    lowValue = Math.min(lowValue, value);
+    highValue = Math.max(highValue, value);
+  }
+
+  return {
+    startIndex,
+    endIndex,
+    lowValue,
+    highValue,
+  };
+}
+
+function findRecoveryRegion(
+  nav: FundNavPoint[],
+  navType: FundNavType,
+  metrics: FundRiskMetrics | null,
+  range: FundNavRange,
+): ChartRegion | null {
+  if (!metrics || metrics.range !== range || nav.length < 2) {
+    return null;
+  }
+
+  const startIndex = navIndexAtOrAfter(nav, metrics.max_drawdown_recovery_start);
+  const endDate =
+    metrics.max_drawdown_recovery_end ?? nav.at(-1)?.nav_date;
+  const endIndex = endDate ? navIndexAtOrAfter(nav, endDate) : null;
+  if (startIndex === null || endIndex === null || endIndex <= startIndex) {
+    return null;
+  }
+
+  let lowValue = Number.POSITIVE_INFINITY;
+  let highValue = Number.NEGATIVE_INFINITY;
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    const value = navValueAt(nav, index, navType);
+    lowValue = Math.min(lowValue, value);
+    highValue = Math.max(highValue, value);
+  }
+
+  return {
+    startIndex,
+    endIndex,
+    lowValue,
+    highValue,
+  };
+}
+
 function NavLineChart({
   nav,
+  range,
   navType,
+  riskMetrics,
 }: {
   nav: FundNavPoint[];
+  range: FundNavRange;
   navType: FundNavType;
+  riskMetrics?: FundRiskMetrics | null;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
@@ -60,6 +151,8 @@ function NavLineChart({
     .map((value, index) => `${index === 0 ? "M" : "L"} ${x(index)} ${y(value)}`)
     .join(" ");
   const areaPath = `${linePath} L ${x(nav.length - 1)} ${height - paddingBottom} L ${x(0)} ${height - paddingBottom} Z`;
+  const drawdown = findDrawdownRegion(nav, navType, riskMetrics ?? null, range);
+  const recovery = findRecoveryRegion(nav, navType, riskMetrics ?? null, range);
   const ticks = Array.from({ length: 5 }, (_, index) => {
     const ratio = index / 4;
     return {
@@ -78,6 +171,32 @@ function NavLineChart({
         role="img"
         aria-label="基金净值走势图"
       >
+        {drawdown && drawdown.endIndex > drawdown.startIndex ? (
+          <rect
+            x={x(drawdown.startIndex)}
+            y={y(drawdown.highValue)}
+            width={Math.max(0, x(drawdown.endIndex) - x(drawdown.startIndex))}
+            height={Math.max(
+              0,
+              y(drawdown.lowValue) - y(drawdown.highValue),
+            )}
+            fill="#ef4444"
+            fillOpacity="0.06"
+          />
+        ) : null}
+        {recovery && recovery.endIndex > recovery.startIndex ? (
+          <rect
+            x={x(recovery.startIndex)}
+            y={y(recovery.highValue)}
+            width={Math.max(0, x(recovery.endIndex) - x(recovery.startIndex))}
+            height={Math.max(
+              0,
+              y(recovery.lowValue) - y(recovery.highValue),
+            )}
+            fill="#10b981"
+            fillOpacity="0.07"
+          />
+        ) : null}
         {ticks.map((tick) => (
           <g key={`${tick.value}-${tick.y}`}>
             <line
@@ -142,6 +261,16 @@ function NavLineChart({
           {nav[Math.floor((nav.length - 1) / 2)]?.nav_date}
         </text>
       </svg>
+      <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block h-2 w-4 rounded-sm bg-red-400/70" />
+          最大回撤区间
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block h-2 w-4 rounded-sm bg-emerald-400/70" />
+          最大回撤修复区间
+        </span>
+      </div>
       {hovered ? (
         <div className="pointer-events-none absolute left-[70px] top-[26px] rounded-md border bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm">
           <div>{hovered.nav_date}</div>
@@ -166,6 +295,7 @@ export function FundNavChartPanel({
   nav,
   range,
   navType,
+  riskMetrics,
   loading,
   onRangeChange,
   onNavTypeChange,
@@ -247,7 +377,7 @@ export function FundNavChartPanel({
       {loading ? (
         <div className="py-16 text-center text-sm text-muted-foreground">净值加载中...</div>
       ) : (
-        <NavLineChart nav={nav} navType={navType} />
+        <NavLineChart nav={nav} range={range} navType={navType} riskMetrics={riskMetrics} />
       )}
     </section>
   );

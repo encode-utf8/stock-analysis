@@ -7,13 +7,16 @@ import { FundHoldingsPanel } from "@/components/panels/fund/FundHoldingsPanel";
 import { FundIntradayPanel } from "@/components/panels/fund/FundIntradayPanel";
 import { FundNavChartPanel } from "@/components/panels/fund/FundNavChartPanel";
 import { FundProfilePanel } from "@/components/panels/fund/FundProfilePanel";
+import { FundRiskPanel } from "@/components/panels/fund/FundRiskPanel";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
+import type { FundMetricsRange } from "@/lib/fund-metrics";
 import { DEFAULT_FUND_CODE, normalizeFundCode } from "@/lib/fund-market";
 import type {
   FundHoldings,
   FundIntraday,
   FundNavPoint,
   FundProfile,
+  FundRiskMetrics,
 } from "@/lib/shared/types";
 
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -50,18 +53,24 @@ export default function FundWorkbench() {
   const [nav, setNav] = useState<FundNavPoint[]>([]);
   const [intraday, setIntraday] = useState<FundIntraday | null>(null);
   const [holdings, setHoldings] = useState<FundHoldings | null>(null);
+  const [allMetrics, setAllMetrics] = useState<FundRiskMetrics | null>(null);
+  const [oneYearMetrics, setOneYearMetrics] = useState<FundRiskMetrics | null>(null);
+  const [chartMetrics, setChartMetrics] = useState<FundRiskMetrics | null>(null);
   const [range, setRange] = useState<FundNavRange>("1y");
   const [navType, setNavType] = useState<FundNavType>("unit");
   const [loading, setLoading] = useState(false);
   const [navLoading, setNavLoading] = useState(false);
   const [intradayLoading, setIntradayLoading] = useState(false);
   const [holdingsLoading, setHoldingsLoading] = useState(false);
+  const [metricsLoading, setMetricsLoading] = useState(false);
   const [queryVersion, setQueryVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const activeProfileCodeRef = useRef<string | null>(null);
   const activeNavKeyRef = useRef<string | null>(null);
   const activeIntradayCodeRef = useRef<string | null>(null);
   const activeHoldingsCodeRef = useRef<string | null>(null);
+  const activeRiskMetricsCodeRef = useRef<string | null>(null);
+  const activeChartMetricsKeyRef = useRef<string | null>(null);
 
   const loadNav = useCallback(async (nextCode: string, nextRange: FundNavRange, nextType: FundNavType) => {
     const navKey = `${nextCode}:${nextRange}:${nextType}`;
@@ -128,6 +137,54 @@ export default function FundWorkbench() {
     }
   }, []);
 
+  const loadRiskMetrics = useCallback(async (nextCode: string) => {
+    activeRiskMetricsCodeRef.current = nextCode;
+    setMetricsLoading(true);
+    try {
+      const [allData, oneYearData] = await Promise.all([
+        apiFetch<FundRiskMetrics>(
+          `/api/funds/${encodeURIComponent(nextCode)}/metrics?range=all`,
+        ),
+        apiFetch<FundRiskMetrics>(
+          `/api/funds/${encodeURIComponent(nextCode)}/metrics?range=1y`,
+        ),
+      ]);
+      if (activeRiskMetricsCodeRef.current === nextCode) {
+        setAllMetrics(allData);
+        setOneYearMetrics(oneYearData);
+      }
+    } catch {
+      if (activeRiskMetricsCodeRef.current === nextCode) {
+        setAllMetrics(null);
+        setOneYearMetrics(null);
+      }
+    } finally {
+      if (activeRiskMetricsCodeRef.current === nextCode) {
+        setMetricsLoading(false);
+      }
+    }
+  }, []);
+
+  const loadChartMetrics = useCallback(
+    async (nextCode: string, nextRange: FundMetricsRange) => {
+      const metricsKey = `${nextCode}:${nextRange}`;
+      activeChartMetricsKeyRef.current = metricsKey;
+      try {
+        const data = await apiFetch<FundRiskMetrics>(
+          `/api/funds/${encodeURIComponent(nextCode)}/metrics?range=${nextRange}`,
+        );
+        if (activeChartMetricsKeyRef.current === metricsKey) {
+          setChartMetrics(data);
+        }
+      } catch {
+        if (activeChartMetricsKeyRef.current === metricsKey) {
+          setChartMetrics(null);
+        }
+      }
+    },
+    [],
+  );
+
   const loadFund = useCallback(
     async (nextInput: string) => {
       const nextCode = normalizeFundCode(nextInput);
@@ -142,6 +199,11 @@ export default function FundWorkbench() {
       setNav([]);
       setIntraday(null);
       setHoldings(null);
+      setAllMetrics(null);
+      setOneYearMetrics(null);
+      setChartMetrics(null);
+      activeRiskMetricsCodeRef.current = nextCode;
+      activeChartMetricsKeyRef.current = null;
       try {
         const profileData = await apiFetch<FundProfile>(
           `/api/funds/${encodeURIComponent(nextCode)}/profile`,
@@ -187,6 +249,22 @@ export default function FundWorkbench() {
     }, 0);
     return () => clearTimeout(timer);
   }, [code, queryVersion, loadIntraday, loadHoldings]);
+
+  useEffect(() => {
+    if (!code) {
+      return;
+    }
+    const timer = setTimeout(() => void loadRiskMetrics(code), 0);
+    return () => clearTimeout(timer);
+  }, [code, queryVersion, loadRiskMetrics]);
+
+  useEffect(() => {
+    if (!code || range === "all" || range === "1y") {
+      return;
+    }
+    const timer = setTimeout(() => void loadChartMetrics(code, range), 0);
+    return () => clearTimeout(timer);
+  }, [code, queryVersion, range, loadChartMetrics]);
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -242,10 +320,25 @@ export default function FundWorkbench() {
       ) : null}
 
       {code ? (
+        <FundRiskPanel
+          allMetrics={allMetrics}
+          oneYearMetrics={oneYearMetrics}
+          loading={metricsLoading}
+        />
+      ) : null}
+
+      {code ? (
         <FundNavChartPanel
           nav={nav}
           range={range}
           navType={navType}
+          riskMetrics={
+            range === "all"
+              ? allMetrics
+              : range === "1y"
+                ? oneYearMetrics
+                : chartMetrics
+          }
           loading={navLoading}
           onRangeChange={(value) => setRange(value)}
           onNavTypeChange={(value) => setNavType(value)}

@@ -94,7 +94,7 @@ else
   step "已检测到前端依赖，跳过安装（需要强制安装请使用 --install）..."
 fi
 
-step "定位 Python 行情侧车运行环境..."
+step "定位 Python 行情/基金数据侧车运行环境..."
 PYTHON_BIN=""
 
 if command -v conda >/dev/null 2>&1; then
@@ -129,7 +129,7 @@ if [[ -z "$PYTHON_BIN" ]]; then
   PYTHON_BIN="$ROOT/.venv/bin/python"
 fi
 
-step "检查并安装行情侧车基础依赖..."
+step "检查并安装行情/基金数据侧车基础依赖..."
 if ! "$PYTHON_BIN" -c "import fastapi, uvicorn, curl_cffi" >/dev/null 2>&1; then
   "$PYTHON_BIN" -m pip install --upgrade pip
   "$PYTHON_BIN" -m pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "pydantic-settings>=2.6" "curl_cffi>=0.10"
@@ -142,7 +142,7 @@ if ! "$PYTHON_BIN" -c "import akshare" >/dev/null 2>&1; then
   fi
 fi
 
-step "启动 FastAPI 行情侧车..."
+step "启动 FastAPI 行情/基金数据侧车..."
 "$PYTHON_BIN" -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 8000 \
   >"$DATA_LOG" 2>"$DATA_ERR" &
 DATA_PID=$!
@@ -168,11 +168,11 @@ for _ in {1..60}; do
 done
 
 if [[ "$DATA_HEALTHY" != "1" ]]; then
-  echo "行情侧车健康检查失败，请查看日志：$DATA_LOG、$DATA_ERR" >&2
+  echo "行情/基金数据侧车健康检查失败，请查看日志：$DATA_LOG、$DATA_ERR" >&2
   exit 1
 fi
 
-step "行情侧车已就绪：http://127.0.0.1:8000/health"
+step "行情/基金数据侧车已就绪：http://127.0.0.1:8000/health"
 export DATA_SERVICE_URL="http://127.0.0.1:8000"
 
 step "启动 Web 前端：http://127.0.0.1:3000"
@@ -186,7 +186,7 @@ fi
 
 printf '\n'
 printf '  Web  前端：%s\n' 'http://127.0.0.1:3000'
-printf '  行情侧车：%s\n' 'http://127.0.0.1:8000'
+printf '  行情/基金数据侧车：%s\n' 'http://127.0.0.1:8000'
 printf '  停止服务：在终端按 Ctrl+C\n'
 printf '\n'
 

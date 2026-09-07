@@ -99,6 +99,9 @@ export interface FundRiskMetrics {
   max_drawdown_start: string;
   max_drawdown_end: string;
   current_drawdown_pct: number;
+  max_drawdown_recovery_start: string;
+  max_drawdown_recovery_end: string | null;
+  max_drawdown_recovery_complete: boolean;
   longest_recovery_days: number | null;
   average_recovery_days: number | null;
   current_recovery_progress_pct: number | null;

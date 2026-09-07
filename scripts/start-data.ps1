@@ -68,7 +68,7 @@ if ($LASTEXITCODE -ne 0) {
     & $pythonExe -m pip install --upgrade pip
     & $pythonExe -m pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "pydantic-settings>=2.6" "curl_cffi>=0.10"
     if ($LASTEXITCODE -ne 0) {
-        throw "行情侧车基础依赖安装失败。"
+        throw "行情/基金数据侧车基础依赖安装失败。"
     }
 }
 

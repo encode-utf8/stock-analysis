@@ -69,10 +69,10 @@ if errorlevel 1 (
 )
 :install_done
 
-echo [启动] 启动行情侧车...
+echo [启动] 启动行情/基金数据侧车...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-data.ps1"
 if errorlevel 1 (
-  echo 行情侧车启动失败。
+  echo 行情/基金数据侧车启动失败。
   pause
   exit /b 1
 )
@@ -88,13 +88,13 @@ for /l %%i in (1,1,60) do (
 )
 :data_ready
 if not defined DATA_HEALTHY (
-  echo 行情侧车健康检查失败，请查看 .logs\data-service.err.log
+  echo 行情/基金数据侧车健康检查失败，请查看 .logs\data-service.err.log
   powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-data.ps1" -Stop
   pause
   exit /b 1
 )
 
-echo [启动] 行情侧车已就绪：http://127.0.0.1:8000/health
+echo [启动] 行情/基金数据侧车已就绪：http://127.0.0.1:8000/health
 set "DATA_SERVICE_URL=http://127.0.0.1:8000"
 
 echo [启动] 启动 Web 前端：http://127.0.0.1:3000
@@ -102,7 +102,7 @@ if not defined NO_BROWSER start "" "http://127.0.0.1:3000"
 
 echo.
 echo   Web 前端：http://127.0.0.1:3000
-echo   行情侧车：http://127.0.0.1:8000
+echo   行情/基金数据侧车：http://127.0.0.1:8000
 echo   停止服务：在终端按 Ctrl+C
 echo.
 
@@ -113,7 +113,7 @@ if "%PNPM_RUNNER%"=="pnpm" (
 )
 set "FRONTEND_EXIT=%errorlevel%"
 
-echo [启动] 正在停止行情侧车...
+echo [启动] 正在停止行情/基金数据侧车...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-data.ps1" -Stop
 
 exit /b %FRONTEND_EXIT%
