@@ -478,3 +478,28 @@ corepack pnpm build
 
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
 - 在自选股输入非 A 股代码（如 123456），确认出现渐隐悬浮提示；分别删除自选股、历史复盘记录、周期内 AI 分析，确认确认框居中显示。
+
+## F0 基金契约与工作台 Shell（2026-09-07）
+
+- 关联文档：`docs/fund-workbench-plan.md`、`docs/fund-workbench-design.md`、`docs/fund-workbench-spec.md`
+- 分支：`feature/fund-base`
+- 目标：冻结基金领域类型、完成工作台切换骨架与基金空面板，预留数据服务基金路由。
+
+### 验收项
+
+- [x] 新增 `src/lib/shared/types/funds.ts`，冻结 `FundProfile`、`FundNavPoint`、`FundIntraday`、`FundHoldings`、`FundRiskMetrics` 等类型
+- [x] 从 `src/lib/shared/types/index.ts` 导出基金类型，未修改既有个股类型字段语义
+- [x] `src/app/page.tsx` 收敛为页面 Shell，并保持个股/基金工作台切换状态不丢失
+- [x] 新增 `WorkbenchSwitcher`、`StockWorkbench`、`FundWorkbench` 容器
+- [x] 新增基金 panel 空容器，基金工作台可正常渲染
+- [x] 在 `data-service/app/fund_routes.py` 预留 `/fund/profile`、`/fund/nav`、`/fund/intraday`、`/fund/holdings` 空端点
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+- [x] Python 侧车可导入并访问 `/fund/profile?code=000001`
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- `python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 8000`
+- 浏览器切换个股/基金工作台至少 3 次，确认个股状态不丢失且无报错。
