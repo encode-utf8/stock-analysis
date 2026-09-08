@@ -165,3 +165,15 @@ export type FundNewsType = "announcement" | "report" | "market";
 export interface FundNewsItem extends NewsItem {
   news_type: FundNewsType;
 }
+
+/** 自选基金条目：与个股自选列表隔离，仅保存展示与切换所需元数据。 */
+export interface FundWatchlistItem {
+  code: string;
+  name: string;
+  type: FundType;
+  trading_mode: FundTradingMode;
+  group: string;
+  added_at: string;
+  sort_order: number;
+  note: string | null;
+}

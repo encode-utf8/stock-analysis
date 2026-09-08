@@ -351,3 +351,15 @@ export const fundNewsItems = pgTable(
     index("fund_news_items_status_expire_idx").on(table.status, table.expireAt),
   ],
 );
+
+/** 自选基金：与个股 watchlist 隔离，仅保存基金档案元数据。 */
+export const fundWatchlist = pgTable("fund_watchlist", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  tradingMode: text("trading_mode").notNull(),
+  group: text("group").notNull(),
+  addedAt: timestamp("added_at", { withTimezone: true }).notNull(),
+  sortOrder: integer("sort_order").notNull(),
+  note: text("note"),
+});

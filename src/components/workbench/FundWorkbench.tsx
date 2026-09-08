@@ -10,6 +10,7 @@ import { FundIntradayPanel } from "@/components/panels/fund/FundIntradayPanel";
 import { FundNavChartPanel } from "@/components/panels/fund/FundNavChartPanel";
 import { FundProfilePanel } from "@/components/panels/fund/FundProfilePanel";
 import { FundRiskPanel } from "@/components/panels/fund/FundRiskPanel";
+import { FundWatchlistPanel } from "@/components/panels/fund/FundWatchlistPanel";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import type { FundMetricsRange } from "@/lib/fund-metrics";
 import { DEFAULT_FUND_CODE, normalizeFundCode } from "@/lib/fund-market";
@@ -544,6 +545,28 @@ export default function FundWorkbench() {
     void loadFund(nextInput);
   };
 
+  /** 自选基金切换：直接复用主查询链路，确保档案、净值、风险、AI 与对话全链路一致。 */
+  const handleWatchlistSelect = (nextCode: string) => {
+    setInput(nextCode);
+    void loadFund(nextCode);
+  };
+
+  /** 删除当前自选基金时清空已选基金，避免继续展示已移除基金。 */
+  const handleWatchlistClearActive = () => {
+    setInput(DEFAULT_FUND_CODE);
+    setCode(null);
+    setProfile(null);
+    setNav([]);
+    setIntraday(null);
+    setHoldings(null);
+    setAllMetrics(null);
+    setOneYearMetrics(null);
+    setChartMetrics(null);
+    setFundReports([]);
+    setFundConversationId(undefined);
+    setFundMessages([]);
+  };
+
   return (
     <section className="mx-auto flex min-w-0 flex-1 max-w-6xl flex-col gap-6 px-4 py-8">
       <header className="rounded-xl border bg-white p-5 shadow-sm">
@@ -579,6 +602,12 @@ export default function FundWorkbench() {
           {error}
         </div>
       ) : null}
+
+      <FundWatchlistPanel
+        activeCode={code}
+        onSelect={handleWatchlistSelect}
+        onClearActive={handleWatchlistClearActive}
+      />
 
       {profile ? <FundProfilePanel profile={profile} loading={loading} /> : null}
 

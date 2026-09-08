@@ -665,3 +665,33 @@ corepack pnpm build
 
 - 完成日期：2026-09-08
 - 结果：F5 全部验收通过；已落地基金 AI/基础数据持久化、R2 报告快照、基金数据源健康探测，并新增 `fund_news_items` 迁移 `drizzle/0006_brave_molly_hayes.sql`，调度清理任务同时处理个股与基金资讯；`typecheck`、`lint`、`build` 均通过。
+
+
+## F6 自选基金（2026-09-08）
+
+- 关联文档：`docs/fund-workbench-spec.md` FR-F11、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-watchlist`
+- 目标：在基金工作台支持添加、删除、备注与切换自选基金，刷新后可恢复，切换后基金全链路上下文一致。
+
+### 验收项
+
+- [x] 新增 `FundWatchlistItem` 基金自选共享类型
+- [x] 新增 `fund_watchlist` Drizzle 表与迁移 `drizzle/0007_lame_doctor_faustus.sql`
+- [x] 新增 `fund-watchlist.ts` 数据访问层，PostgreSQL 失败回退本地 JSON
+- [x] 新增 `/api/fund-watchlist` 的 GET/POST/PATCH/DELETE/PUT 接口
+- [x] 完成基金自选面板，支持添加、删除、备注与点击切换
+- [x] 切换自选基金后档案、净值、风险指标、AI 报告与对话全链路同步切换
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 在基金工作台添加 `510300`、`000001`、`110022`，切换后确认各面板数据同步变化。
+- 删除当前自选基金后确认页面清空，刷新后列表仍可恢复。
+
+### 完成记录
+
+- 完成日期：2026-09-08
+- 结果：F6 全部验收通过；`/api/fund-watchlist` 支持自选基金增删改查与排序，面板已接入基金工作台；数据库不可用时回退 `.data/fund-watchlist.json`；`typecheck`、`lint`、`build` 均通过。
