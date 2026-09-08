@@ -98,6 +98,7 @@ export function DataSourcePanel() {
   const [snapshot, setSnapshot] = useState<DataSourceHealthSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fundRefreshing, setFundRefreshing] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -153,6 +154,23 @@ export function DataSourcePanel() {
     }
   };
 
+  const triggerFundRefresh = async () => {
+    setFundRefreshing(true);
+    setError(null);
+    try {
+      await apiFetch<JobRun>("/api/admin/fund-refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: "all" }),
+      });
+      await loadSnapshot();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "基金数据刷新失败");
+    } finally {
+      setFundRefreshing(false);
+    }
+  };
+
   const triggerCleanup = async () => {
     setCleaning(true);
     setError(null);
@@ -180,6 +198,9 @@ export function DataSourcePanel() {
           </Button>
           <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void triggerRefresh()}>
             {refreshing ? "刷新中..." : "手动刷新"}
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={fundRefreshing} onClick={() => void triggerFundRefresh()}>
+            {fundRefreshing ? "基金刷新中..." : "刷新基金数据"}
           </Button>
           <Button type="button" variant="outline" size="sm" disabled={cleaning} onClick={() => void triggerCleanup()}>
             {cleaning ? "清理中..." : "清理过期资讯"}

@@ -13,9 +13,10 @@ import type {
 } from "@/lib/shared/types";
 
 /** 数据源健康视图：在冻结的 SchedulerJob 契约上补充最近状态与运行历史。 */
-export interface SchedulerJobView extends SchedulerJob {
+export interface SchedulerJobView extends Omit<SchedulerJob, "target"> {
   status: JobRun["status"] | "idle";
   runs: JobRun[];
+  target: SchedulerJob["target"] | "fund";
 }
 
 /** 管理员数据源面板返回快照。 */
@@ -301,11 +302,14 @@ export async function getSchedulerJobViews(): Promise<SchedulerJobView[]> {
   const allRuns = await store.jobRuns.listRecent(50);
   const refreshRuns = runsFor(allRuns, "refresh").slice(0, 8);
   const cleanupRuns = runsFor(allRuns, "cleanup").slice(0, 8);
+  const fundRefreshRuns = runsFor(allRuns, "fund-refresh").slice(0, 8);
   const now = new Date().toISOString();
   const refreshCron = process.env.REFRESH_CRON ?? "30 3 * * *";
   const cleanupCron = process.env.CLEANUP_CRON ?? "0 3 * * *";
+  const fundRefreshCron = process.env.FUND_REFRESH_CRON ?? "45 3 * * *";
   const latestRefresh = refreshRuns[0] ?? null;
   const latestCleanup = cleanupRuns[0] ?? null;
+  const latestFundRefresh = fundRefreshRuns[0] ?? null;
 
   return [
     {
@@ -333,6 +337,19 @@ export async function getSchedulerJobViews(): Promise<SchedulerJobView[]> {
       next_run_at: null,
       status: latestCleanup?.status ?? "idle",
       runs: cleanupRuns,
+    },
+    {
+      id: "fund-refresh",
+      name: "fund-refresh",
+      cron: fundRefreshCron,
+      target: "fund" as const,
+      enabled: validate(fundRefreshCron),
+      created_at: latestFundRefresh?.started_at ?? now,
+      updated_at: latestFundRefresh?.finished_at ?? latestFundRefresh?.started_at ?? now,
+      last_run_at: latestFundRefresh?.started_at ?? null,
+      next_run_at: null,
+      status: latestFundRefresh?.status ?? "idle",
+      runs: fundRefreshRuns,
     },
   ];
 }

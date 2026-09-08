@@ -724,3 +724,32 @@ corepack pnpm build
 
 - 完成日期：2026-09-08
 - 结果：F7 全部验收通过；基金复盘面板已接入工作台，时间窗口支持 7/30/90 天，分析报告与基金会话时间线可回看、可删除；统计口径仅用于学习；`typecheck`、`lint`、`build` 均通过。
+
+
+## F8 基金数据源与调度面板（2026-09-08）
+
+- 关联文档：`docs/fund-workbench-spec.md` FR-F13、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-datasource-scheduler`
+- 目标：将基金数据源纳入数据源健康面板，并支持手动刷新基金档案、净值、持仓与风险指标。
+
+### 验收项
+
+- [x] 基金数据源 `AkShare/基金` 已纳入现有数据源健康面板
+- [x] 新增 `runFundRefreshJob` 与 `/api/admin/fund-refresh`
+- [x] 支持按基金代码或默认样例基金刷新档案、盘中行情、净值、持仓与风险指标
+- [x] 调度任务视图新增 `fund-refresh`，并配置每日定时刷新
+- [x] 数据源面板新增“刷新基金数据”按钮并联动任务日志
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/admin/datasources`，确认基金数据源与 `fund-refresh` 任务正常显示。
+- 调用 `/api/admin/fund-refresh`，确认返回 `job_name=fund-refresh` 且状态为 `success`。
+
+### 完成记录
+
+- 完成日期：2026-09-08
+- 结果：F8 全部验收通过；基金数据源状态已显示，手动基金刷新接口与每日定时任务已落地，数据源面板可触发基金数据刷新；`typecheck`、`lint`、`build` 均通过。

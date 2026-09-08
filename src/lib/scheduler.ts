@@ -7,13 +7,19 @@ import { normalizeStockCode, SAMPLE_CODES } from "@/lib/market";
 import { getKlines, getMarketQuote } from "@/lib/market-data";
 import { getNews } from "@/lib/news";
 import { cleanupExpiredFundNews } from "@/lib/fund-news";
+import { getFundHoldings } from "@/lib/fund-holdings";
+import { getFundIntraday } from "@/lib/fund-intraday";
+import { SAMPLE_FUND_CODES } from "@/lib/fund-market";
+import { getFundMetrics } from "@/lib/fund-metrics";
+import { getFundNav, getFundProfile } from "@/lib/fund-data";
 import { recordTaskRun } from "@/lib/observability";
 import { store } from "@/lib/store";
 import type { JobRun, NewsItem } from "@/lib/shared/types";
 
-type JobName = "cleanup" | "refresh";
+type JobName = "cleanup" | "refresh" | "fund-refresh";
 type JobSource = "manual" | "cron";
 type RefreshTarget = "quote" | "kline" | "news" | "all";
+export type FundRefreshTarget = "profile" | "intraday" | "nav" | "holdings" | "metrics" | "all";
 
 export interface CleanupJobOptions {
   before?: string;
@@ -24,6 +30,12 @@ export interface CleanupJobOptions {
 export interface RefreshJobOptions {
   codes?: string[];
   target?: RefreshTarget;
+  source?: JobSource;
+}
+
+export interface FundRefreshJobOptions {
+  codes?: string[];
+  target?: FundRefreshTarget;
   source?: JobSource;
 }
 
@@ -153,6 +165,43 @@ export async function runRefreshJob(options: RefreshJobOptions = {}): Promise<Jo
   );
 }
 
+/** 执行一次基金数据刷新任务：更新档案、净值、持仓与风险指标。 */
+export async function runFundRefreshJob(
+  options: FundRefreshJobOptions = {},
+): Promise<JobRun> {
+  const codes = options.codes?.length ? options.codes : [...SAMPLE_FUND_CODES];
+  const target = options.target ?? "all";
+  const source = options.source ?? "manual";
+
+  return trackJob(
+    "fund-refresh",
+    { source, codes, target },
+    async () => {
+      recordTaskRun("refresh");
+      for (const code of codes) {
+        if (target === "profile" || target === "all") {
+          await getFundProfile(code, true);
+        }
+        if (target === "intraday" || target === "all") {
+          await getFundIntraday(code, true);
+        }
+        if (target === "nav" || target === "all") {
+          await getFundNav(code, "1y", "unit", true);
+          await getFundNav(code, "all", "cumulative", true);
+        }
+        if (target === "holdings" || target === "all") {
+          await getFundHoldings(code, true);
+        }
+        if (target === "metrics" || target === "all") {
+          await getFundMetrics(code, "1y", true);
+          await getFundMetrics(code, "all", true);
+        }
+      }
+      return { refreshed_count: codes.length, target };
+    },
+  );
+}
+
 /** 校验并规范化手动刷新请求中的股票代码；非法时返回 null。 */
 export function normalizeRefreshCode(code?: string): string | null {
   if (!code) {
@@ -161,11 +210,28 @@ export function normalizeRefreshCode(code?: string): string | null {
   return normalizeStockCode(code);
 }
 
+/** 校验并规范化手动基金刷新请求中的基金代码；非法时返回 null。 */
+export function normalizeFundRefreshCode(code?: string): string | null {
+  if (!code) {
+    return null;
+  }
+  return /^\d{6}$/.test(code.trim()) ? code.trim() : null;
+}
+
 /** 样例股票每日行情刷新。 */
 export function runScheduledRefresh(): Promise<JobRun> {
   return runRefreshJob({
     codes: [...SAMPLE_CODES],
     target: "quote",
+    source: "cron",
+  });
+}
+
+/** 每日基金数据刷新。 */
+export function runScheduledFundRefresh(): Promise<JobRun> {
+  return runFundRefreshJob({
+    codes: [...SAMPLE_FUND_CODES],
+    target: "all",
     source: "cron",
   });
 }
@@ -213,5 +279,10 @@ export function startScheduler(): void {
     process.env.REFRESH_CRON ?? "30 3 * * *",
     "sample-quote-refresh",
     runScheduledRefresh,
+  );
+  safeSchedule(
+    process.env.FUND_REFRESH_CRON ?? "45 3 * * *",
+    "sample-fund-refresh",
+    runScheduledFundRefresh,
   );
 }
