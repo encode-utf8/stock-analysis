@@ -131,6 +131,48 @@ async function probeMarketData(): Promise<DataSourceStatus> {
   }
 }
 
+/** 探测基金数据侧车：真实 AkShare 基金接口可用时 online，确定性回退时 degraded。 */
+async function probeFundData(): Promise<DataSourceStatus> {
+  const source = "AkShare/基金";
+  const startedAt = Date.now();
+  const code = "510300";
+
+  try {
+    const response = await fetchWithTimeout(
+      `${DATA_SERVICE_URL}/fund/profile?code=${encodeURIComponent(code)}`,
+      { headers: { Accept: "application/json" }, cache: "no-store" },
+      8_000,
+    );
+
+    if (!response.ok) {
+      throw new Error(`基金侧车响应异常：${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      source?: string;
+      code?: string;
+      name?: string;
+    };
+    const latencyMs = Date.now() - startedAt;
+    if (payload.source === "akshare") {
+      markSuccess(source);
+      return buildStatus(source, "online", latencyMs);
+    }
+
+    markFailure(source);
+    return buildStatus(
+      source,
+      "degraded",
+      latencyMs,
+      "基金侧车已连通，但 AkShare 基金上游不可用，当前返回确定性回退数据。",
+    );
+  } catch (error) {
+    markFailure(source);
+    const message = error instanceof Error ? error.message : "基金侧车连接失败";
+    return buildStatus(source, "offline", null, `${message}；基金数据将使用确定性回退数据。`);
+  }
+}
+
 /** 探测 Tavily：未配置密钥时降级，配置后请求轻量搜索校验可用性。 */
 async function probeTavily(): Promise<DataSourceStatus> {
   const source = "Tavily";
@@ -297,8 +339,9 @@ export async function getSchedulerJobViews(): Promise<SchedulerJobView[]> {
 
 /** 并发执行四类数据源健康探测，并汇总调度任务视图。 */
 export async function getDataSourceHealthSnapshot(): Promise<DataSourceHealthSnapshot> {
-  const [market, tavily, deepSeek, r2] = await Promise.all([
+  const [market, fund, tavily, deepSeek, r2] = await Promise.all([
     probeMarketData(),
+    probeFundData(),
     probeTavily(),
     probeDeepSeek(),
     probeR2(),
@@ -306,7 +349,7 @@ export async function getDataSourceHealthSnapshot(): Promise<DataSourceHealthSna
   const jobs = await getSchedulerJobViews();
 
   return {
-    sources: [market, tavily, deepSeek, r2],
+    sources: [market, fund, tavily, deepSeek, r2],
     jobs,
   };
 }

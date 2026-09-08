@@ -649,12 +649,12 @@ corepack pnpm build
 - [x] 基金 AI 报告/会话/消息仓库支持 PostgreSQL 持久化，失败回退内存
 - [ ] 基金净值、持仓与风险指标接入持久化仓库
 - [ ] 基金资讯 `expire_at` 清理与长期公告保留
-- [ ] 基金 AI 报告与关键快照写入 R2
-- [ ] 数据源健康面板纳入基金数据源状态
+- [x] 基金 AI 报告与关键快照写入 R2
+- [x] 数据源健康面板纳入基金数据源状态
 - [ ] 个股工作台 M1–M8 无回归
-- [ ] `corepack pnpm typecheck` 通过
-- [ ] `corepack pnpm lint` 通过
-- [ ] `corepack pnpm build` 通过
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
 
 ### 验证方式
 
@@ -663,4 +663,4 @@ corepack pnpm build
 
 ### 完成记录
 
-- 进行中：F5 第一段已落地基金 AI 持久化表与数据库回退仓库。
+- 进行中：已落地基金 AI 持久化表、数据库回退仓库、R2 报告快照与基金数据源健康探测。

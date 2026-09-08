@@ -4,6 +4,7 @@ import { getFundIntraday } from "@/lib/fund-intraday";
 import { getFundHoldings } from "@/lib/fund-holdings";
 import { getFundMetrics } from "@/lib/fund-metrics";
 import { recordExternalCall, recordTaskRun } from "@/lib/observability";
+import { saveFundAnalysisSnapshot } from "@/lib/r2";
 import { fundAiStore } from "@/lib/fund-ai-store";
 import type {
   FundAnalysisReport,
@@ -348,6 +349,13 @@ function buildReport(context: FundAnalysisContext, content: string, reportId = b
 }
 
 async function persistReport(report: FundAnalysisReport): Promise<FundAnalysisReport> {
+  const r2Key = await saveFundAnalysisSnapshot(report);
+  if (r2Key) {
+    report = {
+      ...report,
+      data_snapshot: { ...(report.data_snapshot ?? {}), r2_key: r2Key },
+    };
+  }
   await fundAiStore.reports.insert(report);
   return report;
 }

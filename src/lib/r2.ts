@@ -10,7 +10,7 @@ import {
 } from "@aws-sdk/client-s3";
 
 import { recordExternalCall } from "@/lib/observability";
-import type { AnalysisReport, NewsItem } from "@/lib/shared/types";
+import type { AnalysisReport, FundAnalysisReport, NewsItem } from "@/lib/shared/types";
 
 interface R2Config {
   accountId: string;
@@ -178,6 +178,21 @@ export async function saveAnalysisSnapshot(report: AnalysisReport): Promise<stri
   }
   try {
     const key = `analysis/${report.code}/${report.id}.json`;
+    await withTimeout(putJsonObject(key, report), SNAPSHOT_TIMEOUT_MS);
+    return key;
+  } catch {
+    recordExternalCall(false);
+    return null;
+  }
+}
+
+/** 保存基金 AI 分析报告快照到 R2；失败时返回 null，不阻塞主流程。 */
+export async function saveFundAnalysisSnapshot(report: FundAnalysisReport): Promise<string | null> {
+  if (!isR2Configured()) {
+    return null;
+  }
+  try {
+    const key = `fund-analysis/${report.code}/${report.id}.json`;
     await withTimeout(putJsonObject(key, report), SNAPSHOT_TIMEOUT_MS);
     return key;
   } catch {
