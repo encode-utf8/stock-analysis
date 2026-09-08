@@ -753,3 +753,32 @@ corepack pnpm build
 
 - 完成日期：2026-09-08
 - 结果：F8 全部验收通过；基金数据源状态已显示，手动基金刷新接口与每日定时任务已落地，数据源面板可触发基金数据刷新；`typecheck`、`lint`、`build` 均通过。
+
+
+## F9 基金对比（2026-09-08）
+
+- 关联文档：`docs/fund-workbench-spec.md` 未来扩展、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-comparison`
+- 目标：支持输入 2–5 个基金代码，在同一区间横向比较净值、业绩与风险指标。
+
+### 验收项
+
+- [x] 新增 `FundComparisonItem` 与 `FundComparisonSnapshot` 共享类型
+- [x] 新增 `fund-comparison.ts` 数据编排，复用基金档案、净值、行情与风险指标
+- [x] 新增 `/api/fund-comparison?codes=510300,110022&range=1y`
+- [x] 完成基金对比面板，支持区间切换与横向表格展示
+- [x] 上涨/有利指标标红，下跌/不利指标标绿，波动等无法严格定性的指标保持黑色
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/fund-comparison?codes=510300,110022&range=1y`，确认返回两只基金的同区间指标。
+- 在基金工作台切换区间后，确认对比表数据同步更新。
+
+### 完成记录
+
+- 完成日期：2026-09-08
+- 结果：F9 全部验收通过；`/api/fund-comparison` 已返回 `510300` 与 `110022` 的对比数据，对比面板已接入基金工作台；`typecheck`、`lint`、`build` 均通过。

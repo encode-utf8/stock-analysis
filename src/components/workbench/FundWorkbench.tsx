@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
 import { FundAnalysisPanel } from "@/components/panels/fund/FundAnalysisPanel";
+import { FundComparisonPanel } from "@/components/panels/fund/FundComparisonPanel";
 import { FundHoldingsPanel } from "@/components/panels/fund/FundHoldingsPanel";
 import { FundIntradayPanel } from "@/components/panels/fund/FundIntradayPanel";
 import { FundNavChartPanel } from "@/components/panels/fund/FundNavChartPanel";
@@ -609,6 +610,8 @@ export default function FundWorkbench() {
         onSelect={handleWatchlistSelect}
         onClearActive={handleWatchlistClearActive}
       />
+
+      <FundComparisonPanel />
 
       {code ? <FundReplayPanel key={code} code={code} /> : null}
 

@@ -187,3 +187,31 @@ export interface FundReplaySummary {
   total_chats: number;
   generated_at: string;
 }
+
+/** 基金对比单项：聚合档案、最新净值、区间表现与风险指标。 */
+export interface FundComparisonItem {
+  code: string;
+  name: string;
+  type: FundType;
+  trading_mode: FundTradingMode;
+  latest_nav_date: string | null;
+  latest_cumulative_nav: number | null;
+  latest_change_pct: number | null;
+  period_return_pct: number | null;
+  annualized_return_pct: number | null;
+  annualized_volatility_pct: number | null;
+  max_drawdown_pct: number | null;
+  current_drawdown_pct: number | null;
+  sharpe: number | null;
+  sortino: number | null;
+  calmar: number | null;
+  source: string;
+  fetched_at: string;
+}
+
+/** 基金对比返回快照。 */
+export interface FundComparisonSnapshot {
+  range: string;
+  generated_at: string;
+  items: FundComparisonItem[];
+}
