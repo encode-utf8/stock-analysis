@@ -6,6 +6,7 @@ import { schedule, validate } from "node-cron";
 import { normalizeStockCode, SAMPLE_CODES } from "@/lib/market";
 import { getKlines, getMarketQuote } from "@/lib/market-data";
 import { getNews } from "@/lib/news";
+import { cleanupExpiredFundNews } from "@/lib/fund-news";
 import { recordTaskRun } from "@/lib/observability";
 import { store } from "@/lib/store";
 import type { JobRun, NewsItem } from "@/lib/shared/types";
@@ -109,6 +110,7 @@ export async function runCleanupJob(options: CleanupJobOptions = {}): Promise<Jo
     async () => {
       recordTaskRun("cleanup");
       const candidates = (await store.newsItems.listExpired(before)).filter(isCleanupCandidate);
+      const fundCleanedCount = await cleanupExpiredFundNews(before, dryRun);
       if (!dryRun) {
         for (const item of candidates) {
           await store.newsItems.updateStatus(item.id, "expired");
@@ -117,6 +119,8 @@ export async function runCleanupJob(options: CleanupJobOptions = {}): Promise<Jo
       return {
         cleaned_count: candidates.length,
         eligible_count: candidates.length,
+        fund_cleaned_count: fundCleanedCount,
+        fund_eligible_count: fundCleanedCount,
       };
     },
   );

@@ -1,7 +1,7 @@
 // 基金工作台共享类型：冻结自 docs/fund-workbench-design.md 第 6.1 节。
 // 后续分支如需扩展，先在本模块新增并注明 TODO，不得破坏已冻结字段语义。
 
-import type { MessageRole } from "./models";
+import type { MessageRole, NewsItem } from "./models";
 
 /** 基金类型。 */
 export type FundType =
@@ -156,4 +156,12 @@ export interface FundAnalysisStreamEvent {
     message?: string;
     report?: FundAnalysisReport;
   };
+}
+
+/** 基金资讯类型。 */
+export type FundNewsType = "announcement" | "report" | "market";
+
+/** 基金资讯条目。 */
+export interface FundNewsItem extends NewsItem {
+  news_type: FundNewsType;
 }

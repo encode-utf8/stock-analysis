@@ -43,6 +43,13 @@
       "when": 1788862774633,
       "tag": "0005_normal_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788866357826,
+      "tag": "0006_brave_molly_hayes",
+      "breakpoints": true
     }
   ]
 }

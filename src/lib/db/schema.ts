@@ -324,3 +324,30 @@ export const fundRiskMetrics = pgTable(
     primaryKey({ columns: [table.code, table.range] }),
   ],
 );
+
+/** 基金资讯条目。 */
+export const fundNewsItems = pgTable(
+  "fund_news_items",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    url: text("url").notNull(),
+    source: text("source").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    sentiment: text("sentiment").notNull(),
+    confidence: doublePrecision("confidence").notNull(),
+    impactDays: integer("impact_days").notNull(),
+    expireAt: timestamp("expire_at", { withTimezone: true }).notNull(),
+    tags: jsonb("tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    status: text("status").notNull(),
+    pinned: boolean("pinned").notNull().default(false),
+    newsType: text("news_type").notNull(),
+  },
+  (table) => [
+    index("fund_news_items_code_expire_idx").on(table.code, table.expireAt),
+    index("fund_news_items_status_expire_idx").on(table.status, table.expireAt),
+  ],
+);
