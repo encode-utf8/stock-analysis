@@ -1,6 +1,8 @@
 // 基金工作台共享类型：冻结自 docs/fund-workbench-design.md 第 6.1 节。
 // 后续分支如需扩展，先在本模块新增并注明 TODO，不得破坏已冻结字段语义。
 
+import type { MessageRole } from "./models";
+
 /** 基金类型。 */
 export type FundType =
   | "stock"
@@ -111,4 +113,47 @@ export interface FundRiskMetrics {
   sortino: number | null;
   calmar: number | null;
   updated_at: string;
+}
+
+/** 基金 AI 分析报告。 */
+export interface FundAnalysisReport {
+  id: string;
+  code: string;
+  created_at: string;
+  data_snapshot: Record<string, unknown> | null;
+  source_refs: Array<{ label: string; value: string }>;
+  content: string;
+  risk_note: string;
+}
+
+/** 基金会话。 */
+export interface FundConversation {
+  id: string;
+  code: string;
+  title: string;
+  created_at: string;
+}
+
+/** 基金会话消息。 */
+export interface FundMessage {
+  id: string;
+  conversation_id: string;
+  role: MessageRole;
+  content: string;
+  tool_calls: Record<string, unknown>[] | null;
+  created_at: string;
+}
+
+/** 基金 AI 分析流式事件类型。 */
+export type FundAnalysisStreamEventType = "meta" | "delta" | "done" | "error";
+
+/** 基金 AI 分析流式响应事件。 */
+export interface FundAnalysisStreamEvent {
+  type: FundAnalysisStreamEventType;
+  content?: string;
+  data?: {
+    reportId?: string;
+    message?: string;
+    report?: FundAnalysisReport;
+  };
 }

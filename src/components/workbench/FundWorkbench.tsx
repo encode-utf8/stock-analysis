@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
+import { FundAnalysisPanel } from "@/components/panels/fund/FundAnalysisPanel";
 import { FundHoldingsPanel } from "@/components/panels/fund/FundHoldingsPanel";
 import { FundIntradayPanel } from "@/components/panels/fund/FundIntradayPanel";
 import { FundNavChartPanel } from "@/components/panels/fund/FundNavChartPanel";
@@ -12,6 +14,10 @@ import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import type { FundMetricsRange } from "@/lib/fund-metrics";
 import { DEFAULT_FUND_CODE, normalizeFundCode } from "@/lib/fund-market";
 import type {
+  ChatStreamEvent,
+  FundAnalysisReport,
+  FundAnalysisStreamEvent,
+  FundConversation,
   FundHoldings,
   FundIntraday,
   FundNavPoint,
@@ -21,11 +27,11 @@ import type {
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
-async function apiFetch<T>(url: string): Promise<T> {
+async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { ...init, signal: controller.signal });
     const payload = (await response.json().catch(() => null)) as {
       success?: boolean;
       data?: T;
@@ -63,6 +69,12 @@ export default function FundWorkbench() {
   const [intradayLoading, setIntradayLoading] = useState(false);
   const [holdingsLoading, setHoldingsLoading] = useState(false);
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const [fundReports, setFundReports] = useState<FundAnalysisReport[]>([]);
+  const [fundAnalysisLoading, setFundAnalysisLoading] = useState(false);
+  const [fundConversationId, setFundConversationId] = useState<string | undefined>();
+  const [fundMessages, setFundMessages] = useState<ChatViewMessage[]>([]);
+  const [fundChatInput, setFundChatInput] = useState("");
+  const [fundChatLoading, setFundChatLoading] = useState(false);
   const [queryVersion, setQueryVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const activeProfileCodeRef = useRef<string | null>(null);
@@ -71,6 +83,8 @@ export default function FundWorkbench() {
   const activeHoldingsCodeRef = useRef<string | null>(null);
   const activeRiskMetricsCodeRef = useRef<string | null>(null);
   const activeChartMetricsKeyRef = useRef<string | null>(null);
+  const fundAnalysisAbortRef = useRef<AbortController | null>(null);
+  const fundChatAbortRef = useRef<AbortController | null>(null);
 
   const loadNav = useCallback(async (nextCode: string, nextRange: FundNavRange, nextType: FundNavType) => {
     const navKey = `${nextCode}:${nextRange}:${nextType}`;
@@ -185,6 +199,53 @@ export default function FundWorkbench() {
     [],
   );
 
+  const loadFundReports = useCallback(async (nextCode: string) => {
+    try {
+      const reports = await apiFetch<FundAnalysisReport[]>(
+        `/api/funds/${encodeURIComponent(nextCode)}/analysis`,
+      );
+      setFundReports(reports);
+    } catch {
+      setFundReports([]);
+    }
+  }, []);
+
+  const loadFundConversation = useCallback(async (nextCode: string) => {
+    try {
+      const conversations = await apiFetch<FundConversation[]>(
+        `/api/fund-conversations?code=${encodeURIComponent(nextCode)}`,
+      );
+      const latest = conversations[0];
+      if (!latest) {
+        setFundConversationId(undefined);
+        setFundMessages([]);
+        return;
+      }
+
+      const timeline = await apiFetch<{
+        conversation: FundConversation;
+        messages: Array<{
+          id: string;
+          role: "user" | "assistant" | "system";
+          content: string;
+        }>;
+      }>(`/api/fund-conversations/${encodeURIComponent(latest.id)}`);
+      setFundConversationId(timeline.conversation.id);
+      setFundMessages(
+        timeline.messages
+          .filter((message) => message.role === "user" || message.role === "assistant")
+          .map((message) => ({
+            id: message.id,
+            role: message.role as "user" | "assistant",
+            content: message.content,
+          })),
+      );
+    } catch {
+      setFundConversationId(undefined);
+      setFundMessages([]);
+    }
+  }, []);
+
   const loadFund = useCallback(
     async (nextInput: string) => {
       const nextCode = normalizeFundCode(nextInput);
@@ -202,6 +263,9 @@ export default function FundWorkbench() {
       setAllMetrics(null);
       setOneYearMetrics(null);
       setChartMetrics(null);
+      setFundReports([]);
+      setFundConversationId(undefined);
+      setFundMessages([]);
       activeRiskMetricsCodeRef.current = nextCode;
       activeChartMetricsKeyRef.current = null;
       try {
@@ -259,12 +323,219 @@ export default function FundWorkbench() {
   }, [code, queryVersion, loadRiskMetrics]);
 
   useEffect(() => {
+    if (!code) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      void loadFundReports(code);
+      void loadFundConversation(code);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [code, queryVersion, loadFundReports, loadFundConversation]);
+
+  useEffect(() => {
     if (!code || range === "all" || range === "1y") {
       return;
     }
     const timer = setTimeout(() => void loadChartMetrics(code, range), 0);
     return () => clearTimeout(timer);
   }, [code, queryVersion, range, loadChartMetrics]);
+
+  const handleFundAnalysis = async () => {
+    if (!code || fundAnalysisLoading || fundAnalysisAbortRef.current) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const draftId = `fund-analysis-stream-${Date.now()}`;
+    fundAnalysisAbortRef.current = controller;
+    setFundAnalysisLoading(true);
+    setError(null);
+    const draftReport: FundAnalysisReport = {
+      id: draftId,
+      code,
+      created_at: new Date().toISOString(),
+      data_snapshot: null,
+      source_refs: [],
+      content: "",
+      risk_note: "",
+    };
+
+    try {
+      setFundReports((previous) => [
+        draftReport,
+        ...previous.filter((item) => item.id !== draftId),
+      ]);
+
+      const response = await fetch(
+        `/api/funds/${encodeURIComponent(code)}/analysis/stream`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: "请生成当前基金档案、持仓与风险分析。" }),
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok || !response.body) {
+        throw new Error("基金分析接口响应异常。");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const handleEvent = (raw: string) => {
+        const dataLine = raw.split("\n").find((line) => line.startsWith("data: "));
+        if (!dataLine) {
+          return;
+        }
+        const event = JSON.parse(dataLine.slice(6)) as FundAnalysisStreamEvent;
+        if (event.type === "delta" && event.content) {
+          setFundReports((previous) =>
+            previous.map((item) =>
+              item.id === draftId
+                ? { ...item, content: item.content + event.content }
+                : item,
+            ),
+          );
+        } else if (event.type === "done" && event.data?.report) {
+          setFundReports((previous) =>
+            previous.map((item) => (item.id === draftId ? event.data?.report ?? item : item)),
+          );
+        } else if (event.type === "error") {
+          throw new Error(event.data?.message ?? "基金分析生成失败。");
+        }
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() ?? "";
+        for (const block of blocks) {
+          handleEvent(block);
+        }
+      }
+      if (buffer.trim()) {
+        handleEvent(buffer);
+      }
+      await loadFundReports(code);
+    } catch (nextError) {
+      if (nextError instanceof Error && nextError.name === "AbortError") {
+        return;
+      }
+      setError(nextError instanceof Error ? nextError.message : "基金分析生成失败。");
+      setFundReports((previous) => previous.filter((item) => item.id !== draftId));
+    } finally {
+      if (fundAnalysisAbortRef.current === controller) {
+        fundAnalysisAbortRef.current = null;
+      }
+      setFundAnalysisLoading(false);
+    }
+  };
+
+  const handleFundChatSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!code || !fundChatInput.trim() || fundChatLoading) {
+      return;
+    }
+
+    const userText = fundChatInput.trim();
+    const controller = new AbortController();
+    fundChatAbortRef.current = controller;
+    setFundChatInput("");
+    setFundChatLoading(true);
+    const userId = `local-fund-user-${Date.now()}`;
+    const assistantId = `local-fund-assistant-${Date.now()}`;
+    setFundMessages((previous) => [
+      ...previous,
+      { id: userId, role: "user", content: userText },
+      { id: assistantId, role: "assistant", content: "" },
+    ]);
+
+    try {
+      const response = await fetch("/api/fund-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          conversationId: fundConversationId,
+          message: userText,
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok || !response.body) {
+        throw new Error("基金对话接口响应异常。");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const handleEvent = (raw: string) => {
+        const dataLine = raw.split("\n").find((line) => line.startsWith("data: "));
+        if (!dataLine) {
+          return;
+        }
+        const event = JSON.parse(dataLine.slice(6)) as ChatStreamEvent;
+        if (event.type === "meta" && event.data?.conversationId) {
+          setFundConversationId(event.data.conversationId);
+        } else if (event.type === "delta" && event.content) {
+          setFundMessages((previous) =>
+            previous.map((message) =>
+              message.id === assistantId
+                ? { ...message, content: message.content + event.content }
+                : message,
+            ),
+          );
+        } else if (event.type === "done" && event.data) {
+          setFundMessages((previous) =>
+            previous.map((message) =>
+              message.id === assistantId
+                ? { ...message, sources: event.data?.sources, riskNote: event.data?.riskNote }
+                : message,
+            ),
+          );
+        } else if (event.type === "error") {
+          throw new Error(event.data?.message ?? "基金对话生成失败。");
+        }
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() ?? "";
+        for (const block of blocks) {
+          handleEvent(block);
+        }
+      }
+      if (buffer.trim()) {
+        handleEvent(buffer);
+      }
+    } catch (nextError) {
+      if (nextError instanceof Error && nextError.name === "AbortError") {
+        return;
+      }
+      setError(nextError instanceof Error ? nextError.message : "基金对话生成失败。");
+      setFundMessages((previous) => previous.filter((message) => message.id !== assistantId));
+    } finally {
+      if (fundChatAbortRef.current === controller) {
+        fundChatAbortRef.current = null;
+      }
+      setFundChatLoading(false);
+    }
+  };
+
+  const stopFundChat = () => {
+    fundChatAbortRef.current?.abort();
+    setFundChatLoading(false);
+  };
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -324,6 +595,38 @@ export default function FundWorkbench() {
           allMetrics={allMetrics}
           oneYearMetrics={oneYearMetrics}
           loading={metricsLoading}
+        />
+      ) : null}
+
+      {code ? (
+        <FundAnalysisPanel
+          code={code}
+          reports={fundReports}
+          loading={fundAnalysisLoading}
+          onGenerate={() => void handleFundAnalysis()}
+          onDelete={async (reportId) => {
+            try {
+              await apiFetch(`/api/funds/${encodeURIComponent(code)}/reports/${encodeURIComponent(reportId)}`, {
+                method: "DELETE",
+              });
+            } catch (nextError) {
+              setError(nextError instanceof Error ? nextError.message : "删除基金报告失败。");
+            }
+            await loadFundReports(code);
+          }}
+        />
+      ) : null}
+
+      {code ? (
+        <ChatPanel
+          code={code}
+          conversationId={fundConversationId}
+          messages={fundMessages}
+          input={fundChatInput}
+          loading={fundChatLoading}
+          onInputChange={setFundChatInput}
+          onSubmit={(event) => void handleFundChatSubmit(event)}
+          onStop={stopFundChat}
         />
       ) : null}
 

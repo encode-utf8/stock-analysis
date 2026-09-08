@@ -601,3 +601,36 @@ corepack pnpm build
 - 修正：修复区间改为从当前区间最大回撤末端开始，延续到净值回到该回撤起点为止；未修复显示“正在修复中”，已修复显示“修复耗时 x年x个月x天”，图表绿色区域也绑定为最大回撤修复幅度，而不是全局峰谷区间。
 - 修正：指标计算与 API 扩展为 `1m/3m/6m/1y/3y/all` 全区间，净值曲线所有区间都可叠加回撤/修复区域；风险面板固定展示“成立以来 + 近1年”，当前回撤与当前修复进度按最新净值即时展示。
 - 修正：净值曲线中的回撤/修复矩形高度改为取对应横向区间内全部净值的最高点与最低点之差，横向起止点只决定矩形宽度。
+
+
+## F4 基金 AI 分析与对话（2026-09-08）
+
+- 关联文档：`docs/fund-workbench-plan.md`、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-ai`
+- 目标：将基金档案、净值、实时/估算行情、持仓与风险指标接入 AI 分析，并支持围绕当前基金的多轮对话。
+
+### 验收项
+
+- [x] 新增基金 AI 报告、基金会话与消息共享类型
+- [x] 新增基金 AI 报告与会话内存仓库，隔离个股数据
+- [x] 实现 `fund-analysis.ts` 数据聚合、确定性回退与 DeepSeek 流式报告
+- [x] 实现 `fund-chat.ts` 多轮基金对话与确定性回退
+- [x] 新增 `/api/funds/[code]/analysis`、`/analysis/stream`、`/reports/[id]`
+- [x] 新增 `/api/fund-chat` 与基金会话查询/删除接口
+- [x] 完成基金 AI 报告面板与基金对话面板，接入基金工作台
+- [x] AI 报告包含基金概览、持仓风格、风险解读、数据来源与风险提示，且无确定性买卖建议
+- [x] 连续 3 轮追问上下文正确
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 在基金工作台对 `510300` 生成 AI 分析，确认报告包含数据来源与风险提示
+- 连续追问 3 轮，确认基金会话上下文不串入个股工作台。
+
+### 完成记录
+
+- 完成日期：2026-09-08
+- 结果：F4 核心链路已完成；`/api/funds/510300/analysis` 可返回含档案、行情、持仓、风险指标与免责声明的报告，`/api/fund-chat` 同一 `conversationId` 连续 3 轮追问正常；`typecheck`、`lint`、`build` 均通过。
