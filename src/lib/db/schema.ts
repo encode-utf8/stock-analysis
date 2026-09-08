@@ -181,3 +181,53 @@ export const watchlist = pgTable("watchlist", {
   note: text("note"),
   addedAt: timestamp("added_at", { withTimezone: true }).notNull(),
 });
+
+/** 基金 AI 分析报告。 */
+export const fundAnalysisReports = pgTable(
+  "fund_analysis_reports",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    dataSnapshot: jsonb("data_snapshot").$type<Record<string, unknown>>(),
+    sourceRefs: jsonb("source_refs")
+      .$type<Array<{ label: string; value: string }>>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    content: text("content").notNull(),
+    riskNote: text("risk_note").notNull(),
+  },
+  (table) => [
+    index("fund_analysis_reports_code_created_idx").on(table.code, table.createdAt),
+  ],
+);
+
+/** 基金会话。 */
+export const fundConversations = pgTable(
+  "fund_conversations",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull(),
+    title: text("title").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index("fund_conversations_code_created_idx").on(table.code, table.createdAt),
+  ],
+);
+
+/** 基金会话消息。 */
+export const fundMessages = pgTable(
+  "fund_messages",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id").notNull(),
+    role: text("role").notNull(),
+    content: text("content").notNull(),
+    toolCalls: jsonb("tool_calls").$type<Record<string, unknown>[]>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index("fund_messages_conversation_created_idx").on(table.conversationId, table.createdAt),
+  ],
+);

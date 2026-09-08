@@ -634,3 +634,33 @@ corepack pnpm build
 
 - 完成日期：2026-09-08
 - 结果：F4 核心链路已完成；`/api/funds/510300/analysis` 可返回含档案、行情、持仓、风险指标与免责声明的报告，`/api/fund-chat` 同一 `conversationId` 连续 3 轮追问正常；`typecheck`、`lint`、`build` 均通过。
+
+
+## F5 持久化与集成验收（2026-09-08）
+
+- 关联文档：`docs/fund-workbench-plan.md`、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-integration`
+- 目标：基金数据与 AI 结果持久化、清理与整体回归，保证个股工作台无回归。
+
+### 验收项
+
+- [x] 新增 `fund_analysis_reports`、`fund_conversations`、`fund_messages` Drizzle 表
+- [x] 生成对应 Drizzle 迁移文件 `drizzle/0004_calm_peter_parker.sql`
+- [x] 基金 AI 报告/会话/消息仓库支持 PostgreSQL 持久化，失败回退内存
+- [ ] 基金净值、持仓与风险指标接入持久化仓库
+- [ ] 基金资讯 `expire_at` 清理与长期公告保留
+- [ ] 基金 AI 报告与关键快照写入 R2
+- [ ] 数据源健康面板纳入基金数据源状态
+- [ ] 个股工作台 M1–M8 无回归
+- [ ] `corepack pnpm typecheck` 通过
+- [ ] `corepack pnpm lint` 通过
+- [ ] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 配置真实数据库时，生成基金 AI 报告与会话后重启服务仍可回看；未配置数据库时仍可内存运行。
+
+### 完成记录
+
+- 进行中：F5 第一段已落地基金 AI 持久化表与数据库回退仓库。
