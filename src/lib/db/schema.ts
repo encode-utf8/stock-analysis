@@ -14,6 +14,8 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 
+import type { FundHoldingItem } from "@/lib/shared/types";
+
 /** 股票元数据。 */
 export const stocks = pgTable("stocks", {
   code: text("code").primaryKey(),
@@ -229,5 +231,96 @@ export const fundMessages = pgTable(
   },
   (table) => [
     index("fund_messages_conversation_created_idx").on(table.conversationId, table.createdAt),
+  ],
+);
+
+/** 基金档案持久化。 */
+export const fundProfiles = pgTable("fund_profiles", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  tradingMode: text("trading_mode").notNull(),
+  manager: text("manager"),
+  company: text("company"),
+  benchmark: text("benchmark"),
+  establishDate: text("establish_date"),
+  scale: doublePrecision("scale"),
+  riskLevel: text("risk_level"),
+  source: text("source").notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+});
+
+/** 基金历史净值持久化。 */
+export const fundNavs = pgTable(
+  "fund_navs",
+  {
+    code: text("code").notNull(),
+    navDate: timestamp("nav_date", { withTimezone: true }).notNull(),
+    unitNav: doublePrecision("unit_nav").notNull(),
+    cumulativeNav: doublePrecision("cumulative_nav").notNull(),
+    dailyChangePct: doublePrecision("daily_change_pct"),
+    source: text("source").notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.code, table.navDate] }),
+    index("fund_navs_code_date_idx").on(table.code, table.navDate),
+  ],
+);
+
+/** 基金最新季度持仓持久化。 */
+export const fundHoldings = pgTable(
+  "fund_holdings",
+  {
+    code: text("code").notNull(),
+    reportDate: text("report_date").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    topHoldings: jsonb("top_holdings").$type<FundHoldingItem[]>().notNull().default(sql`'[]'::jsonb`),
+    assetAllocation: jsonb("asset_allocation")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    industryAllocation: jsonb("industry_allocation")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    top10WeightPct: doublePrecision("top10_weight_pct"),
+    top1WeightPct: doublePrecision("top1_weight_pct"),
+    source: text("source").notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.code, table.reportDate] }),
+    index("fund_holdings_code_date_idx").on(table.code, table.reportDate),
+  ],
+);
+
+/** 基金风险指标持久化。 */
+export const fundRiskMetrics = pgTable(
+  "fund_risk_metrics",
+  {
+    code: text("code").notNull(),
+    range: text("range").notNull(),
+    startDate: text("start_date").notNull(),
+    endDate: text("end_date").notNull(),
+    maxDrawdownPct: doublePrecision("max_drawdown_pct").notNull(),
+    maxDrawdownStart: text("max_drawdown_start").notNull(),
+    maxDrawdownEnd: text("max_drawdown_end").notNull(),
+    currentDrawdownPct: doublePrecision("current_drawdown_pct").notNull(),
+    maxDrawdownRecoveryStart: text("max_drawdown_recovery_start").notNull(),
+    maxDrawdownRecoveryEnd: text("max_drawdown_recovery_end"),
+    maxDrawdownRecoveryComplete: boolean("max_drawdown_recovery_complete").notNull().default(false),
+    longestRecoveryDays: integer("longest_recovery_days"),
+    averageRecoveryDays: integer("average_recovery_days"),
+    currentRecoveryProgressPct: doublePrecision("current_recovery_progress_pct"),
+    annualizedReturnPct: doublePrecision("annualized_return_pct"),
+    annualizedVolatilityPct: doublePrecision("annualized_volatility_pct"),
+    sharpe: doublePrecision("sharpe"),
+    sortino: doublePrecision("sortino"),
+    calmar: doublePrecision("calmar"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.code, table.range] }),
   ],
 );

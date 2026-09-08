@@ -2,6 +2,7 @@
 
 import { cacheGet, cacheInvalidatePrefix, cacheSet } from "@/lib/cache";
 import { getFundNav, type FundNavRange } from "@/lib/fund-data";
+import { fundDataStore } from "@/lib/fund-data-store";
 import type { FundNavPoint, FundRiskMetrics } from "@/lib/shared/types";
 
 export type FundMetricsRange = FundNavRange;
@@ -246,6 +247,14 @@ export async function getFundMetrics(
     return saved;
   }
 
+  if (!forceRefresh) {
+    const persisted = await fundDataStore.metrics.getByRange(code, range);
+    if (persisted) {
+      fundMetricsStore.set(cacheKey, persisted);
+      return persisted;
+    }
+  }
+
   const nav = await getFundNav(code, range, "cumulative", forceRefresh);
   const metrics = calculateFundRiskMetrics(code, range, nav);
   if (!metrics) {
@@ -254,6 +263,7 @@ export async function getFundMetrics(
 
   const isFallback = nav[0]?.source === "deterministic-fallback";
   fundMetricsStore.set(cacheKey, metrics);
+  await fundDataStore.metrics.upsert(metrics);
   if (!isFallback) {
     cacheSet(cacheKey, metrics, METRICS_TTL_MS);
   }

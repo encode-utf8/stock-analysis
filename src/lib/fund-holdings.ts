@@ -2,6 +2,7 @@
 
 import { cacheGet, cacheInvalidatePrefix, cacheSet } from "@/lib/cache";
 import { buildDeterministicFundHoldings } from "@/lib/fund-deterministic";
+import { fundDataStore } from "@/lib/fund-data-store";
 import { recordExternalCall } from "@/lib/observability";
 import type { FundHoldings } from "@/lib/shared/types";
 
@@ -92,6 +93,16 @@ export async function getFundHoldings(
       ) {
         return saved;
       }
+
+      const persisted = await fundDataStore.holdings.getLatest(code);
+      if (
+        persisted &&
+        persisted.source !== "deterministic-fallback" &&
+        isFresh(persisted.fetched_at, HOLDINGS_TTL_MS)
+      ) {
+        fundHoldingsStore.set(code, persisted);
+        return persisted;
+      }
     }
 
     try {
@@ -104,11 +115,13 @@ export async function getFundHoldings(
           ? sidecar
           : buildDeterministicFundHoldings(code);
       fundHoldingsStore.set(code, holdings);
+      await fundDataStore.holdings.upsert(holdings);
       return holdings;
     } catch {
       recordExternalCall(false);
       const holdings = buildDeterministicFundHoldings(code);
       fundHoldingsStore.set(code, holdings);
+      await fundDataStore.holdings.upsert(holdings);
       return holdings;
     }
   };

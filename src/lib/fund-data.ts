@@ -5,6 +5,7 @@ import {
   buildDeterministicFundNav,
   buildDeterministicFundProfile,
 } from "@/lib/fund-deterministic";
+import { fundDataStore } from "@/lib/fund-data-store";
 import { recordExternalCall } from "@/lib/observability";
 import type { FundNavPoint, FundProfile } from "@/lib/shared/types";
 
@@ -173,11 +174,22 @@ export async function getFundProfile(
       ) {
         return saved;
       }
+
+      const persisted = await fundDataStore.profiles.getByCode(code);
+      if (
+        persisted &&
+        persisted.source !== "deterministic-fallback" &&
+        isFresh(persisted.fetched_at, PROFILE_TTL_MS)
+      ) {
+        fundProfileStore.set(storeKey, persisted);
+        return persisted;
+      }
     }
 
     const sidecarProfile = await fetchFundProfileFromSidecar(code);
     const profile = sidecarProfile ?? buildDeterministicFundProfile(code);
     fundProfileStore.set(storeKey, profile);
+    await fundDataStore.profiles.upsert(profile);
     return profile;
   };
 
@@ -221,11 +233,26 @@ export async function getFundNav(
       ) {
         return saved;
       }
+
+      const persistedNav = await fundDataStore.navs.list(code);
+      const persisted = persistedNav.filter(
+        (item) =>
+          item.nav_date >= startDate &&
+          item.nav_date <= endDate &&
+          item.source !== "deterministic-fallback" &&
+          typeof item.fetched_at === "string" &&
+          isFresh(item.fetched_at, NAV_TTL_MS),
+      );
+      if (persisted.length > 0) {
+        fundNavStore.set(cacheKey, persisted);
+        return persisted;
+      }
     }
 
     const sidecarNav = await fetchFundNavFromSidecar(code, startDate, endDate);
     const nav = sidecarNav ?? buildDeterministicFundNav(code, startDate, endDate);
     fundNavStore.set(cacheKey, nav);
+    await fundDataStore.navs.insertMany(nav);
     return nav;
   };
 

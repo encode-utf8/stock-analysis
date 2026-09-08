@@ -647,7 +647,7 @@ corepack pnpm build
 - [x] 新增 `fund_analysis_reports`、`fund_conversations`、`fund_messages` Drizzle 表
 - [x] 生成对应 Drizzle 迁移文件 `drizzle/0004_calm_peter_parker.sql`
 - [x] 基金 AI 报告/会话/消息仓库支持 PostgreSQL 持久化，失败回退内存
-- [ ] 基金净值、持仓与风险指标接入持久化仓库
+- [x] 基金净值、持仓与风险指标接入持久化仓库
 - [ ] 基金资讯 `expire_at` 清理与长期公告保留
 - [x] 基金 AI 报告与关键快照写入 R2
 - [x] 数据源健康面板纳入基金数据源状态
@@ -663,4 +663,4 @@ corepack pnpm build
 
 ### 完成记录
 
-- 进行中：已落地基金 AI 持久化表、数据库回退仓库、R2 报告快照与基金数据源健康探测。
+- 进行中：已落地基金 AI 持久化表、基金基础数据持久化表、数据库回退仓库、R2 报告快照与基金数据源健康探测。
