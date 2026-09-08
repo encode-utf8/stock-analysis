@@ -215,3 +215,31 @@ export interface FundComparisonSnapshot {
   generated_at: string;
   items: FundComparisonItem[];
 }
+
+/** 基金组合单项：展示权重与单基金同区间指标。 */
+export interface FundPortfolioItem {
+  code: string;
+  name: string;
+  weight_pct: number;
+  period_return_pct: number | null;
+  annualized_return_pct: number | null;
+  annualized_volatility_pct: number | null;
+  max_drawdown_pct: number | null;
+  sharpe: number | null;
+  calmar: number | null;
+}
+
+/** 基金组合分析摘要。 */
+export interface FundPortfolioSummary {
+  range: string;
+  generated_at: string;
+  total_return_pct: number | null;
+  annualized_return_pct: number | null;
+  annualized_volatility_pct: number | null;
+  max_drawdown_pct: number | null;
+  current_drawdown_pct: number | null;
+  sharpe: number | null;
+  sortino: number | null;
+  calmar: number | null;
+  items: FundPortfolioItem[];
+}

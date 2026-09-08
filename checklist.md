@@ -782,3 +782,32 @@ corepack pnpm build
 
 - 完成日期：2026-09-08
 - 结果：F9 全部验收通过；`/api/fund-comparison` 已返回 `510300` 与 `110022` 的对比数据，对比面板已接入基金工作台；`typecheck`、`lint`、`build` 均通过。
+
+
+## F10 基金组合分析（2026-09-09）
+
+- 关联文档：`docs/fund-workbench-spec.md` 未来扩展、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-portfolio`
+- 目标：支持输入 2–5 个基金代码与权重，按共同交易日合成组合净值，展示组合与单基金风险指标。
+
+### 验收项
+
+- [x] 新增 `FundPortfolioItem` 与 `FundPortfolioSummary` 共享类型
+- [x] 新增 `fund-portfolio.ts` 数据编排，支持代码/区间/权重归一化与组合净值合成
+- [x] 新增 `/api/fund-portfolio?codes=510300,110022&weights=60,40&range=1y`
+- [x] 完成基金组合分析面板，支持权重输入、区间切换与汇总/明细表展示
+- [x] 上涨/有利指标标红，下跌/不利指标标绿，波动等无法严格定性的指标保持黑色
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/fund-portfolio?codes=510300,110022&weights=60,40&range=1y`，确认返回组合汇总与单基金指标。
+- 在基金工作台切换区间后，确认组合汇总表与单基金明细同步更新。
+
+### 完成记录
+
+- 完成日期：2026-09-09
+- 结果：F10 全部验收通过；`/api/fund-portfolio` 已返回组合与单基金指标，组合分析面板已接入基金工作台；`typecheck`、`lint`、`build` 均通过。
