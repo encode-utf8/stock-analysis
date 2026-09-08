@@ -25,6 +25,13 @@ function signed(value: number | null, digits = 2): string {
   return `${value > 0 ? "+" : ""}${value.toFixed(digits)}`;
 }
 
+function trendClass(value: number | null): string {
+  if (value === null || value === 0) {
+    return "";
+  }
+  return value > 0 ? "text-red-600" : "text-green-700";
+}
+
 function formatAmount(value: number | null): string {
   if (value === null) {
     return "暂无";
@@ -93,7 +100,7 @@ export function FundIntradayPanel({ intraday, loading }: FundIntradayPanelProps)
         </div>
         <div className="rounded-lg border bg-muted/20 p-3">
           <div className="text-xs text-muted-foreground">涨跌幅</div>
-          <div className="mt-1 text-2xl font-semibold">
+          <div className={`mt-1 text-2xl font-semibold ${trendClass(intraday.change_pct)}`}>
             {intraday.change_pct === null
               ? "暂无"
               : `${signed(intraday.change_pct)}%`}
@@ -117,7 +124,7 @@ export function FundIntradayPanel({ intraday, loading }: FundIntradayPanelProps)
           <div className="text-xs text-muted-foreground">
             {isEstimate ? "官方净值日期" : "溢价率"}
           </div>
-          <div className="mt-1 text-2xl font-semibold">
+          <div className={`mt-1 text-2xl font-semibold ${trendClass(intraday.premium_rate)}`}>
             {isEstimate
               ? intraday.official_nav_date ?? "暂无"
               : intraday.premium_rate === null

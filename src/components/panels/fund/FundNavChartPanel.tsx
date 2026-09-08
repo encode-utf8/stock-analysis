@@ -112,6 +112,57 @@ function findRecoveryRegion(
   };
 }
 
+function formatRecoveryDuration(startDate: string, endDate: string): string {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    return "";
+  }
+
+  let years = end.getUTCFullYear() - start.getUTCFullYear();
+  let months = end.getUTCMonth() - start.getUTCMonth();
+  let days = end.getUTCDate() - start.getUTCDate();
+
+  if (days < 0) {
+    const previousMonthDays = new Date(
+      Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 0),
+    ).getUTCDate();
+    days += previousMonthDays;
+    months -= 1;
+  }
+  if (months < 0) {
+    months += 12;
+    years -= 1;
+  }
+
+  const parts: string[] = [];
+  if (years > 0) {
+    parts.push(`${years}年`);
+  }
+  if (months > 0) {
+    parts.push(`${months}个月`);
+  }
+  if (days > 0) {
+    parts.push(`${days}天`);
+  }
+  return parts.length > 0 ? parts.join("") : "不足1天";
+}
+
+function recoveryText(metrics: FundRiskMetrics): string {
+  if (!metrics.max_drawdown_recovery_complete) {
+    return "正在修复中";
+  }
+  const endDate = metrics.max_drawdown_recovery_end ?? metrics.end_date;
+  return `修复完成，耗时 ${formatRecoveryDuration(metrics.max_drawdown_recovery_start, endDate)}`;
+}
+
+function trendClass(value: number | null): string {
+  if (value === null || value === 0) {
+    return "";
+  }
+  return value > 0 ? "text-red-600" : "text-green-700";
+}
+
 function NavLineChart({
   nav,
   range,
@@ -153,6 +204,8 @@ function NavLineChart({
   const areaPath = `${linePath} L ${x(nav.length - 1)} ${height - paddingBottom} L ${x(0)} ${height - paddingBottom} Z`;
   const drawdown = findDrawdownRegion(nav, navType, riskMetrics ?? null, range);
   const recovery = findRecoveryRegion(nav, navType, riskMetrics ?? null, range);
+  const chartMetrics =
+    riskMetrics && riskMetrics.range === range ? riskMetrics : null;
   const ticks = Array.from({ length: 5 }, (_, index) => {
     const ratio = index / 4;
     return {
@@ -180,8 +233,8 @@ function NavLineChart({
               0,
               y(drawdown.lowValue) - y(drawdown.highValue),
             )}
-            fill="#ef4444"
-            fillOpacity="0.06"
+            fill="#10b981"
+            fillOpacity="0.08"
           />
         ) : null}
         {recovery && recovery.endIndex > recovery.startIndex ? (
@@ -193,8 +246,8 @@ function NavLineChart({
               0,
               y(recovery.lowValue) - y(recovery.highValue),
             )}
-            fill="#10b981"
-            fillOpacity="0.07"
+            fill="#ef4444"
+            fillOpacity="0.08"
           />
         ) : null}
         {ticks.map((tick) => (
@@ -263,14 +316,38 @@ function NavLineChart({
       </svg>
       <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1">
-          <span className="inline-block h-2 w-4 rounded-sm bg-red-400/70" />
+          <span className="inline-block h-2 w-4 rounded-sm bg-emerald-400/70" />
           最大回撤区间
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="inline-block h-2 w-4 rounded-sm bg-emerald-400/70" />
+          <span className="inline-block h-2 w-4 rounded-sm bg-red-400/70" />
           最大回撤修复区间
         </span>
       </div>
+      {chartMetrics ? (
+        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+          <span className="text-muted-foreground">
+            最大回撤：{chartMetrics.max_drawdown_start} 至 {chartMetrics.max_drawdown_end}
+          </span>
+          <span className="font-semibold text-green-700">
+            -{chartMetrics.max_drawdown_pct.toFixed(2)}%
+          </span>
+          <span className="text-muted-foreground">当前回撤</span>
+          <span className="font-semibold text-green-700">
+            -{chartMetrics.current_drawdown_pct.toFixed(2)}%
+          </span>
+          <span className="text-muted-foreground">修复状态</span>
+          <span
+            className={
+              chartMetrics.max_drawdown_recovery_complete
+                ? "font-semibold text-red-600"
+                : "font-semibold text-foreground"
+            }
+          >
+            {recoveryText(chartMetrics)}
+          </span>
+        </div>
+      ) : null}
       {hovered ? (
         <div className="pointer-events-none absolute left-[70px] top-[26px] rounded-md border bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm">
           <div>{hovered.nav_date}</div>
@@ -280,9 +357,11 @@ function NavLineChart({
           </div>
           <div>
             日涨跌：
-            {hovered.daily_change_pct === null
-              ? "暂无"
-              : `${hovered.daily_change_pct > 0 ? "+" : ""}${hovered.daily_change_pct.toFixed(2)}%`}
+            <span className={trendClass(hovered.daily_change_pct)}>
+              {hovered.daily_change_pct === null
+                ? "暂无"
+                : `${hovered.daily_change_pct > 0 ? "+" : ""}${hovered.daily_change_pct.toFixed(2)}%`}
+            </span>
           </div>
         </div>
       ) : null}
@@ -357,7 +436,7 @@ export function FundNavChartPanel({
           </div>
           <div className="rounded-lg border bg-muted/20 p-3">
             <div className="text-xs text-muted-foreground">最新日涨跌</div>
-            <div className="mt-1 text-xl font-semibold">
+            <div className={`mt-1 text-xl font-semibold ${trendClass(latest.daily_change_pct)}`}>
               {latest.daily_change_pct === null
                 ? "暂无"
                 : `${latest.daily_change_pct > 0 ? "+" : ""}${latest.daily_change_pct.toFixed(2)}%`}
@@ -365,7 +444,7 @@ export function FundNavChartPanel({
           </div>
           <div className="rounded-lg border bg-muted/20 p-3">
             <div className="text-xs text-muted-foreground">区间涨跌</div>
-            <div className="mt-1 text-xl font-semibold">
+            <div className={`mt-1 text-xl font-semibold ${trendClass(intervalReturn)}`}>
               {intervalReturn === null
                 ? "暂无"
                 : `${intervalReturn > 0 ? "+" : ""}${intervalReturn.toFixed(2)}%`}
