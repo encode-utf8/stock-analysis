@@ -695,3 +695,32 @@ corepack pnpm build
 
 - 完成日期：2026-09-08
 - 结果：F6 全部验收通过；`/api/fund-watchlist` 支持自选基金增删改查与排序，面板已接入基金工作台；数据库不可用时回退 `.data/fund-watchlist.json`；`typecheck`、`lint`、`build` 均通过。
+
+
+## F7 基金历史复盘（2026-09-08）
+
+- 关联文档：`docs/fund-workbench-spec.md` FR-F12、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-replay`
+- 目标：展示某基金的历史 AI 分析与对话时间线，便于复盘；统计口径仅用于学习，不提供收益承诺。
+
+### 验收项
+
+- [x] 新增 `FundReplaySummary` 基金复盘共享类型
+- [x] 新增 `fund-replay.ts`，从基金 AI 报告与会话仓库汇总时间窗口
+- [x] 新增 `/api/fund-replay/stats` 与 `/api/fund-replay/timeline`
+- [x] 完成基金历史复盘面板，展示分析次数、对话次数与时间线详情
+- [x] 支持删除基金 AI 报告或基金会话记录
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 在基金工作台对 `510300` 生成 AI 分析与会话后，确认复盘面板显示对应统计与时间线。
+- 调用 `/api/fund-replay/stats?code=510300&days=30` 与 `/api/fund-replay/timeline?code=510300&days=30` 返回正常。
+
+### 完成记录
+
+- 完成日期：2026-09-08
+- 结果：F7 全部验收通过；基金复盘面板已接入工作台，时间窗口支持 7/30/90 天，分析报告与基金会话时间线可回看、可删除；统计口径仅用于学习；`typecheck`、`lint`、`build` 均通过。

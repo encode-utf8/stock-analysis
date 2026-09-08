@@ -9,6 +9,7 @@ import { FundHoldingsPanel } from "@/components/panels/fund/FundHoldingsPanel";
 import { FundIntradayPanel } from "@/components/panels/fund/FundIntradayPanel";
 import { FundNavChartPanel } from "@/components/panels/fund/FundNavChartPanel";
 import { FundProfilePanel } from "@/components/panels/fund/FundProfilePanel";
+import { FundReplayPanel } from "@/components/panels/fund/FundReplayPanel";
 import { FundRiskPanel } from "@/components/panels/fund/FundRiskPanel";
 import { FundWatchlistPanel } from "@/components/panels/fund/FundWatchlistPanel";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
@@ -608,6 +609,8 @@ export default function FundWorkbench() {
         onSelect={handleWatchlistSelect}
         onClearActive={handleWatchlistClearActive}
       />
+
+      {code ? <FundReplayPanel key={code} code={code} /> : null}
 
       {profile ? <FundProfilePanel profile={profile} loading={loading} /> : null}
 

@@ -177,3 +177,13 @@ export interface FundWatchlistItem {
   sort_order: number;
   note: string | null;
 }
+
+/** 基金历史复盘统计摘要。 */
+export interface FundReplaySummary {
+  code: string;
+  period_start: string;
+  period_end: string;
+  total_analysis: number;
+  total_chats: number;
+  generated_at: string;
+}

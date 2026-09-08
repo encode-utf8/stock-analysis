@@ -195,4 +195,4 @@ git worktree add ../stock-analysis-fund-integration -b feature/fund-integration
 ## 7. 下一步
 
 - F0–F5 已验收，当前基金工作台已具备档案、净值、实时/估算、持仓、回撤/风险指标、AI 分析与持久化能力。
-- 下一步继续推进 P1 能力：自选基金、基金历史复盘与基金数据源/调度面板。
+- 下一步继续推进 P1 能力：基金数据源/调度面板；自选基金与基金历史复盘已分别完成。
