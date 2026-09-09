@@ -54,6 +54,7 @@ export interface ChatStreamEvent {
     sources?: Array<{ title: string; url: string }>;
     riskNote?: string;
     toolCalls?: ChatStreamToolCall[];
+    aiInvoked?: boolean;
   };
 }
 

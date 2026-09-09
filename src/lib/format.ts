@@ -37,3 +37,39 @@ export function sourceLabel(source: string): string {
   }
   return source;
 }
+const GARBLED_TEXT_PATTERNS = [
+  /ï¿½|Ã|Â|â€|å|ç|æ|ä¸­å›½|è‚¡ç¥¨|æ²ª|æ·±/i,
+  /[À-ÿ]{4,}/,
+  /[�]{1,}/,
+  /(?:[?？]\s*){3,}/,
+];
+
+/** 判断文本是否呈现 UTF-8 被误按 Latin-1/GBK 解码后的典型乱码。 */
+export function looksGarbledText(value: string): boolean {
+  if (!value) {
+    return false;
+  }
+  return GARBLED_TEXT_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+/** 对话消息乱码时统一隐藏，避免把损坏内容展示给用户。 */
+export function sanitizeChatText(value: string): string {
+  return looksGarbledText(value) ? "本条消息内容存在乱码，已隐藏。" : value;
+}
+
+/** 判断会话标题是否为开发测试数据或乱码。 */
+export function isUnusableConversationTitle(value: string): boolean {
+  if (!value) {
+    return false;
+  }
+  const title = value.trim();
+  return (
+    looksGarbledText(title) ||
+    /^(test|测试|调试|演示|demo|示例)(\s|$)/i.test(title)
+  );
+}
+
+/** 将会话标题统一为可展示文本。 */
+export function presentableConversationTitle(value: string): string {
+  return isUnusableConversationTitle(value) ? "历史会话" : value;
+}

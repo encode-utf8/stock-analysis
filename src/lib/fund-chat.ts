@@ -253,6 +253,7 @@ export async function* streamFundChat(
   yield { type: "meta", data: { conversationId: conversation.id, messageId: userMessage.id } };
 
   let content = "";
+  let aiInvoked = false;
   if (deepSeekEnabled()) {
     try {
       const messages = buildUserMessage(context, buildHistoryMessages(history), request.message);
@@ -260,12 +261,15 @@ export async function* streamFundChat(
         content += chunk;
         yield { type: "delta", content: chunk };
       }
+      aiInvoked = content.trim().length > 0;
     } catch {
       content = "";
+      aiInvoked = false;
     }
   }
 
   if (!content.trim()) {
+    aiInvoked = false;
     content = buildFallbackReply(request, context);
     yield { type: "delta", content };
   }
@@ -287,6 +291,7 @@ export async function* streamFundChat(
       messageId: assistantMessage.id,
       sources: [],
       riskNote: RISK_NOTE,
+      aiInvoked,
     },
   };
 }

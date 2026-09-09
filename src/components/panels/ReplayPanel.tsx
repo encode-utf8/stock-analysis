@@ -7,7 +7,11 @@ import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { formatDateTime } from "@/lib/format";
+import {
+  formatDateTime,
+  presentableConversationTitle,
+  sanitizeChatText,
+} from "@/lib/format";
 import type { ReplaySummary } from "@/lib/shared/types";
 import type { ReplayTimeline, ReplayTimelineEvent } from "@/lib/replay";
 
@@ -54,7 +58,7 @@ function formatHitRate(value: number): string {
 
 /** 将 Markdown 或消息内容转为适合摘要卡片的纯文本。 */
 function toPreviewText(content: string): string {
-  return content
+  return sanitizeChatText(content)
     .replace(/[#>*_`\[\]()~-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -91,7 +95,7 @@ function TimelineEventCard({
   const metaText =
     event.type === "analysis"
       ? `引用 ${event.report.news_refs.length} 条资讯`
-      : event.conversation.title;
+      : presentableConversationTitle(event.conversation.title);
 
   return (
     <>
@@ -173,7 +177,7 @@ function TimelineEventCard({
                           {roleLabel[message.role] ?? message.role}
                         </span>
                         <pre className="whitespace-pre-wrap break-words font-sans leading-6">
-                          {message.content || "无内容"}
+                          {sanitizeChatText(message.content) || "无内容"}
                         </pre>
                       </div>
                     ))

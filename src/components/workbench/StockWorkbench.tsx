@@ -6,6 +6,10 @@ import type { FormEvent } from "react";
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
 import { ChartPanel } from "@/components/panels/ChartPanel";
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
+import {
+  isUnusableConversationTitle,
+  sanitizeChatText,
+} from "@/lib/format";
 import { DataSourcePanel } from "@/components/panels/DataSourcePanel";
 import { DisclaimerFooter } from "@/components/panels/DisclaimerFooter";
 import {
@@ -155,7 +159,9 @@ export default function StockWorkbench() {
         `/api/conversations?code=${encodeURIComponent(nextCode)}`,
       );
       if (activeCodeRef.current === nextCode) {
-        setConversations(data);
+        setConversations(
+          data.filter((conversation) => !isUnusableConversationTitle(conversation.title)),
+        );
       }
     } catch {
       if (activeCodeRef.current === nextCode) {
@@ -334,6 +340,7 @@ export default function StockWorkbench() {
     analysisDraftIdRef.current = draftId;
     analysisRealReportIdRef.current = null;
     setAnalysisLoading(true);
+    let completed = false;
     setError(null);
     const draftReport: AnalysisReport = {
       id: draftId,
@@ -380,6 +387,7 @@ export default function StockWorkbench() {
             ),
           );
         } else if (event.type === "done" && event.data?.report) {
+          completed = true;
           setReports((previous) =>
             previous.map((item) => (item.id === draftId ? event.data?.report ?? item : item)),
           );
@@ -402,6 +410,9 @@ export default function StockWorkbench() {
       }
       if (buffer.trim()) {
         handleEvent(buffer);
+      }
+      if (!completed) {
+        throw new Error("分析生成中断，未收到完整报告。");
       }
 
       await loadObservability();
@@ -576,6 +587,7 @@ export default function StockWorkbench() {
                     ...message,
                     sources: event.data?.sources,
                     riskNote: event.data?.riskNote,
+                    aiInvoked: event.data?.aiInvoked,
                   }
                 : message,
             ),
@@ -629,7 +641,7 @@ export default function StockWorkbench() {
         timeline.messages.map((message) => ({
           id: message.id,
           role: message.role === "user" ? "user" : "assistant",
-          content: message.content,
+          content: sanitizeChatText(message.content),
         })),
       );
     } catch (nextError) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, presentableConversationTitle } from "@/lib/format";
 import type { Conversation } from "@/lib/shared/types";
 
 interface TimelinePanelProps {
@@ -32,10 +32,10 @@ export function TimelinePanel({
               type="button"
               variant={conversation.id === conversationId ? "default" : "outline"}
               size="sm"
-              title={`${conversation.code} · ${conversation.title}`}
+              title={`${conversation.code} · ${presentableConversationTitle(conversation.title)}`}
               onClick={() => onSelectConversation(conversation.id)}
             >
-              {conversation.code} · {conversation.title} · {formatDateTime(conversation.created_at)}
+              {conversation.code} · {presentableConversationTitle(conversation.title)} · {formatDateTime(conversation.created_at)}
             </Button>
           ))
         )}

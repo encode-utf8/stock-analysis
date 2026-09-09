@@ -4,6 +4,10 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
+import {
+  isUnusableConversationTitle,
+  sanitizeChatText,
+} from "@/lib/format";
 import { FundAnalysisPanel } from "@/components/panels/fund/FundAnalysisPanel";
 import { FundComparisonPanel } from "@/components/panels/fund/FundComparisonPanel";
 import { FundDcaPanel } from "@/components/panels/fund/FundDcaPanel";
@@ -267,7 +271,10 @@ export default function FundWorkbench() {
       const conversations = await apiFetch<FundConversation[]>(
         `/api/fund-conversations?code=${encodeURIComponent(nextCode)}`,
       );
-      const latest = conversations[0];
+      const presentableConversations = conversations.filter(
+        (conversation) => !isUnusableConversationTitle(conversation.title),
+      );
+      const latest = presentableConversations[0];
       if (!latest) {
         setFundConversationId(undefined);
         setFundMessages([]);
@@ -289,7 +296,7 @@ export default function FundWorkbench() {
           .map((message) => ({
             id: message.id,
             role: message.role as "user" | "assistant",
-            content: message.content,
+            content: sanitizeChatText(message.content),
           })),
       );
     } catch {
@@ -403,6 +410,7 @@ export default function FundWorkbench() {
     fundAnalysisAbortRef.current = controller;
     setFundAnalysisLoading(true);
     setError(null);
+    let completed = false;
     const draftReport: FundAnalysisReport = {
       id: draftId,
       code,
@@ -451,6 +459,7 @@ export default function FundWorkbench() {
             ),
           );
         } else if (event.type === "done" && event.data?.report) {
+          completed = true;
           lastCompletedFundReportRef.current = event.data.report;
           setFundReports((previous) =>
             previous.map((item) => (item.id === draftId ? event.data?.report ?? item : item)),
@@ -474,6 +483,9 @@ export default function FundWorkbench() {
       }
       if (buffer.trim()) {
         handleEvent(buffer);
+      }
+      if (!completed) {
+        throw new Error("基金分析生成中断，未收到完整报告。");
       }
       const refreshedReports = await loadFundReports(code);
       const completedReport = lastCompletedFundReportRef.current;
@@ -558,7 +570,12 @@ export default function FundWorkbench() {
           setFundMessages((previous) =>
             previous.map((message) =>
               message.id === assistantId
-                ? { ...message, sources: event.data?.sources, riskNote: event.data?.riskNote }
+                ? {
+                    ...message,
+                    sources: event.data?.sources,
+                    riskNote: event.data?.riskNote,
+                    aiInvoked: event.data?.aiInvoked,
+                  }
                 : message,
             ),
           );
