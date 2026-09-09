@@ -179,50 +179,19 @@ export function FundStylePanel() {
               value={snapshot.risk_return.current_drawdown_pct === null ? "—" : `-${formatNumber(snapshot.risk_return.current_drawdown_pct)}%`}
               tone={drawdownTone(snapshot.risk_return.current_drawdown_pct)}
             />
-            <MetricCard label="持仓数量" value={`${snapshot.concentration.holding_count} 只`} tone="text-slate-900" />
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-lg border bg-slate-50 p-4">
-              <h3 className="text-sm font-semibold">持仓集中度</h3>
-              <div className="mt-3 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">前十大持仓</span>
-                  <span className="font-medium">{formatPercent(snapshot.concentration.top10_weight_pct)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">第一大持仓</span>
-                  <span className="font-medium">{formatPercent(snapshot.concentration.top1_weight_pct)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">已识别行业数</span>
-                  <span className="font-medium">{snapshot.concentration.industry_count}</span>
-                </div>
+          <div className="rounded-lg border bg-slate-50 p-4">
+            <h3 className="text-sm font-semibold">持仓集中度</h3>
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">前十大持仓</span>
+                <span className="font-medium">{formatPercent(snapshot.concentration.top10_weight_pct)}</span>
               </div>
-            </div>
-
-            <div className="rounded-lg border bg-slate-50 p-4">
-              <h3 className="text-sm font-semibold">行业配置</h3>
-              {snapshot.industry_allocation.length === 0 ? (
-                <p className="mt-3 text-sm text-muted-foreground">暂无行业配置数据。</p>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  {snapshot.industry_allocation.map((item) => (
-                    <div key={item.name}>
-                      <div className="flex justify-between text-xs">
-                        <span>{item.name}</span>
-                        <span className="text-muted-foreground">{item.weight_pct.toFixed(2)}%</span>
-                      </div>
-                      <div className="mt-1 h-2 rounded bg-slate-200">
-                        <div
-                          className="h-2 rounded bg-primary/70"
-                          style={{ width: `${Math.min(100, item.weight_pct)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">第一大持仓</span>
+                <span className="font-medium">{formatPercent(snapshot.concentration.top1_weight_pct)}</span>
+              </div>
             </div>
           </div>
 

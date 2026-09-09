@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
@@ -12,6 +12,7 @@ import {
   ALL_MODULE_VISIBILITY,
   DEFAULT_MODULE_VISIBILITY,
   FunctionOptionsSidebar,
+  MODULE_OPTIONS,
   type ModuleKey,
 } from "@/components/panels/FunctionOptionsSidebar";
 import { IndicatorsPanel } from "@/components/panels/IndicatorsPanel";
@@ -79,6 +80,9 @@ export default function StockWorkbench() {
   const [enabledModules, setEnabledModules] = useState<Record<ModuleKey, boolean>>(
     DEFAULT_MODULE_VISIBILITY,
   );
+  const [moduleOrder, setModuleOrder] = useState<ModuleKey[]>(
+    MODULE_OPTIONS.map((option) => option.key),
+  );
   const [code, setCode] = useState<string | null>(null);
   const [stock, setStock] = useState<Stock | null>(null);
   const [quote, setQuote] = useState<MarketQuote | null>(null);
@@ -120,6 +124,20 @@ export default function StockWorkbench() {
 
   const clearAllModules = () => {
     setEnabledModules(DEFAULT_MODULE_VISIBILITY);
+  };
+
+  const reorderModule = (fromKey: ModuleKey, toKey: ModuleKey) => {
+    setModuleOrder((previous) => {
+      const fromIndex = previous.indexOf(fromKey);
+      const toIndex = previous.indexOf(toKey);
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+        return previous;
+      }
+      const next = [...previous];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
   };
 
   const loadObservability = useCallback(async () => {
@@ -619,6 +637,93 @@ export default function StockWorkbench() {
     }
   };
 
+  const renderStockModule = (key: ModuleKey) => {
+    if (key === "quote") {
+      return enabledModules.quote && stock && quote ? <QuotePanel stock={stock} quote={quote} /> : null;
+    }
+    if (key === "chart") {
+      return enabledModules.chart && stock && quote ? (
+        <ChartPanel
+          stock={stock}
+          quote={quote}
+          klines={klines}
+          period={period}
+          adjust={adjust}
+          loading={chartLoading}
+          onPeriodChange={(value) => setPeriod(value)}
+          onAdjustChange={(value) => setAdjust(value)}
+        />
+      ) : null;
+    }
+    if (key === "indicators") {
+      return enabledModules.indicators ? <IndicatorsPanel indicators={indicators} klines={klines} /> : null;
+    }
+    if (key === "news") {
+      return enabledModules.news && stock && quote ? (
+        <NewsPanel
+          news={news}
+          loading={newsLoading}
+          analysisLoading={analysisLoading}
+          newsRangeDays={newsRangeDays}
+          onRangeChange={setNewsRangeDays}
+          onSearch={() => void handleNewsSearch()}
+          onGenerateAnalysis={() => void handleAnalysis()}
+          onStopAnalysis={stopAnalysis}
+        />
+      ) : null;
+    }
+    if (key === "analysis") {
+      return enabledModules.analysis && stock && quote ? (
+        <AnalysisPanel reports={reports} loading={reportsLoading} onDelete={handleDeleteReport} />
+      ) : null;
+    }
+    if (key === "chat") {
+      return enabledModules.chat && code ? (
+        <ChatPanel
+          code={code}
+          conversationId={conversationId}
+          messages={messages}
+          input={chatInput}
+          loading={chatLoading}
+          onInputChange={(value) => setChatInput(value)}
+          onSubmit={handleChatSubmit}
+          onStop={stopChat}
+        />
+      ) : null;
+    }
+    if (key === "timeline") {
+      return enabledModules.timeline && code ? (
+        <TimelinePanel
+          conversations={conversations}
+          conversationId={conversationId}
+          onSelectConversation={(id) => void loadConversationTimeline(id)}
+        />
+      ) : null;
+    }
+    if (key === "observability") {
+      return enabledModules.observability ? (
+        <ObservabilityPanel
+          observability={observability}
+          onRefresh={() => void loadObservability()}
+        />
+      ) : null;
+    }
+    if (key === "replay") {
+      return enabledModules.replay ? (
+        <ReplayPanel
+          key={code ?? "none"}
+          code={code}
+          refreshToken={replayRefreshToken}
+          deletedReportId={lastDeletedReportId}
+        />
+      ) : null;
+    }
+    if (key === "datasource") {
+      return enabledModules.datasource ? <DataSourcePanel /> : null;
+    }
+    return null;
+  };
+
   return (
     <div>
       <div className="mx-auto flex min-h-screen max-w-[1440px]">
@@ -637,11 +742,13 @@ export default function StockWorkbench() {
                 code={code}
                 activeCode={code}
                 enabledModules={enabledModules}
+                moduleOrder={moduleOrder}
                 onInputChange={(value) => setInput(value)}
                 onSearch={handleSearch}
                 onRefresh={() => void handleRefresh()}
                 onCleanup={() => void handleCleanup()}
                 onToggleModule={toggleModule}
+                onReorderModule={reorderModule}
                 onWatchlistSelect={handleWatchlistSelect}
                 onWatchlistClearActive={handleWatchlistClear}
                 onSelectAll={selectAllModules}
@@ -690,72 +797,9 @@ export default function StockWorkbench() {
 
             {Object.values(enabledModules).some(Boolean) ? (
               <div className="flex flex-col gap-6">
-                {stock && quote && enabledModules.quote ? (
-                  <QuotePanel stock={stock} quote={quote} />
-                ) : null}
-                {stock && quote && enabledModules.chart ? (
-                  <ChartPanel
-                    stock={stock}
-                    quote={quote}
-                    klines={klines}
-                    period={period}
-                    adjust={adjust}
-                    loading={chartLoading}
-                    onPeriodChange={(value) => setPeriod(value)}
-                    onAdjustChange={(value) => setAdjust(value)}
-                  />
-                ) : null}
-                {enabledModules.indicators ? (
-                  <IndicatorsPanel indicators={indicators} klines={klines} />
-                ) : null}
-                {stock && quote && enabledModules.news ? (
-                  <NewsPanel
-                    news={news}
-                    loading={newsLoading}
-                    analysisLoading={analysisLoading}
-                    newsRangeDays={newsRangeDays}
-                    onRangeChange={setNewsRangeDays}
-                    onSearch={() => void handleNewsSearch()}
-                    onGenerateAnalysis={() => void handleAnalysis()}
-                    onStopAnalysis={stopAnalysis}
-                  />
-                ) : null}
-                {stock && quote && enabledModules.analysis ? (
-                  <AnalysisPanel
-                    reports={reports}
-                    loading={reportsLoading}
-                    onDelete={handleDeleteReport}
-                  />
-                ) : null}
-                {code && enabledModules.chat ? (
-                  <ChatPanel
-                    code={code}
-                    conversationId={conversationId}
-                    messages={messages}
-                    input={chatInput}
-                    loading={chatLoading}
-                    onInputChange={(value) => setChatInput(value)}
-                    onSubmit={handleChatSubmit}
-                    onStop={stopChat}
-                  />
-                ) : null}
-                {code && enabledModules.timeline ? (
-                  <TimelinePanel
-                    conversations={conversations}
-                    conversationId={conversationId}
-                    onSelectConversation={(id) => void loadConversationTimeline(id)}
-                  />
-                ) : null}
-                {enabledModules.observability ? (
-                  <ObservabilityPanel
-                    observability={observability}
-                    onRefresh={() => void loadObservability()}
-                  />
-                ) : null}
-                {enabledModules.replay ? (
-                  <ReplayPanel key={code ?? "none"} code={code} refreshToken={replayRefreshToken} deletedReportId={lastDeletedReportId} />
-                ) : null}
-                {enabledModules.datasource ? <DataSourcePanel /> : null}
+                {moduleOrder.map((key) => (
+                  <Fragment key={key}>{renderStockModule(key)}</Fragment>
+                ))}
               </div>
             ) : (
               <div className="flex min-h-[420px] items-center justify-center rounded-xl border border-dashed bg-white p-8 text-center shadow-sm">

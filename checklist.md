@@ -885,3 +885,24 @@ corepack pnpm build
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
 - 调用 `/api/fund-style?code=510300&range=1y`，确认返回风格标签、风险指标、持仓集中度与 AI 归纳。
 - 在基金工作台切换不同基金与区间，确认风格因子面板同步更新，且不使用确定性持仓生成结论。
+
+## F14 基金工作台按需模块化（2026-09-09）
+
+- 关联文档：docs/fund-workbench-spec.md 布局与交互
+- 分支：eature/fund-industry-news-on-demand
+- 目标：参照个股工作台，将基金功能改为左侧功能选项勾选后按需展示，避免一次性堆叠。
+
+### 验收项
+
+- [x] 新增 FundOptionsSidebar，左侧查询基金、勾选功能模块、管理自选基金
+- [x] 基金工作台按模块展示档案、净值、当日行情、持仓、风险、AI 分析、对话、复盘、对比、组合、定投、行业资讯与风格因子
+- [x] 移除不可靠展示：IOPV 实时估值、基金风险等级、持仓数量与行业配置
+- [x] corepack pnpm typecheck 通过
+- [x] corepack pnpm lint 通过
+- [x] corepack pnpm build 通过
+
+### 验证方式
+
+- corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build
+- 在基金工作台左侧勾选/清空模块，确认右侧信息区按需展示，未勾选时不展示对应内容。
+- 留空基金代码查询时默认使用 510300。

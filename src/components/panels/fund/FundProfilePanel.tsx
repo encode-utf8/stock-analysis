@@ -51,11 +51,9 @@ export function FundProfilePanel({ profile, loading }: FundProfilePanelProps) {
       note: profile.benchmark ? `基准：${profile.benchmark}` : "暂无基准信息",
     },
     {
-      label: "风险等级",
-      value: profile.risk_level ?? "暂无",
-      note: profile.establish_date
-        ? `成立日：${profile.establish_date}`
-        : "成立日期待补充",
+      label: "成立日期",
+      value: profile.establish_date ?? "暂无",
+      note: "基金成立日期",
     },
   ];
 

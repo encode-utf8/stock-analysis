@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
@@ -16,7 +16,13 @@ import { FundPortfolioPanel } from "@/components/panels/fund/FundPortfolioPanel"
 import { FundReplayPanel } from "@/components/panels/fund/FundReplayPanel";
 import { FundRiskPanel } from "@/components/panels/fund/FundRiskPanel";
 import { FundStylePanel } from "@/components/panels/fund/FundStylePanel";
-import { FundWatchlistPanel } from "@/components/panels/fund/FundWatchlistPanel";
+import {
+  FundOptionsSidebar,
+  type FundModuleKey,
+  DEFAULT_FUND_MODULE_VISIBILITY,
+  ALL_FUND_MODULE_VISIBILITY,
+  FUND_MODULE_OPTIONS,
+} from "@/components/panels/fund/FundOptionsSidebar";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import type { FundMetricsRange } from "@/lib/fund-metrics";
 import { DEFAULT_FUND_CODE, normalizeFundCode } from "@/lib/fund-market";
@@ -61,6 +67,14 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
 /** 基金工作台容器：管理基金代码、档案与净值展示状态。 */
 export default function FundWorkbench() {
   const [input, setInput] = useState(DEFAULT_FUND_CODE);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  const [enabledModules, setEnabledModules] = useState<Record<FundModuleKey, boolean>>(
+    DEFAULT_FUND_MODULE_VISIBILITY,
+  );
+  const [moduleOrder, setModuleOrder] = useState<FundModuleKey[]>(
+    FUND_MODULE_OPTIONS.map((option) => option.key),
+  );
   const [code, setCode] = useState<string | null>(null);
   const [profile, setProfile] = useState<FundProfile | null>(null);
   const [nav, setNav] = useState<FundNavPoint[]>([]);
@@ -95,6 +109,32 @@ export default function FundWorkbench() {
   const fundAnalysisAbortRef = useRef<AbortController | null>(null);
   const fundChatAbortRef = useRef<AbortController | null>(null);
   const lastCompletedFundReportRef = useRef<FundAnalysisReport | null>(null);
+
+  const toggleModule = (key: FundModuleKey) => {
+    setEnabledModules((previous) => ({ ...previous, [key]: !previous[key] }));
+  };
+
+  const selectAllModules = () => {
+    setEnabledModules(ALL_FUND_MODULE_VISIBILITY);
+  };
+
+  const clearAllModules = () => {
+    setEnabledModules(DEFAULT_FUND_MODULE_VISIBILITY);
+  };
+
+  const reorderModule = (fromKey: FundModuleKey, toKey: FundModuleKey) => {
+    setModuleOrder((previous) => {
+      const fromIndex = previous.indexOf(fromKey);
+      const toIndex = previous.indexOf(toKey);
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+        return previous;
+      }
+      const next = [...previous];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
 
   const loadNav = useCallback(async (nextCode: string, nextRange: FundNavRange, nextType: FundNavType) => {
     const navKey = `${nextCode}:${nextRange}:${nextType}`;
@@ -561,8 +601,7 @@ export default function FundWorkbench() {
     setFundChatLoading(false);
   };
 
-  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSearch = () => {
     const nextInput = input.trim() || DEFAULT_FUND_CODE;
     setInput(nextInput);
     void loadFund(nextInput);
@@ -590,120 +629,14 @@ export default function FundWorkbench() {
     setFundMessages([]);
   };
 
-  return (
-    <section className="mx-auto flex min-w-0 flex-1 max-w-6xl flex-col gap-6 px-4 py-8">
-      <header className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">基金分析与 AI 学习台</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              输入 6 位基金代码，查看基金档案与历史净值走势。
-            </p>
-          </div>
-          <form onSubmit={handleSearch} className="flex gap-2">
-            <input
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="基金代码，如 510300"
-              maxLength={6}
-              inputMode="numeric"
-              className="w-44 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-            />
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-            >
-              {loading ? "查询中" : "查询"}
-            </button>
-          </form>
-        </div>
-      </header>
-
-      {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
-
-      <FundWatchlistPanel
-        activeCode={code}
-        onSelect={handleWatchlistSelect}
-        onClearActive={handleWatchlistClearActive}
-      />
-
-      <FundComparisonPanel />
-
-      <FundPortfolioPanel />
-
-      <FundDcaPanel />
-
-      <FundNewsPanel />
-
-      <FundStylePanel />
-
-      {code ? (
-        <FundReplayPanel
-          key={code}
-          code={code}
-          refreshToken={replayRefreshToken}
-          deletedReportId={lastDeletedReportId}
-        />
-      ) : null}
-
-      {profile ? <FundProfilePanel profile={profile} loading={loading} /> : null}
-
-      {code ? (
-        <FundIntradayPanel intraday={intraday} loading={intradayLoading} />
-      ) : null}
-
-      {code ? (
-        <FundHoldingsPanel holdings={holdings} loading={holdingsLoading} />
-      ) : null}
-
-      {code ? (
-        <FundRiskPanel
-          allMetrics={allMetrics}
-          oneYearMetrics={oneYearMetrics}
-          loading={metricsLoading}
-        />
-      ) : null}
-
-      {code ? (
-        <FundAnalysisPanel
-          code={code}
-          reports={fundReports}
-          loading={fundAnalysisLoading}
-          onGenerate={() => void handleFundAnalysis()}
-          onDelete={async (reportId) => {
-            try {
-              await apiFetch(`/api/funds/${encodeURIComponent(code)}/reports/${encodeURIComponent(reportId)}`, {
-                method: "DELETE",
-              });
-              setFundReports((previous) => previous.filter((report) => report.id !== reportId));
-              setReplayRefreshToken((value) => value + 1);
-              setLastDeletedReportId(reportId);
-            } catch (nextError) {
-              setError(nextError instanceof Error ? nextError.message : "删除基金报告失败。");
-            }
-          }}
-        />
-      ) : null}
-
-      {code ? (
-        <ChatPanel
-          code={code}
-          conversationId={fundConversationId}
-          messages={fundMessages}
-          input={fundChatInput}
-          loading={fundChatLoading}
-          onInputChange={setFundChatInput}
-          onSubmit={(event) => void handleFundChatSubmit(event)}
-          onStop={stopFundChat}
-        />
-      ) : null}
-
-      {code ? (
+  const renderFundModule = (key: FundModuleKey) => {
+    if (key === "profile") {
+      return enabledModules.profile && profile ? (
+        <FundProfilePanel profile={profile} loading={loading} />
+      ) : null;
+    }
+    if (key === "nav") {
+      return enabledModules.nav && code ? (
         <FundNavChartPanel
           nav={nav}
           range={range}
@@ -719,22 +652,181 @@ export default function FundWorkbench() {
           onRangeChange={(value) => setRange(value)}
           onNavTypeChange={(value) => setNavType(value)}
         />
-      ) : null}
+      ) : null;
+    }
+    if (key === "intraday") {
+      return enabledModules.intraday && code ? (
+        <FundIntradayPanel intraday={intraday} loading={intradayLoading} />
+      ) : null;
+    }
+    if (key === "holdings") {
+      return enabledModules.holdings && code ? (
+        <FundHoldingsPanel holdings={holdings} loading={holdingsLoading} />
+      ) : null;
+    }
+    if (key === "risk") {
+      return enabledModules.risk && code ? (
+        <FundRiskPanel
+          allMetrics={allMetrics}
+          oneYearMetrics={oneYearMetrics}
+          loading={metricsLoading}
+        />
+      ) : null;
+    }
+    if (key === "analysis") {
+      return enabledModules.analysis && code ? (
+        <FundAnalysisPanel
+          code={code}
+          reports={fundReports}
+          loading={fundAnalysisLoading}
+          onGenerate={() => void handleFundAnalysis()}
+          onDelete={async (reportId) => {
+            try {
+              await apiFetch(
+                `/api/funds/${encodeURIComponent(code)}/reports/${encodeURIComponent(reportId)}`,
+                { method: "DELETE" },
+              );
+              setFundReports((previous) => previous.filter((report) => report.id !== reportId));
+              setReplayRefreshToken((value) => value + 1);
+              setLastDeletedReportId(reportId);
+            } catch (nextError) {
+              setError(nextError instanceof Error ? nextError.message : "删除基金报告失败。");
+            }
+          }}
+        />
+      ) : null;
+    }
+    if (key === "chat") {
+      return enabledModules.chat && code ? (
+        <ChatPanel
+          code={code}
+          conversationId={fundConversationId}
+          messages={fundMessages}
+          input={fundChatInput}
+          loading={fundChatLoading}
+          onInputChange={setFundChatInput}
+          onSubmit={(event) => void handleFundChatSubmit(event)}
+          onStop={stopFundChat}
+        />
+      ) : null;
+    }
+    if (key === "replay") {
+      return enabledModules.replay && code ? (
+        <FundReplayPanel
+          key={code}
+          code={code}
+          refreshToken={replayRefreshToken}
+          deletedReportId={lastDeletedReportId}
+        />
+      ) : null;
+    }
+    if (key === "comparison") {
+      return enabledModules.comparison ? <FundComparisonPanel /> : null;
+    }
+    if (key === "portfolio") {
+      return enabledModules.portfolio ? <FundPortfolioPanel /> : null;
+    }
+    if (key === "dca") {
+      return enabledModules.dca ? <FundDcaPanel /> : null;
+    }
+    if (key === "news") {
+      return enabledModules.news ? <FundNewsPanel /> : null;
+    }
+    if (key === "style") {
+      return enabledModules.style ? <FundStylePanel /> : null;
+    }
+    return null;
+  };
 
-      {!profile && !loading ? (
-        <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-dashed bg-white p-8 text-center shadow-sm">
-          <div>
-            <h2 className="text-lg font-semibold">基金面板待查询</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              输入基金代码后，这里将展示基金档案与历史净值。
-            </p>
+  return (
+    <div>
+      <div className="mx-auto flex min-h-screen max-w-[1440px]">
+        <div
+          className="relative shrink-0"
+          onMouseEnter={() => setSidebarPeek(true)}
+          onMouseLeave={() => setSidebarPeek(false)}
+        >
+          <div
+            className={
+              "sticky top-0 h-screen overflow-hidden border-r border-border bg-white transition-[width] duration-300 ease-out " +
+              (sidebarOpen || sidebarPeek ? "w-80" : "w-10")
+            }
+          >
+            {sidebarOpen || sidebarPeek ? (
+              <FundOptionsSidebar
+                input={input}
+                loading={loading}
+                code={code}
+                enabledModules={enabledModules}
+                moduleOrder={moduleOrder}
+                onInputChange={setInput}
+                onSearch={handleSearch}
+                onToggleModule={toggleModule}
+                onReorderModule={reorderModule}
+                onSelectAll={selectAllModules}
+                onClearAll={clearAllModules}
+                onWatchlistSelect={handleWatchlistSelect}
+                onWatchlistClearActive={handleWatchlistClearActive}
+                pinned={sidebarOpen}
+                onToggle={() => setSidebarOpen((previous) => !previous)}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                aria-label="展开功能侧栏"
+                className="flex h-full w-full flex-col items-center pt-3 text-muted-foreground transition-colors hover:bg-accent"
+              >
+                <span className="text-xs font-medium tracking-[0.35em] [writing-mode:vertical-rl]">
+                  功能选项
+                </span>
+              </button>
+            )}
           </div>
         </div>
-      ) : null}
 
-      <footer className="text-center text-xs text-muted-foreground">
-        基金行情、净值、持仓与 AI 输出可能存在延迟或误差，仅供学习参考，不构成投资建议。
-      </footer>
-    </section>
+        <section className="min-w-0 flex-1 px-4 py-8">
+          <div className="mx-auto flex max-w-6xl flex-col gap-6">
+            <header className="rounded-xl border bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight">基金分析与 AI 学习台</h1>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    在左侧功能选项页勾选模块，按需查看档案、净值、风险、AI 分析与对话。
+                  </p>
+                </div>
+              </div>
+            </header>
+
+            {error ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            ) : null}
+
+            {Object.values(enabledModules).some(Boolean) ? (
+              <div className="flex flex-col gap-6">
+                {moduleOrder.map((key) => (
+                  <Fragment key={key}>{renderFundModule(key)}</Fragment>
+                ))}
+              </div>
+            ) : (
+              <div className="flex min-h-[420px] items-center justify-center rounded-xl border border-dashed bg-white p-8 text-center shadow-sm">
+                <div>
+                  <h2 className="text-lg font-semibold">请选择功能模块</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    在左侧“功能选项”中勾选需要展示的信息区；留空基金代码时默认展示 510300。
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <footer className="text-center text-xs text-muted-foreground">
+              基金行情、净值、持仓与 AI 输出可能存在延迟或误差，仅供学习参考，不构成投资建议。
+            </footer>
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }

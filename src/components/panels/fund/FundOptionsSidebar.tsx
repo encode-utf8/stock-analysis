@@ -3,75 +3,72 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { WatchlistSidebar } from "@/components/panels/WatchlistSidebar";
+import { FundWatchlistPanel } from "@/components/panels/fund/FundWatchlistPanel";
 
-export const MODULE_OPTIONS = [
-  { key: "quote", label: "行情概览" },
-  { key: "chart", label: "K 线走势" },
-  { key: "indicators", label: "技术指标" },
-  { key: "news", label: "资讯搜索" },
-  { key: "analysis", label: "周期内 AI 分析" },
+export const FUND_MODULE_OPTIONS = [
+  { key: "profile", label: "基金档案" },
+  { key: "nav", label: "净值走势" },
+  { key: "intraday", label: "当日行情" },
+  { key: "holdings", label: "持仓分析" },
+  { key: "risk", label: "回撤与风险指标" },
+  { key: "analysis", label: "AI 分析" },
   { key: "chat", label: "对话助手" },
-  { key: "timeline", label: "历史会话时间线" },
-  { key: "observability", label: "系统可观测性" },
   { key: "replay", label: "历史复盘" },
-  { key: "datasource", label: "数据源与调度" },
+  { key: "comparison", label: "基金对比" },
+  { key: "portfolio", label: "基金组合分析" },
+  { key: "dca", label: "定投回测" },
+  { key: "news", label: "行业资讯" },
+  { key: "style", label: "风格因子分析" },
 ] as const;
 
-export type ModuleKey = (typeof MODULE_OPTIONS)[number]["key"];
+export type FundModuleKey = (typeof FUND_MODULE_OPTIONS)[number]["key"];
 
-const createModuleVisibility = (enabled: boolean) =>
-  Object.fromEntries(MODULE_OPTIONS.map(({ key }) => [key, enabled])) as Record<
-    ModuleKey,
+const createFundModuleVisibility = (enabled: boolean) =>
+  Object.fromEntries(FUND_MODULE_OPTIONS.map(({ key }) => [key, enabled])) as Record<
+    FundModuleKey,
     boolean
   >;
 
-export const DEFAULT_MODULE_VISIBILITY = createModuleVisibility(false);
-export const ALL_MODULE_VISIBILITY = createModuleVisibility(true);
+export const DEFAULT_FUND_MODULE_VISIBILITY = createFundModuleVisibility(false);
+export const ALL_FUND_MODULE_VISIBILITY = createFundModuleVisibility(true);
 
-interface FunctionOptionsSidebarProps {
+interface FundOptionsSidebarProps {
   input: string;
   loading: boolean;
   code: string | null;
-  activeCode: string | null;
-  enabledModules: Record<ModuleKey, boolean>;
-  moduleOrder: ModuleKey[];
+  enabledModules: Record<FundModuleKey, boolean>;
+  moduleOrder: FundModuleKey[];
   onInputChange: (value: string) => void;
   onSearch: () => void;
-  onRefresh: () => void;
-  onCleanup: () => void;
-  onToggleModule: (key: ModuleKey) => void;
-  onReorderModule: (fromKey: ModuleKey, toKey: ModuleKey) => void;
-  onWatchlistSelect: (code: string) => void;
-  onWatchlistClearActive: () => void;
+  onToggleModule: (key: FundModuleKey) => void;
+  onReorderModule: (fromKey: FundModuleKey, toKey: FundModuleKey) => void;
   onSelectAll: () => void;
   onClearAll: () => void;
+  onWatchlistSelect: (code: string) => void;
+  onWatchlistClearActive: () => void;
   pinned: boolean;
   onToggle: () => void;
 }
 
-/** 左侧可隐藏功能选项页：顶部查询股票，下方勾选展示模块。 */
-export function FunctionOptionsSidebar({
+/** 基金工作台左侧功能选项页：查询基金、勾选展示模块并管理自选基金。 */
+export function FundOptionsSidebar({
   input,
   loading,
   code,
-  activeCode,
   enabledModules,
   moduleOrder,
   onInputChange,
   onSearch,
-  onRefresh,
-  onCleanup,
   onToggleModule,
   onReorderModule,
-  onWatchlistSelect,
-  onWatchlistClearActive,
   onSelectAll,
   onClearAll,
+  onWatchlistSelect,
+  onWatchlistClearActive,
   pinned,
   onToggle,
-}: FunctionOptionsSidebarProps) {
-  const [draggingKey, setDraggingKey] = useState<ModuleKey | null>(null);
+}: FundOptionsSidebarProps) {
+  const [draggingKey, setDraggingKey] = useState<FundModuleKey | null>(null);
   const selectedCount = Object.values(enabledModules).filter(Boolean).length;
 
   return (
@@ -92,12 +89,20 @@ export function FunctionOptionsSidebar({
       </div>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+        <section className="border-b pb-4">
+          <FundWatchlistPanel
+            activeCode={code}
+            onSelect={onWatchlistSelect}
+            onClearActive={onWatchlistClearActive}
+          />
+        </section>
+
         <section className="space-y-2">
-          <label htmlFor="stock-code-input" className="text-sm font-medium">
-            股票代码
+          <label htmlFor="fund-code-input" className="text-sm font-medium">
+            基金代码
           </label>
           <input
-            id="stock-code-input"
+            id="fund-code-input"
             value={input}
             onChange={(event) => onInputChange(event.target.value)}
             onKeyDown={(event) => {
@@ -106,48 +111,26 @@ export function FunctionOptionsSidebar({
                 onSearch();
               }
             }}
-            placeholder="留空则使用默认 600519"
+            placeholder="留空则使用默认 510300"
             className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
-            aria-label="股票代码"
+            aria-label="基金代码"
           />
-          <p className="text-xs text-muted-foreground">留空时自动使用默认代码 600519。</p>
+          <p className="text-xs text-muted-foreground">留空时自动使用默认代码 510300。</p>
           <Button type="button" className="w-full" onClick={onSearch} disabled={loading}>
-            {loading ? "查询中..." : "查询股票"}
+            {loading ? "查询中..." : "查询基金"}
           </Button>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onRefresh}
-              disabled={!code || loading}
-            >
-              强制刷新
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={onCleanup}>
-              清理到期资讯
-            </Button>
-          </div>
-        </section>
-
-        <section className="border-t pt-4">
-          <WatchlistSidebar
-            activeCode={activeCode}
-            onSelect={onWatchlistSelect}
-            onClearActive={onWatchlistClearActive}
-          />
         </section>
 
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold">功能模块</h3>
             <span className="text-xs text-muted-foreground">
-              {selectedCount}/{MODULE_OPTIONS.length} 已选
+              {selectedCount}/{FUND_MODULE_OPTIONS.length} 已选
             </span>
           </div>
           <div className="space-y-2">
             {moduleOrder.map((key) => {
-              const option = MODULE_OPTIONS.find((item) => item.key === key);
+              const option = FUND_MODULE_OPTIONS.find((item) => item.key === key);
               if (!option) {
                 return null;
               }
@@ -186,6 +169,7 @@ export function FunctionOptionsSidebar({
             })}
           </div>
         </section>
+
       </div>
 
       <div className="border-t p-3">
