@@ -179,6 +179,56 @@ export interface FundIndustryNewsSnapshot {
   generated_at: string;
 }
 
+/** 基金定投频率。 */
+export type FundDcaFrequency = "daily" | "weekly" | "biweekly" | "monthly";
+
+/** 基金定投回测单期记录。 */
+export interface FundDcaContribution {
+  date: string;
+  nav: number;
+  amount: number;
+  shares: number;
+  cumulative_shares: number;
+  cumulative_invested: number;
+  market_value: number;
+}
+
+/** 基金定投收益率曲线点。 */
+export interface FundDcaEquityPoint {
+  date: string;
+  market_value: number;
+  invested_amount: number;
+  return_pct: number;
+}
+
+/** 基金定投回测快照。 */
+export interface FundDcaSnapshot {
+  code: string;
+  name: string;
+  range: string;
+  frequency: FundDcaFrequency;
+  amount_per_period: number;
+  price_basis: "unit";
+  available: boolean;
+  reason: string | null;
+  total_periods: number;
+  total_invested: number | null;
+  total_shares: number | null;
+  final_nav: number | null;
+  final_value: number | null;
+  profit_loss: number | null;
+  profit_loss_pct: number | null;
+  annualized_return_pct: number | null;
+  max_drawdown_pct: number | null;
+  current_drawdown_pct: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  contributions: FundDcaContribution[];
+  equity_curve: FundDcaEquityPoint[];
+  source: string;
+  generated_at: string;
+}
+
 /** 自选基金条目：与个股自选列表隔离，仅保存展示与切换所需元数据。 */
 export interface FundWatchlistItem {
   code: string;

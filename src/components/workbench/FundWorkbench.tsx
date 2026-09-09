@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
 import { FundAnalysisPanel } from "@/components/panels/fund/FundAnalysisPanel";
 import { FundComparisonPanel } from "@/components/panels/fund/FundComparisonPanel";
+import { FundDcaPanel } from "@/components/panels/fund/FundDcaPanel";
 import { FundHoldingsPanel } from "@/components/panels/fund/FundHoldingsPanel";
 import { FundNewsPanel } from "@/components/panels/fund/FundNewsPanel";
 import { FundIntradayPanel } from "@/components/panels/fund/FundIntradayPanel";
@@ -661,6 +662,8 @@ export default function FundWorkbench() {
       <FundComparisonPanel />
 
       <FundPortfolioPanel />
+
+      <FundDcaPanel />
 
       {code ? (
         <FundReplayPanel

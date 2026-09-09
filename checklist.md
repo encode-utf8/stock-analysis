@@ -835,3 +835,29 @@ corepack pnpm build
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
 - 调用 `/api/funds/510300/news`，确认 `industry_analysis_source`、`industries` 与真实行业资讯返回正常。
 - 在基金工作台查询 `510300` 后，确认行业资讯面板显示 AI 识别行业与真实资讯；无密钥时明确显示不可用且不展示降级内容。
+
+
+## F12 基金定投回测（2026-09-09）
+
+- 关联文档：`docs/fund-workbench-spec.md` 未来扩展、`docs/fund-workbench-plan.md`
+- 分支：`feature/fund-dca-backtest`
+- 目标：支持单基金按每日、每周、每两周、每月频率定投回测，展示收益率变化曲线、累计投入、期末市值、年化收益与回撤指标。
+
+### 验收项
+
+- [x] 新增 `FundDcaFrequency`、`FundDcaContribution`、`FundDcaEquityPoint` 与 `FundDcaSnapshot` 共享类型
+- [x] 新增 `fund-dca.ts`，支持每日/每周/每两周/每月定投，生成收益率曲线并计算累计收益、年化收益与回撤
+- [x] 新增 `/api/fund-dca?code=510300&range=1y&frequency=monthly&amount=1000`
+- [x] 新增交互式收益率曲线，支持悬停查看单日投入、市值与收益率
+- [x] 默认隐藏明细表；非每日定投时可点击按钮展开分页明细，每日定投不提供表格
+- [x] 三年/成立以来等长期区间会校正旧缓存，并对收益率曲线做均匀抽样，避免大数据量导致页面无法渲染
+- [x] 净值降级或数据不足时明确返回不可用，不生成演示回测结果
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/fund-dca?code=510300&range=1y&frequency=monthly&amount=1000`，确认定投期数、累计投入、期末市值与收益率曲线计算正确。
+- 在基金工作台切换每日、每周、每两周、每月与不同区间，确认收益率曲线同步更新；每日定投不展示明细表，其他频率可手动展开明细。
