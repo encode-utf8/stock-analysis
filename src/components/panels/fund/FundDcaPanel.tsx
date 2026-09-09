@@ -360,12 +360,12 @@ export function FundDcaPanel() {
                   <tbody>
                     {snapshot.payday_comparison.map((item) => (
                       <tr key={item.day} className="border-b last:border-0">
-                        <td className="px-2 py-3">?? {item.day} ?</td>
+                        <td className="px-2 py-3">每月 {item.day} 日</td>
                         <td className={`px-2 py-3 font-medium ${returnTone(item.total_return_pct)}`}>
-                          {item.total_return_pct === null ? "?" : `${item.total_return_pct > 0 ? "+" : ""}${item.total_return_pct.toFixed(2)}%`}
+                          {item.total_return_pct === null ? "—" : `${item.total_return_pct > 0 ? "+" : ""}${item.total_return_pct.toFixed(2)}%`}
                         </td>
                         <td className={`px-2 py-3 font-medium ${returnTone(item.annualized_return_pct)}`}>
-                          {item.annualized_return_pct === null ? "?" : `${item.annualized_return_pct > 0 ? "+" : ""}${item.annualized_return_pct.toFixed(2)}%`}
+                          {item.annualized_return_pct === null ? "—" : `${item.annualized_return_pct > 0 ? "+" : ""}${item.annualized_return_pct.toFixed(2)}%`}
                         </td>
                       </tr>
                     ))}
@@ -562,12 +562,12 @@ export function FundDcaPanel() {
                 />
                 <MetricCard
                   label="每期总额"
-                  value={portfolioSnapshot.max_drawdown_pct === null ? "?" : `-${formatNumber(portfolioSnapshot.max_drawdown_pct)}%`}
+                  value={portfolioSnapshot.max_drawdown_pct === null ? "—" : `-${formatNumber(portfolioSnapshot.max_drawdown_pct)}%`}
                   tone={drawdownTone(portfolioSnapshot.max_drawdown_pct)}
                 />
                 <MetricCard
                   label="每期总额"
-                  value={portfolioSnapshot.current_drawdown_pct === null ? "?" : `-${formatNumber(portfolioSnapshot.current_drawdown_pct)}%`}
+                  value={portfolioSnapshot.current_drawdown_pct === null ? "—" : `-${formatNumber(portfolioSnapshot.current_drawdown_pct)}%`}
                   tone={drawdownTone(portfolioSnapshot.current_drawdown_pct)}
                 />
               </div>

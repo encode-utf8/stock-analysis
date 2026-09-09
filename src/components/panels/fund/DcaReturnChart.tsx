@@ -161,7 +161,7 @@ export function DcaReturnChart({
             y={PADDING_TOP}
             width={Math.max(x(drawdownEndIndex) - x(drawdownStartIndex), 2)}
             height={HEIGHT - PADDING_TOP - PADDING_BOTTOM}
-            fill="#ef4444"
+            fill="#22c55e"
             fillOpacity="0.07"
           />
         ) : null}
@@ -171,9 +171,9 @@ export function DcaReturnChart({
             y={PADDING_TOP}
             width={Math.max(x(recoveryEndIndex) - x(recoveryStartIndex), 2)}
             height={HEIGHT - PADDING_TOP - PADDING_BOTTOM}
-            fill="#22c55e"
+            fill="#ef4444"
             fillOpacity={recoveryComplete ? 0.1 : 0.08}
-            stroke={recoveryComplete ? "none" : "#16a34a"}
+            stroke={recoveryComplete ? "none" : "#dc2626"}
             strokeDasharray={recoveryComplete ? undefined : "4 4"}
           />
         ) : null}
@@ -233,18 +233,19 @@ export function DcaReturnChart({
         <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
           {drawdownStart && drawdownEnd ? (
             <span className="inline-flex items-center gap-1">
-              <span className="inline-block h-2 w-3 rounded-sm bg-red-200" />
+              <span className="inline-block h-2 w-3 rounded-sm bg-green-200" />
               最大回撤：{drawdownStart} 至 {drawdownEnd}
             </span>
           ) : null}
           {recoveryStart ? (
             <span className="inline-flex items-center gap-1">
-              <span className="inline-block h-2 w-3 rounded-sm bg-green-200" />
+              <span className="inline-block h-2 w-3 rounded-sm bg-red-200" />
               {recoveryComplete && recoveryEnd
                 ? `修复完成：${recoveryStart} 至 ${recoveryEnd}`
                 : `正在修复中：自 ${recoveryStart} 起`}
             </span>
           ) : null}
+        <p className="mt-1 text-xs text-muted-foreground">说明：回撤区间为收益率从阶段高点下滑到阶段低点的最大跌幅区间；修复区间为收益率从回撤末端重新回到回撤起点水平所需的时间区间。</p>
         </div>
       ) : null}
 

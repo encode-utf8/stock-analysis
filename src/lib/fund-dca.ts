@@ -217,7 +217,7 @@ function calculateDcaDrawdownRecovery(equityCurve: FundDcaEquityPoint[]) {
     };
   }
 
-  let peak = equityCurve[0].market_value;
+  let peak = equityCurve[0].return_pct;
   let peakDate = equityCurve[0].date;
   let maxDrawdown = 0;
   let maxDrawdownStart: string | null = null;
@@ -226,12 +226,12 @@ function calculateDcaDrawdownRecovery(equityCurve: FundDcaEquityPoint[]) {
 
   for (let index = 1; index < equityCurve.length; index += 1) {
     const point = equityCurve[index];
-    if (point.market_value >= peak) {
-      peak = point.market_value;
+    if (point.return_pct >= peak) {
+      peak = point.return_pct;
       peakDate = point.date;
       continue;
     }
-    const drawdown = point.market_value / peak - 1;
+    const drawdown = point.return_pct - peak;
     if (drawdown < maxDrawdown) {
       maxDrawdown = drawdown;
       maxDrawdownStart = peakDate;
@@ -240,7 +240,7 @@ function calculateDcaDrawdownRecovery(equityCurve: FundDcaEquityPoint[]) {
     }
   }
 
-  if (!maxDrawdownStart || !maxDrawdownEnd || peakAtStart <= 0) {
+  if (!maxDrawdownStart || !maxDrawdownEnd) {
     return {
       maxDrawdownStart,
       maxDrawdownEnd,
@@ -257,7 +257,7 @@ function calculateDcaDrawdownRecovery(equityCurve: FundDcaEquityPoint[]) {
   const recoveryStartIndex = equityCurve.findIndex((point) => point.date === recoveryStart);
   if (recoveryStartIndex >= 0) {
     for (let index = recoveryStartIndex + 1; index < equityCurve.length; index += 1) {
-      if (equityCurve[index].market_value >= peakAtStart) {
+      if (equityCurve[index].return_pct >= peakAtStart) {
         recoveryEnd = equityCurve[index].date;
         recoveryComplete = true;
         break;
