@@ -80,6 +80,8 @@ export default function FundWorkbench() {
   const [fundChatInput, setFundChatInput] = useState("");
   const [fundChatLoading, setFundChatLoading] = useState(false);
   const [queryVersion, setQueryVersion] = useState(0);
+  const [replayRefreshToken, setReplayRefreshToken] = useState(0);
+  const [lastDeletedReportId, setLastDeletedReportId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const activeProfileCodeRef = useRef<string | null>(null);
   const activeNavKeyRef = useRef<string | null>(null);
@@ -89,6 +91,7 @@ export default function FundWorkbench() {
   const activeChartMetricsKeyRef = useRef<string | null>(null);
   const fundAnalysisAbortRef = useRef<AbortController | null>(null);
   const fundChatAbortRef = useRef<AbortController | null>(null);
+  const lastCompletedFundReportRef = useRef<FundAnalysisReport | null>(null);
 
   const loadNav = useCallback(async (nextCode: string, nextRange: FundNavRange, nextType: FundNavType) => {
     const navKey = `${nextCode}:${nextRange}:${nextType}`;
@@ -203,14 +206,16 @@ export default function FundWorkbench() {
     [],
   );
 
-  const loadFundReports = useCallback(async (nextCode: string) => {
+  const loadFundReports = useCallback(async (nextCode: string): Promise<FundAnalysisReport[]> => {
     try {
       const reports = await apiFetch<FundAnalysisReport[]>(
         `/api/funds/${encodeURIComponent(nextCode)}/analysis`,
       );
       setFundReports(reports);
+      return reports;
     } catch {
       setFundReports([]);
+      return [];
     }
   }, []);
 
@@ -403,6 +408,7 @@ export default function FundWorkbench() {
             ),
           );
         } else if (event.type === "done" && event.data?.report) {
+          lastCompletedFundReportRef.current = event.data.report;
           setFundReports((previous) =>
             previous.map((item) => (item.id === draftId ? event.data?.report ?? item : item)),
           );
@@ -426,7 +432,18 @@ export default function FundWorkbench() {
       if (buffer.trim()) {
         handleEvent(buffer);
       }
-      await loadFundReports(code);
+      const refreshedReports = await loadFundReports(code);
+      const completedReport = lastCompletedFundReportRef.current;
+      if (
+        completedReport &&
+        !refreshedReports.some((report) => report.id === completedReport.id)
+      ) {
+        setFundReports((previous) => [
+          completedReport,
+          ...previous.filter((report) => report.id !== completedReport.id),
+        ]);
+      }
+      lastCompletedFundReportRef.current = null;
     } catch (nextError) {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
@@ -616,7 +633,14 @@ export default function FundWorkbench() {
 
       <FundPortfolioPanel />
 
-      {code ? <FundReplayPanel key={code} code={code} /> : null}
+      {code ? (
+        <FundReplayPanel
+          key={code}
+          code={code}
+          refreshToken={replayRefreshToken}
+          deletedReportId={lastDeletedReportId}
+        />
+      ) : null}
 
       {profile ? <FundProfilePanel profile={profile} loading={loading} /> : null}
 
@@ -647,10 +671,12 @@ export default function FundWorkbench() {
               await apiFetch(`/api/funds/${encodeURIComponent(code)}/reports/${encodeURIComponent(reportId)}`, {
                 method: "DELETE",
               });
+              setFundReports((previous) => previous.filter((report) => report.id !== reportId));
+              setReplayRefreshToken((value) => value + 1);
+              setLastDeletedReportId(reportId);
             } catch (nextError) {
               setError(nextError instanceof Error ? nextError.message : "删除基金报告失败。");
             }
-            await loadFundReports(code);
           }}
         />
       ) : null}

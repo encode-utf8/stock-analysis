@@ -168,10 +168,12 @@ function FundTimelineEventCard({
 
 interface FundReplayPanelProps {
   code: string | null;
+  refreshToken?: number;
+  deletedReportId?: string | null;
 }
 
 /** 基金历史复盘面板：展示基金 AI 分析与对话时间线，仅用于学习。 */
-export function FundReplayPanel({ code }: FundReplayPanelProps) {
+export function FundReplayPanel({ code, refreshToken = 0, deletedReportId = null }: FundReplayPanelProps) {
   const [codeInput, setCodeInput] = useState(code ?? "");
   const [queryCode, setQueryCode] = useState<string | null>(code);
   const [days, setDays] = useState<number>(30);
@@ -183,6 +185,14 @@ export function FundReplayPanel({ code }: FundReplayPanelProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDeleteEvent, setPendingDeleteEvent] = useState<FundReplayTimelineEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const visibleTimeline = deletedReportId && timeline
+    ? {
+        ...timeline,
+        events: timeline.events.filter(
+          (event) => !(event.type === 'analysis' && event.report.id === deletedReportId),
+        ),
+      }
+    : timeline;
 
   const loadReplay = useCallback(
     async (nextCode: string, nextDays: number, isActive: () => boolean, signal?: AbortSignal) => {
@@ -248,7 +258,7 @@ export function FundReplayPanel({ code }: FundReplayPanelProps) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [loadReplay, queryCode, queryDays, queryNonce]);
+  }, [loadReplay, queryCode, queryDays, queryNonce, refreshToken]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -363,17 +373,17 @@ export function FundReplayPanel({ code }: FundReplayPanelProps) {
         </>
       ) : null}
 
-      {timeline ? (
+      {visibleTimeline ? (
         <div>
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-medium">历史分析与对话时间线</h3>
-            <span className="text-xs text-muted-foreground">{timeline.events.length} 个事件</span>
+            <span className="text-xs text-muted-foreground">{visibleTimeline.events.length} 个事件</span>
           </div>
           <div className="space-y-3">
-            {timeline.events.length === 0 ? (
+            {visibleTimeline.events.length === 0 ? (
               <p className="text-sm text-muted-foreground">该时间段内暂无分析与对话记录。</p>
             ) : (
-              timeline.events.map((event) => (
+              visibleTimeline.events.map((event) => (
                 <FundTimelineEventCard
                   key={`${event.type}-${event.id}`}
                   event={event}
