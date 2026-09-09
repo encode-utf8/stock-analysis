@@ -201,7 +201,7 @@ export function FundDcaPanel() {
     try {
       const params = new URLSearchParams({
         codes: codes.join(","),
-        portfolioRange,
+        range: portfolioRange,
         frequency,
         amounts: amounts.join(","),
       });
