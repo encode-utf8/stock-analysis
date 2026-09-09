@@ -48,7 +48,7 @@ export function normalizeFundDcaAmount(raw: string | null): number | null {
     : null;
 }
 
-/** ??????????????? 2-5 ???????? */
+/** 规范化多基金组合定投代码；需为 2-5 个合法基金代码。 */
 export function normalizeFundDcaCodes(raw: string | null): string[] | null {
   if (!raw) {
     return null;
@@ -56,7 +56,7 @@ export function normalizeFundDcaCodes(raw: string | null): string[] | null {
   const codes = Array.from(
     new Set(
       raw
-        .split(/[,?\s]+/)
+        .split(/[,，\s]+/)
         .map((code) => normalizeFundCode(code))
         .filter((code): code is string => Boolean(code)),
     ),
@@ -64,13 +64,13 @@ export function normalizeFundDcaCodes(raw: string | null): string[] | null {
   return codes.length >= 2 && codes.length <= 5 ? codes : null;
 }
 
-/** ???????????????????????????? 0? */
+/** 规范化多基金组合定投的每期金额；数量需与基金一致且均大于 0。 */
 export function normalizeFundDcaAmounts(raw: string | null, count: number): number[] | null {
   if (!raw) {
     return null;
   }
   const values = raw
-    .split(/[,?\s]+/)
+    .split(/[,，\s]+/)
     .filter(Boolean)
     .map((value) => Number(value));
   if (
@@ -204,7 +204,7 @@ function calculateDcaXirr(
   return Number.isFinite(rate) && rate > -0.99 ? round(rate * 100, 2) : null;
 }
 
-/** ?????????????????????? */
+/** 从定投市值曲线中提取最大回撤区间与修复区间。 */
 function calculateDcaDrawdownRecovery(equityCurve: FundDcaEquityPoint[]) {
   if (equityCurve.length < 2) {
     return {
@@ -283,7 +283,7 @@ function calculateDcaDrawdownRecovery(equityCurve: FundDcaEquityPoint[]) {
   };
 }
 
-/** ????????????????????? */
+/** 针对每月定投，对比不同扣款日下的收益差异。 */
 function calculatePaydayComparison(
   nav: FundNavPoint[],
   frequency: FundDcaFrequency,
@@ -590,7 +590,7 @@ async function getDcaNav(code: string, range: FundNavRange): Promise<FundNavPoin
   return nav;
 }
 
-/** ??????????????????????? */
+/** 构建单基金定投曲线与贡献记录，供组合定投复用。 */
 function buildSingleFundDcaCurve(
   nav: FundNavPoint[],
   frequency: FundDcaFrequency,
@@ -659,7 +659,7 @@ function buildSingleFundDcaCurve(
   };
 }
 
-/** ???????????????????????? */
+/** 计算多基金组合定投回测，返回组合市值与收益曲线。 */
 export async function getFundDcaPortfolioBacktest(
   codes: string[],
   range: FundNavRange,
@@ -680,12 +680,12 @@ export async function getFundDcaPortfolioBacktest(
   ) {
     return {
       codes,
-      name: "???????",
+      name: "多基金组合定投",
       range,
       frequency,
       amount_per_period: amounts.reduce((sum, value) => sum + value, 0),
       available: false,
-      reason: "???????????????????????",
+      reason: "部分基金净值数据不可用，暂不展示组合定投回测。",
       total_invested: null,
       total_value: null,
       profit_loss: null,
@@ -707,12 +707,12 @@ export async function getFundDcaPortfolioBacktest(
   if (navSeries.some((nav) => nav.length < 2)) {
     return {
       codes,
-      name: "???????",
+      name: "多基金组合定投",
       range,
       frequency,
       amount_per_period: amounts.reduce((sum, value) => sum + value, 0),
       available: false,
-      reason: "??????????????????????",
+      reason: "部分基金净值数据不足，暂不展示组合定投回测。",
       total_invested: null,
       total_value: null,
       profit_loss: null,
@@ -796,7 +796,7 @@ export async function getFundDcaPortfolioBacktest(
 
   return {
     codes,
-    name: "???????",
+    name: "多基金组合定投",
     range,
     frequency,
     amount_per_period: round(amounts.reduce((sum, value) => sum + value, 0)) ?? 0,

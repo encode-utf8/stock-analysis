@@ -234,15 +234,15 @@ export function DcaReturnChart({
           {drawdownStart && drawdownEnd ? (
             <span className="inline-flex items-center gap-1">
               <span className="inline-block h-2 w-3 rounded-sm bg-red-200" />
-              ?????{drawdownStart} ? {drawdownEnd}
+              最大回撤：{drawdownStart} 至 {drawdownEnd}
             </span>
           ) : null}
           {recoveryStart ? (
             <span className="inline-flex items-center gap-1">
               <span className="inline-block h-2 w-3 rounded-sm bg-green-200" />
               {recoveryComplete && recoveryEnd
-                ? `?????${recoveryStart} ? ${recoveryEnd}`
-                : `??????? ${recoveryStart} ?`}
+                ? `修复完成：${recoveryStart} 至 ${recoveryEnd}`
+                : `正在修复中：自 ${recoveryStart} 起`}
             </span>
           ) : null}
         </div>

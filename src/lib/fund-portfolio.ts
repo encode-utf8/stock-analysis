@@ -89,7 +89,7 @@ export interface FundPortfolioRangeBounds {
   maxWeights: number[];
 }
 
-/** ??????????????????????????? 0 <= ?? <= ?? <= 100? */
+/** 规范化目标权重区间；下限与上限数量需与基金数量一致，且 0 <= 下限 <= 上限 <= 100。 */
 export function normalizeFundPortfolioRangeBounds(
   rawMin: string | null,
   rawMax: string | null,
@@ -100,7 +100,7 @@ export function normalizeFundPortfolioRangeBounds(
   }
   const parse = (raw: string): number[] | null => {
     const values = raw
-      .split(/[,?\s]+/)
+      .split(/[,，\s]+/)
       .filter(Boolean)
       .map((value) => Number(value));
     if (values.length !== count || values.some((value) => !Number.isFinite(value))) {
@@ -121,7 +121,7 @@ export function normalizeFundPortfolioRangeBounds(
   return { minWeights, maxWeights };
 }
 
-/** ??????????????????????????????? 100? */
+/** 将目标权重区间转换为组合合成用的基准权重：取区间中点并归一化到 100。 */
 function targetWeightsFromRanges(
   minWeights: number[],
   maxWeights: number[],
@@ -253,7 +253,7 @@ function buildPortfolioCurve(portfolioNav: FundNavPoint[]): FundPortfolioCurvePo
   });
 }
 
-/** ?????????????????????????? */
+/** 按组合协方差计算每只基金对组合波动率的相对风险贡献。 */
 function calculateRiskContributions(
   navSeries: FundNavPoint[][],
   weights: number[],

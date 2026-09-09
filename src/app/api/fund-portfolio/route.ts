@@ -27,7 +27,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     if (!shares) {
       return apiFail(
         "VALIDATION_ERROR",
-        "????????????????????????? 0?",
+        "持仓份额数量需与基金数量一致，且每只基金份额需大于 0。",
         400,
       );
     }
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     if (!ranges) {
       return apiFail(
         "VALIDATION_ERROR",
-        "????????????????????????? 0 <= ?? <= ?? <= 100?",
+        "目标权重区间数量需与基金数量一致，且每只基金需满足 0 <= 下限 <= 上限 <= 100。",
         400,
       );
     }
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!weights) {
     return apiFail(
       "VALIDATION_ERROR",
-      "????????????????????? 100?",
+      "权重数量需与基金数量一致，且权重合计约等于 100。",
       400,
     );
   }

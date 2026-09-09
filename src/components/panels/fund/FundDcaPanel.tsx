@@ -181,7 +181,7 @@ export function FundDcaPanel() {
     event.preventDefault();
     const codes = portfolioRows.map((row) => row.code.trim());
     if (codes.some((code) => !/^\d{6}$/.test(code))) {
-      setPortfolioError("??????? 6 ??????");
+      setPortfolioError("请为每一行填写 6 位基金代码。");
       return;
     }
     const amounts = portfolioRows.map((row) => row.amount.trim());
@@ -190,7 +190,7 @@ export function FundDcaPanel() {
       amounts.some((amount) => amount.length === 0) ||
       amountValues.some((value) => !Number.isFinite(value) || value <= 0 || value > 10_000_000)
     ) {
-      setPortfolioError("???????????? 0 ???? 1000 ?????");
+      setPortfolioError("每只基金每期金额需为大于 0 且不超过 1000 万的数字。");
       return;
     }
 
@@ -207,7 +207,7 @@ export function FundDcaPanel() {
       const data = await apiFetch<FundDcaPortfolioSnapshot>(`/api/fund-dca?${params.toString()}`);
       setPortfolioSnapshot(data);
     } catch (nextError) {
-      setPortfolioError(nextError instanceof Error ? nextError.message : "???????????");
+      setPortfolioError(nextError instanceof Error ? nextError.message : "基金组合定投回测失败。");
     } finally {
       setPortfolioLoading(false);
     }
@@ -345,16 +345,16 @@ export function FundDcaPanel() {
           {snapshot.frequency === "monthly" && snapshot.payday_comparison.length > 0 ? (
             <div className="mt-4">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">?????????</h3>
-                <p className="text-xs text-muted-foreground">????????????????</p>
+                <h3 className="text-sm font-semibold">组合定投收益率曲线</h3>
+                <p className="text-xs text-muted-foreground">每月固定扣款日对定投结果的影响。</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[560px] border-collapse text-sm">
                   <thead>
                     <tr className="border-b text-left text-xs text-muted-foreground">
-                      <th className="px-2 py-2">???</th>
-                      <th className="px-2 py-2">?????</th>
-                      <th className="px-2 py-2">?????</th>
+                      <th className="px-2 py-2">扣款日</th>
+                      <th className="px-2 py-2">区间收益率</th>
+                      <th className="px-2 py-2">区间收益率</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -465,7 +465,7 @@ export function FundDcaPanel() {
       {showPortfolio ? (
         <div className="mt-4 rounded-lg border bg-slate-50 p-3">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-semibold">???????</h3>
+            <h3 className="text-sm font-semibold">多基金组合定投</h3>
             <Button type="button" variant="outline" size="sm" onClick={() => setShowPortfolio(false)}>
               ??
             </Button>
@@ -476,7 +476,7 @@ export function FundDcaPanel() {
                 <input
                   value={row.code}
                   onChange={(event) => updatePortfolioRow(index, "code", event.target.value)}
-                  placeholder={`?? ${index + 1}?? 510300`}
+                  placeholder={`基金 ${index + 1}，如 510300`}
                   maxLength={6}
                   inputMode="numeric"
                   className="w-44 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
@@ -484,7 +484,7 @@ export function FundDcaPanel() {
                 <input
                   value={row.amount}
                   onChange={(event) => updatePortfolioRow(index, "amount", event.target.value)}
-                  placeholder="????"
+                  placeholder="每期金额"
                   inputMode="decimal"
                   className="w-32 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                 />
@@ -493,7 +493,7 @@ export function FundDcaPanel() {
                   onClick={() => removePortfolioRow(index)}
                   disabled={portfolioRows.length <= 2}
                   className="rounded-md border px-2 py-2 text-sm text-muted-foreground disabled:opacity-40"
-                  aria-label="????"
+                  aria-label="删除基金"
                 >
                   ??
                 </button>
@@ -507,10 +507,10 @@ export function FundDcaPanel() {
                 onClick={addPortfolioRow}
                 disabled={portfolioRows.length >= 5}
               >
-                + ????
+                + 添加基金
               </Button>
               <Button type="submit" size="sm" disabled={portfolioLoading}>
-                {portfolioLoading ? "???..." : "????"}
+                {portfolioLoading ? "回测中..." : "开始回测"}
               </Button>
             </div>
           </form>
@@ -523,7 +523,7 @@ export function FundDcaPanel() {
 
           {portfolioSnapshot && !portfolioSnapshot.available ? (
             <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              {portfolioSnapshot.reason ?? "?????????????"}
+              {portfolioSnapshot.reason ?? "当前无法计算组合定投回测。"}
             </div>
           ) : null}
 
@@ -531,50 +531,50 @@ export function FundDcaPanel() {
             <div className="mt-4">
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <MetricCard
-                  label="????"
+                  label="每期总额"
                   value={formatMoney(portfolioSnapshot.amount_per_period)}
                   tone="text-slate-900"
                 />
                 <MetricCard
-                  label="????"
+                  label="每期总额"
                   value={formatMoney(portfolioSnapshot.total_invested)}
                   tone="text-slate-900"
                 />
                 <MetricCard
-                  label="????"
+                  label="每期总额"
                   value={formatMoney(portfolioSnapshot.total_value)}
                   tone="text-slate-900"
                 />
                 <MetricCard
-                  label="????"
+                  label="每期总额"
                   value={formatMoney(portfolioSnapshot.profit_loss)}
                   tone={returnTone(portfolioSnapshot.profit_loss)}
                 />
                 <MetricCard
-                  label="?????"
+                  label="累计收益率"
                   value={formatPercent(portfolioSnapshot.profit_loss_pct)}
                   tone={returnTone(portfolioSnapshot.profit_loss_pct)}
                 />
                 <MetricCard
-                  label="?????"
+                  label="累计收益率"
                   value={formatPercent(portfolioSnapshot.annualized_return_pct)}
                   tone={returnTone(portfolioSnapshot.annualized_return_pct)}
                 />
                 <MetricCard
-                  label="????"
+                  label="每期总额"
                   value={portfolioSnapshot.max_drawdown_pct === null ? "?" : `-${formatNumber(portfolioSnapshot.max_drawdown_pct)}%`}
                   tone={drawdownTone(portfolioSnapshot.max_drawdown_pct)}
                 />
                 <MetricCard
-                  label="????"
+                  label="每期总额"
                   value={portfolioSnapshot.current_drawdown_pct === null ? "?" : `-${formatNumber(portfolioSnapshot.current_drawdown_pct)}%`}
                   tone={drawdownTone(portfolioSnapshot.current_drawdown_pct)}
                 />
               </div>
               <div className="mt-4">
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">?????????</h3>
-                  <p className="text-xs text-muted-foreground">??????????????????</p>
+                  <h3 className="text-sm font-semibold">组合定投收益率曲线</h3>
+                  <p className="text-xs text-muted-foreground">鼠标悬停查看组合市值、投入与收益率。</p>
                 </div>
                 <DcaReturnChart points={portfolioSnapshot.equity_curve} />
               </div>
@@ -584,7 +584,7 @@ export function FundDcaPanel() {
       ) : (
         <div className="mt-4">
           <Button type="button" variant="outline" size="sm" onClick={() => setShowPortfolio(true)}>
-            ???????
+            多基金组合定投
           </Button>
         </div>
       )}
