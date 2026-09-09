@@ -100,6 +100,7 @@ export function FundDcaPanel() {
   const [frequency, setFrequency] = useState<FundDcaFrequency>("monthly");
   const [amount, setAmount] = useState("1000");
   const [range, setRange] = useState<DcaRange>("1y");
+  const [portfolioRange, setPortfolioRange] = useState<DcaRange>("1y");
   const [snapshot, setSnapshot] = useState<FundDcaSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -200,7 +201,7 @@ export function FundDcaPanel() {
     try {
       const params = new URLSearchParams({
         codes: codes.join(","),
-        range,
+        portfolioRange,
         frequency,
         amounts: amounts.join(","),
       });
@@ -509,6 +510,20 @@ export function FundDcaPanel() {
               >
                 + 添加基金
               </Button>
+              <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                回测区间
+                <select
+                  value={portfolioRange}
+                  onChange={(event) => setPortfolioRange(event.target.value as DcaRange)}
+                  className="rounded-md border px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  {RANGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <Button type="submit" size="sm" disabled={portfolioLoading}>
                 {portfolioLoading ? "回测中..." : "开始回测"}
               </Button>
