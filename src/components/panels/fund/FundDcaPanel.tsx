@@ -467,7 +467,7 @@ export function FundDcaPanel() {
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-sm font-semibold">多基金组合定投</h3>
             <Button type="button" variant="outline" size="sm" onClick={() => setShowPortfolio(false)}>
-              ??
+              收起
             </Button>
           </div>
           <form onSubmit={handlePortfolioSubmit} className="flex flex-col gap-2">
@@ -495,7 +495,7 @@ export function FundDcaPanel() {
                   className="rounded-md border px-2 py-2 text-sm text-muted-foreground disabled:opacity-40"
                   aria-label="删除基金"
                 >
-                  ??
+                  删除
                 </button>
               </div>
             ))}
