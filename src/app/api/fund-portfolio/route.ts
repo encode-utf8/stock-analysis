@@ -4,6 +4,7 @@ import {
   normalizeFundPortfolioCodes,
   normalizeFundPortfolioMode,
   normalizeFundPortfolioRange,
+  normalizeFundPortfolioRangeBounds,
   normalizeFundPortfolioShares,
   normalizeFundPortfolioWeights,
 } from "@/lib/fund-portfolio";
@@ -31,7 +32,27 @@ export async function GET(request: NextRequest): Promise<Response> {
       );
     }
     try {
-      return apiOk(await getFundPortfolio(codes, range, { mode, weights: null, shares }));
+      return apiOk(await getFundPortfolio(codes, range, { mode, weights: null, shares, ranges: null }));
+    } catch (error) {
+      return apiUnexpected(error);
+    }
+  }
+
+  if (mode === "range") {
+    const ranges = normalizeFundPortfolioRangeBounds(
+      params.get("min_weights"),
+      params.get("max_weights"),
+      codes.length,
+    );
+    if (!ranges) {
+      return apiFail(
+        "VALIDATION_ERROR",
+        "目标权重区间数量需与基金数量一致，且每只基金需满足 0 <= 下限 <= 上限 <= 100。",
+        400,
+      );
+    }
+    try {
+      return apiOk(await getFundPortfolio(codes, range, { mode, weights: null, shares: null, ranges }));
     } catch (error) {
       return apiUnexpected(error);
     }
@@ -47,7 +68,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   try {
-    return apiOk(await getFundPortfolio(codes, range, { mode, weights, shares: null }));
+    return apiOk(await getFundPortfolio(codes, range, { mode, weights, shares: null, ranges: null }));
   } catch (error) {
     return apiUnexpected(error);
   }

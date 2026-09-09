@@ -87,6 +87,29 @@ function isFundNavList(value: unknown): value is FundNavPoint[] {
   );
 }
 
+const NAV_RANGE_COVERAGE_TOLERANCE_MS = 14 * 24 * 60 * 60 * 1000;
+
+function navCoversRange(
+  nav: FundNavPoint[],
+  startDate: string,
+  endDate: string,
+): boolean {
+  if (nav.length === 0) {
+    return false;
+  }
+  const sorted = nav
+    .slice()
+    .sort((left, right) => left.nav_date.localeCompare(right.nav_date));
+  const firstDate = new Date(`${sorted[0]?.nav_date ?? startDate}T00:00:00Z`).getTime();
+  const lastDate = new Date(`${sorted.at(-1)?.nav_date ?? endDate}T00:00:00Z`).getTime();
+  const start = new Date(`${startDate}T00:00:00Z`).getTime();
+  const end = new Date(`${endDate}T00:00:00Z`).getTime();
+  return (
+    firstDate <= start + NAV_RANGE_COVERAGE_TOLERANCE_MS &&
+    lastDate >= end - NAV_RANGE_COVERAGE_TOLERANCE_MS
+  );
+}
+
 /** 从基金数据侧车获取档案。 */
 async function fetchFundProfileFromSidecar(code: string): Promise<FundProfile | null> {
   try {
@@ -219,7 +242,7 @@ export async function getFundNav(
   }
 
   const loader = async (): Promise<FundNavPoint[]> => {
-    if (!forceRefresh) {
+    if (!forceRefresh && range !== "all") {
       const saved = fundNavStore.get(cacheKey);
       if (
         saved &&
@@ -229,7 +252,8 @@ export async function getFundNav(
           (item) =>
             typeof item.fetched_at === "string" &&
             isFresh(item.fetched_at, NAV_TTL_MS),
-        )
+        ) &&
+        navCoversRange(saved, startDate, endDate)
       ) {
         return saved;
       }
@@ -243,7 +267,7 @@ export async function getFundNav(
           typeof item.fetched_at === "string" &&
           isFresh(item.fetched_at, NAV_TTL_MS),
       );
-      if (persisted.length > 0) {
+      if (persisted.length > 0 && navCoversRange(persisted, startDate, endDate)) {
         fundNavStore.set(cacheKey, persisted);
         return persisted;
       }

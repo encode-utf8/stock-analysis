@@ -34,7 +34,7 @@ export function normalizeFundPortfolioRange(raw: string | null): FundNavRange {
 
 /** 规范化组合分析模式；未提供时默认按百分比权重。 */
 export function normalizeFundPortfolioMode(raw: string | null): FundPortfolioMode {
-  return raw === "shares" || raw === "amount" ? "shares" : "weight";
+  return raw === "shares" || raw === "amount" ? "shares" : raw === "range" ? "range" : "weight";
 }
 
 /** 规范化组合权重；未提供时等权，否则必须是 2-5 个权重且合计约等于 100。 */
@@ -82,6 +82,56 @@ export function normalizeFundPortfolioShares(
     return null;
   }
   return values;
+}
+
+export interface FundPortfolioRangeBounds {
+  minWeights: number[];
+  maxWeights: number[];
+}
+
+/** 规范化目标权重区间；下限与上限数量需与基金数量一致，且 0 <= 下限 <= 上限 <= 100。 */
+export function normalizeFundPortfolioRangeBounds(
+  rawMin: string | null,
+  rawMax: string | null,
+  count: number,
+): FundPortfolioRangeBounds | null {
+  if (!rawMin || !rawMax) {
+    return null;
+  }
+  const parse = (raw: string): number[] | null => {
+    const values = raw
+      .split(/[,，\s]+/)
+      .filter(Boolean)
+      .map((value) => Number(value));
+    if (values.length !== count || values.some((value) => !Number.isFinite(value))) {
+      return null;
+    }
+    return values;
+  };
+  const minWeights = parse(rawMin);
+  const maxWeights = parse(rawMax);
+  if (!minWeights || !maxWeights) {
+    return null;
+  }
+  for (let index = 0; index < count; index += 1) {
+    if (minWeights[index] < 0 || maxWeights[index] > 100 || minWeights[index] > maxWeights[index]) {
+      return null;
+    }
+  }
+  return { minWeights, maxWeights };
+}
+
+/** 将目标权重区间转换为组合合成用的基准权重：取区间中点并归一化到 100。 */
+function targetWeightsFromRanges(
+  minWeights: number[],
+  maxWeights: number[],
+): number[] {
+  const midpoints = minWeights.map((min, index) => (min + maxWeights[index]) / 2);
+  const total = midpoints.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) {
+    return midpoints.map(() => 100 / midpoints.length);
+  }
+  return midpoints.map((value) => (value / total) * 100);
 }
 
 function round(value: number | null, digits = 2): number | null {
@@ -203,6 +253,74 @@ function buildPortfolioCurve(portfolioNav: FundNavPoint[]): FundPortfolioCurvePo
   });
 }
 
+/** 按组合协方差计算每只基金对组合波动率的相对风险贡献。 */
+function calculateRiskContributions(
+  navSeries: FundNavPoint[][],
+  weights: number[],
+  commonDates: string[],
+): Array<number | null> {
+  const count = navSeries.length;
+  const unavailable = Array.from({ length: count }, () => null);
+  if (commonDates.length < 3 || count === 0) {
+    return unavailable;
+  }
+
+  const returnsByFund: number[][] = [];
+  for (const nav of navSeries) {
+    const byDate = new Map(nav.map((point) => [point.nav_date, point]));
+    const returns: number[] = [];
+    for (let index = 1; index < commonDates.length; index += 1) {
+      const previous = byDate.get(commonDates[index - 1]);
+      const current = byDate.get(commonDates[index]);
+      if (!previous || !current || previous.cumulative_nav <= 0 || current.cumulative_nav <= 0) {
+        return unavailable;
+      }
+      returns.push(current.cumulative_nav / previous.cumulative_nav - 1);
+    }
+    returnsByFund.push(returns);
+  }
+
+  const periods = returnsByFund[0]?.length ?? 0;
+  if (periods < 2 || returnsByFund.some((returns) => returns.length !== periods)) {
+    return unavailable;
+  }
+
+  const means = returnsByFund.map((returns) => returns.reduce((sum, value) => sum + value, 0) / periods);
+  const covariance: number[][] = Array.from({ length: count }, () => Array(count).fill(0));
+  for (let left = 0; left < count; left += 1) {
+    for (let right = 0; right <= left; right += 1) {
+      let sum = 0;
+      for (let index = 0; index < periods; index += 1) {
+        sum += (returnsByFund[left][index] - means[left]) * (returnsByFund[right][index] - means[right]);
+      }
+      const value = sum / (periods - 1);
+      covariance[left][right] = value;
+      covariance[right][left] = value;
+    }
+  }
+
+  const weightDecimals = weights.map((weight) => weight / 100);
+  let variance = 0;
+  for (let left = 0; left < count; left += 1) {
+    for (let right = 0; right < count; right += 1) {
+      variance += weightDecimals[left] * covariance[left][right] * weightDecimals[right];
+    }
+  }
+  if (!Number.isFinite(variance) || variance <= 1e-12) {
+    return unavailable;
+  }
+
+  const marginal = weightDecimals.map((_, left) => {
+    let value = 0;
+    for (let right = 0; right < count; right += 1) {
+      value += covariance[left][right] * weightDecimals[right];
+    }
+    return value;
+  });
+
+  return weightDecimals.map((weight, index) => (weight * marginal[index]) / variance * 100);
+}
+
 export async function getFundPortfolio(
   codes: string[],
   range: FundNavRange,
@@ -210,10 +328,11 @@ export async function getFundPortfolio(
     mode: FundPortfolioMode;
     weights: number[] | null;
     shares: number[] | null;
+    ranges: FundPortfolioRangeBounds | null;
   },
   now = new Date(),
 ): Promise<FundPortfolioSummary> {
-  const { mode, weights: rawWeights, shares } = options;
+  const { mode, weights: rawWeights, shares, ranges } = options;
   const [profiles, navSeries] = await Promise.all([
     Promise.all(codes.map((code) => getFundProfile(code))),
     Promise.all(codes.map((code) => getFundNav(code, range, "cumulative"))),
@@ -237,6 +356,8 @@ export async function getFundPortfolio(
       totalInitialValue > 0
         ? initialValues.map((value) => (value / totalInitialValue) * 100)
         : codes.map(() => 100 / codes.length);
+  } else if (mode === "range" && ranges) {
+    weights = targetWeightsFromRanges(ranges.minWeights, ranges.maxWeights);
   } else {
     weights = rawWeights ?? codes.map(() => 100 / codes.length);
   }
@@ -299,6 +420,7 @@ export async function getFundPortfolio(
     return weight / 100;
   });
   const totalCurrentProxy = currentProxies.reduce((sum, value) => sum + value, 0);
+  const riskContributions = calculateRiskContributions(navSeries, weights, commonDates);
   const items: FundPortfolioItem[] = baseItems.map((item, index) => {
     const currentWeight =
       totalCurrentProxy > 0
@@ -306,11 +428,40 @@ export async function getFundPortfolio(
         : null;
     const weightDrift =
       currentWeight === null ? null : round(currentWeight - (weights[index] ?? 0));
+    const minWeight =
+      mode === "range" && ranges
+        ? round(ranges.minWeights[index])
+        : round(weights[index]);
+    const maxWeight =
+      mode === "range" && ranges
+        ? round(ranges.maxWeights[index])
+        : round(weights[index]);
+    const rebalanceStatus =
+      currentWeight === null || minWeight === null || maxWeight === null
+        ? null
+        : currentWeight < minWeight - 0.005
+          ? "below"
+          : currentWeight > maxWeight + 0.005
+            ? "above"
+            : "within";
+    const rebalanceDrift =
+      currentWeight === null || rebalanceStatus === null
+        ? null
+        : rebalanceStatus === "below"
+          ? round(minWeight! - currentWeight)
+          : rebalanceStatus === "above"
+            ? round(currentWeight - maxWeight!)
+            : 0;
     return {
       ...item,
       target_weight_pct: round(weights[index]) ?? 0,
+      target_weight_min_pct: minWeight,
+      target_weight_max_pct: maxWeight,
       current_weight_pct: currentWeight,
       weight_drift_pct: weightDrift,
+      rebalance_status: rebalanceStatus,
+      rebalance_drift_pct: rebalanceDrift,
+      risk_contribution_pct: round(riskContributions[index]),
     };
   });
 
