@@ -229,6 +229,36 @@ export interface FundDcaSnapshot {
   generated_at: string;
 }
 
+/** 基金风格因子快照。 */
+export interface FundStyleSnapshot {
+  code: string;
+  name: string;
+  range: string;
+  available: boolean;
+  reason: string | null;
+  analysis_source: "ai" | "local";
+  tags: string[];
+  risk_return: {
+    annualized_return_pct: number | null;
+    annualized_volatility_pct: number | null;
+    sharpe: number | null;
+    sortino: number | null;
+    calmar: number | null;
+    max_drawdown_pct: number | null;
+    current_drawdown_pct: number | null;
+  };
+  concentration: {
+    top10_weight_pct: number | null;
+    top1_weight_pct: number | null;
+    holding_count: number;
+    industry_count: number;
+  };
+  industry_allocation: Array<{ name: string; weight_pct: number }>;
+  narrative: string | null;
+  source: string;
+  generated_at: string;
+}
+
 /** 自选基金条目：与个股自选列表隔离，仅保存展示与切换所需元数据。 */
 export interface FundWatchlistItem {
   code: string;

@@ -15,6 +15,7 @@ import { FundProfilePanel } from "@/components/panels/fund/FundProfilePanel";
 import { FundPortfolioPanel } from "@/components/panels/fund/FundPortfolioPanel";
 import { FundReplayPanel } from "@/components/panels/fund/FundReplayPanel";
 import { FundRiskPanel } from "@/components/panels/fund/FundRiskPanel";
+import { FundStylePanel } from "@/components/panels/fund/FundStylePanel";
 import { FundWatchlistPanel } from "@/components/panels/fund/FundWatchlistPanel";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import type { FundMetricsRange } from "@/lib/fund-metrics";
@@ -638,6 +639,8 @@ export default function FundWorkbench() {
       <FundDcaPanel />
 
       <FundNewsPanel />
+
+      <FundStylePanel />
 
       {code ? (
         <FundReplayPanel
