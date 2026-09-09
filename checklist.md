@@ -861,3 +861,27 @@ corepack pnpm build
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
 - 调用 `/api/fund-dca?code=510300&range=1y&frequency=monthly&amount=1000`，确认定投期数、累计投入、期末市值与收益率曲线计算正确。
 - 在基金工作台切换每日、每周、每两周、每月与不同区间，确认收益率曲线同步更新；每日定投不展示明细表，其他频率可手动展开明细。
+
+
+## F13 基金风格因子分析（2026-09-09）
+
+- 关联文档：`docs/fund-workbench-spec.md` FR-F07、未来扩展
+- 分支：`feature/fund-style-factors`
+- 目标：基于真实持仓、行业配置与风险指标分析基金风格，并用 AI 归纳持仓风格与风险收益特征。
+
+### 验收项
+
+- [x] 新增 `FundStyleSnapshot` 共享类型
+- [x] 新增 `fund-style.ts`，复用持仓与风险指标计算本地风格标签
+- [x] 新增 `/api/fund-style?code=510300&range=1y`
+- [x] 新增 `FundStylePanel`，展示风格标签、风险收益指标、持仓集中度、行业配置与 AI 归纳
+- [x] 持仓为确定性回退时明确不可用，不生成演示风格结论
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/fund-style?code=510300&range=1y`，确认返回风格标签、风险指标、持仓集中度与 AI 归纳。
+- 在基金工作台切换不同基金与区间，确认风格因子面板同步更新，且不使用确定性持仓生成结论。
