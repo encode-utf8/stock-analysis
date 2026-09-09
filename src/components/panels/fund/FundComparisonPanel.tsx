@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { sourceLabel } from "@/lib/format";
 import { FUND_TRADING_MODE_LABELS, FUND_TYPE_LABELS } from "@/lib/fund-market";
 import type { FundComparisonSnapshot } from "@/lib/shared/types";
+import { ComparisonNavChart } from "@/components/panels/fund/ComparisonNavChart";
 
 const RANGE_OPTIONS = [
   { value: "1m", label: "近1个月" },
@@ -259,6 +260,15 @@ export function FundComparisonPanel() {
               ))}
             </tbody>
           </table>
+
+          <div className="mt-5">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">归一化累计收益曲线</h3>
+              <p className="text-xs text-muted-foreground">多只基金统一从共同起点 0% 开始比较，悬停查看收益。</p>
+            </div>
+            <ComparisonNavChart series={snapshot.series} />
+          </div>
+
           <p className="mt-2 text-xs text-muted-foreground">
             区间：{rangeLabel(snapshot.range)}；数据仅供学习参考，不构成投资建议。
           </p>

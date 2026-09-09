@@ -197,6 +197,8 @@ function unavailableSnapshot(
     annualized_return_pct: null,
     max_drawdown_pct: null,
     current_drawdown_pct: null,
+    lump_sum_return_pct: null,
+    lump_sum_curve: [],
     start_date: null,
     end_date: null,
     contributions: [],
@@ -320,6 +322,35 @@ export async function getFundDcaBacktest(
   const annualizedReturn = calculateDcaXirr(contributions, finalPoint.nav_date, finalValue);
   const currentDrawdown = peakValue > 0 ? (finalValue / peakValue - 1) * 100 : null;
 
+  const firstContributionDate = contributions[0]?.date ?? nav[0].nav_date;
+  const firstContributionPoint =
+    nav.find((point) => point.nav_date === firstContributionDate) ??
+    nav.find((point) => point.nav_date >= firstContributionDate);
+  let lumpSumReturnPct: number | null = null;
+  let lumpSumCurve: FundDcaEquityPoint[] = [];
+  if (firstContributionPoint && firstContributionPoint.unit_nav > 0 && totalInvested > 0) {
+    const lumpShares = totalInvested / firstContributionPoint.unit_nav;
+    const lumpPoints: FundDcaEquityPoint[] = [];
+    let started = false;
+    for (const point of nav) {
+      if (!started && point.nav_date < firstContributionDate) {
+        continue;
+      }
+      started = true;
+      const marketValue = lumpShares * point.unit_nav;
+      lumpPoints.push({
+        date: point.nav_date,
+        market_value: round(marketValue) ?? marketValue,
+        invested_amount: totalInvested,
+        return_pct: round((marketValue / totalInvested - 1) * 100, 2) ?? 0,
+      });
+    }
+
+    lumpSumCurve = downsampleEquityCurve(lumpPoints, MAX_EQUITY_POINTS);
+    const finalLumpValue = lumpShares * finalPoint.unit_nav;
+    lumpSumReturnPct = round((finalLumpValue / totalInvested - 1) * 100);
+  }
+
   return {
     code,
     name: profile.name,
@@ -339,6 +370,8 @@ export async function getFundDcaBacktest(
     annualized_return_pct: annualizedReturn,
     max_drawdown_pct: round(maxDrawdown),
     current_drawdown_pct: round(currentDrawdown),
+    lump_sum_return_pct: lumpSumReturnPct,
+    lump_sum_curve: lumpSumCurve,
     start_date: nav[0].nav_date,
     end_date: finalPoint.nav_date,
     contributions: frequency === "daily" ? [] : contributions,

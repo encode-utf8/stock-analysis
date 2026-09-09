@@ -906,3 +906,27 @@ corepack pnpm build
 - corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build
 - 在基金工作台左侧勾选/清空模块，确认右侧信息区按需展示，未勾选时不展示对应内容。
 - 留空基金代码查询时默认使用 510300。
+
+## F15 基金对比 / 组合 / 定投增强（2026-09-09）
+
+- 关联文档：`docs/fund-workbench-spec.md` FR-F08、FR-F09、未来扩展
+- 分支：`feature/fund-direction-two-enhance`
+- 目标：在既有基金对比、组合分析、定投回测基础上增强曲线可视化与对比维度，不使用降级假数据。
+
+### 验收项
+
+- [x] 基金对比新增共同起点归一化累计收益曲线，支持多基金叠加与悬停查看收益
+- [x] 基金组合新增组合累计收益曲线与组合回撤曲线
+- [x] 基金组合明细新增目标权重、当前权重与权重偏离展示
+- [x] 定投回测新增“定投 vs 一次性买入”收益对比曲线与一次性买入收益率指标
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/fund-comparison?codes=510300,110022&range=1y`，确认 `series` 含共同起点归一化收益曲线。
+- 调用 `/api/fund-portfolio?codes=510300,110022&mode=weight&weights=60,40&range=1y`，确认 `portfolio_curve` 与权重偏离字段返回。
+- 调用 `/api/fund-dca?code=510300&range=1y&frequency=monthly&amount=1000`，确认 `lump_sum_curve` 与 `lump_sum_return_pct` 返回。
+- 在基金工作台对比、组合、定投模块分别查看新增曲线交互与指标，确认净值降级时不生成假曲线。

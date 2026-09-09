@@ -5,6 +5,8 @@ import { getFundNav, getFundProfile, type FundNavRange } from "@/lib/fund-data";
 import { normalizeFundCode } from "@/lib/fund-market";
 import type {
   FundComparisonItem,
+  FundComparisonNavPoint,
+  FundComparisonNavSeries,
   FundComparisonSnapshot,
   FundNavPoint,
 } from "@/lib/shared/types";
@@ -59,8 +61,8 @@ export async function getFundComparison(
   range: FundNavRange,
   now = new Date(),
 ): Promise<FundComparisonSnapshot> {
-  const items = await Promise.all(
-    codes.map(async (code): Promise<FundComparisonItem> => {
+  const entries = await Promise.all(
+    codes.map(async (code) => {
       const [profile, nav, metrics, intraday] = await Promise.all([
         getFundProfile(code),
         getFundNav(code, range, "cumulative"),
@@ -68,32 +70,79 @@ export async function getFundComparison(
         getFundIntraday(code),
       ]);
 
-      const latest = nav.at(-1) ?? null;
-      return {
-        code,
-        name: profile.name,
-        type: profile.type,
-        trading_mode: profile.trading_mode,
-        latest_nav_date: latest?.nav_date ?? null,
-        latest_cumulative_nav: latest ? round(latest.cumulative_nav, 4) : null,
-        latest_change_pct: intraday.change_pct,
-        period_return_pct: periodReturn(nav),
-        annualized_return_pct: metrics?.annualized_return_pct ?? null,
-        annualized_volatility_pct: metrics?.annualized_volatility_pct ?? null,
-        max_drawdown_pct: metrics?.max_drawdown_pct ?? null,
-        current_drawdown_pct: metrics?.current_drawdown_pct ?? null,
-        sharpe: metrics?.sharpe ?? null,
-        sortino: metrics?.sortino ?? null,
-        calmar: metrics?.calmar ?? null,
-        source: profile.source,
-        fetched_at: profile.fetched_at,
-      };
+      return { code, profile, nav, metrics, intraday };
     }),
   );
+
+  const commonDates = commonDatesForSeries(entries.map((entry) => entry.nav));
+  const items: FundComparisonItem[] = entries.map((entry) => {
+    const { code, profile, nav, metrics, intraday } = entry;
+    const latest = nav.at(-1) ?? null;
+    return {
+      code,
+      name: profile.name,
+      type: profile.type,
+      trading_mode: profile.trading_mode,
+      latest_nav_date: latest?.nav_date ?? null,
+      latest_cumulative_nav: latest ? round(latest.cumulative_nav, 4) : null,
+      latest_change_pct: intraday.change_pct,
+      period_return_pct: periodReturn(nav),
+      annualized_return_pct: metrics?.annualized_return_pct ?? null,
+      annualized_volatility_pct: metrics?.annualized_volatility_pct ?? null,
+      max_drawdown_pct: metrics?.max_drawdown_pct ?? null,
+      current_drawdown_pct: metrics?.current_drawdown_pct ?? null,
+      sharpe: metrics?.sharpe ?? null,
+      sortino: metrics?.sortino ?? null,
+      calmar: metrics?.calmar ?? null,
+      source: profile.source,
+      fetched_at: profile.fetched_at,
+    };
+  });
+
+  const series: FundComparisonNavSeries[] = entries.map((entry) => {
+    const points: FundComparisonNavPoint[] = [];
+    if (commonDates.length === 0) {
+      return { code: entry.code, name: entry.profile.name, points };
+    }
+
+    const firstDate = commonDates[0];
+    const navByDate = new Map(entry.nav.map((point) => [point.nav_date, point.cumulative_nav]));
+    const baseline = navByDate.get(firstDate);
+    if (baseline === undefined || baseline <= 0) {
+      return { code: entry.code, name: entry.profile.name, points };
+    }
+
+    for (const date of commonDates) {
+      const cumulativeNav = navByDate.get(date);
+      if (cumulativeNav === undefined || cumulativeNav <= 0) {
+        continue;
+      }
+      const normalized = cumulativeNav / baseline;
+      points.push({
+        date,
+        normalized_cumulative_nav: round(normalized, 4) ?? normalized,
+        return_pct: round((normalized - 1) * 100) ?? 0,
+      });
+    }
+
+    return { code: entry.code, name: entry.profile.name, points };
+  });
 
   return {
     range,
     generated_at: now.toISOString(),
     items,
+    series,
   };
+}
+
+/** 计算多只基金共同交易日。 */
+function commonDatesForSeries(navSeries: FundNavPoint[][]): string[] {
+  if (navSeries.length === 0 || navSeries.some((nav) => nav.length === 0)) {
+    return [];
+  }
+  const dateSets = navSeries.map((nav) => new Set(nav.map((point) => point.nav_date)));
+  return Array.from(dateSets[0] ?? [])
+    .filter((date) => dateSets.every((set) => set.has(date)))
+    .sort((left, right) => left.localeCompare(right));
 }
