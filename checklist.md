@@ -811,3 +811,27 @@ corepack pnpm build
 
 - 完成日期：2026-09-09
 - 结果：F10 全部验收通过；`/api/fund-portfolio` 已返回组合与单基金指标，组合分析面板已接入基金工作台；`typecheck`、`lint`、`build` 均通过。
+
+
+## F11 基金行业资讯查询（2026-09-09）
+
+- 关联文档：`docs/fund-workbench-spec.md` 未来扩展、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-news-alerts`
+- 目标：舍弃确定性基金资讯，改为先由 AI 分析持仓判断强相关行业，再检索并展示真实行业资讯。
+
+### 验收项
+
+- [x] 新增 `FundIndustryNewsSnapshot` 与 `FundNewsItem.industry` 共享类型
+- [x] 重构 `fund-news.ts`，使用 DeepSeek 分析持仓行业，并用 Tavily 搜索真实行业资讯
+- [x] 复用 `/api/funds/[code]/news`，返回关联行业、分析来源、可用状态与真实资讯列表
+- [x] 无持仓、无密钥或搜索无结果时返回明确不可用状态，不再展示降级资讯
+- [x] `FundNewsPanel` 改为行业资讯查询，展示关联行业、分析来源与真实资讯，支持手动刷新
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/funds/510300/news`，确认 `industry_analysis_source`、`industries` 与真实行业资讯返回正常。
+- 在基金工作台查询 `510300` 后，确认行业资讯面板显示 AI 识别行业与真实资讯；无密钥时明确显示不可用且不展示降级内容。

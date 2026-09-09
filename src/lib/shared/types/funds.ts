@@ -164,6 +164,19 @@ export type FundNewsType = "announcement" | "report" | "market";
 /** 基金资讯条目。 */
 export interface FundNewsItem extends NewsItem {
   news_type: FundNewsType;
+  /** AI 识别出的关联行业；仅行业资讯查询结果使用。 */
+  industry?: string;
+}
+
+/** 基金行业资讯查询快照。 */
+export interface FundIndustryNewsSnapshot {
+  code: string;
+  industries: string[];
+  industry_analysis_source: "ai" | "holdings" | "none";
+  available: boolean;
+  reason: string | null;
+  news: FundNewsItem[];
+  generated_at: string;
 }
 
 /** 自选基金条目：与个股自选列表隔离，仅保存展示与切换所需元数据。 */
