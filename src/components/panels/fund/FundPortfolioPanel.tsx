@@ -22,6 +22,7 @@ type PortfolioRange = (typeof RANGE_OPTIONS)[number]["value"];
 interface PortfolioRow {
   code: string;
   allocation: string;
+  maxAllocation: string;
 }
 
 interface ApiEnvelope<T> {
@@ -97,8 +98,8 @@ function rangeLabel(range: string): string {
 /** 基金组合分析面板：按用户指定权重合成多只基金，展示组合与单基金风险指标。 */
 export function FundPortfolioPanel() {
   const [rows, setRows] = useState<PortfolioRow[]>([
-    { code: "510300", allocation: "60" },
-    { code: "110022", allocation: "40" },
+    { code: "510300", allocation: "60", maxAllocation: "" },
+    { code: "110022", allocation: "40", maxAllocation: "" },
   ]);
   const [mode, setMode] = useState<FundPortfolioMode>("weight");
   const [range, setRange] = useState<PortfolioRange>("1y");
@@ -108,11 +109,11 @@ export function FundPortfolioPanel() {
 
   const addRow = () => {
     setRows((previous) =>
-      previous.length < 5 ? [...previous, { code: "", allocation: "" }] : previous,
+      previous.length < 5 ? [...previous, { code: "", allocation: "", maxAllocation: "" }] : previous,
     );
   };
 
-  const updateRow = (index: number, field: "code" | "allocation", value: string) => {
+  const updateRow = (index: number, field: "code" | "allocation" | "maxAllocation", value: string) => {
     setRows((previous) =>
       previous.map((row, rowIndex) =>
         rowIndex === index ? { ...row, [field]: value } : row,
@@ -130,33 +131,49 @@ export function FundPortfolioPanel() {
     event.preventDefault();
     const codes = rows.map((row) => row.code.trim());
     if (codes.some((code) => code.length === 0)) {
-      setError("请填写完整，每个基金代码为 6 位数字。");
+      setError("????????????? 6 ????");
       return;
     }
 
     const allocations = rows.map((row) => row.allocation.trim());
+    const maxAllocations = rows.map((row) => row.maxAllocation.trim());
     const hasAnyAllocation = allocations.some((allocation) => allocation.length > 0);
     const hasAllAllocations = allocations.every((allocation) => allocation.length > 0);
 
-    if (mode === "shares") {
+    if (mode === "range") {
+      if (allocations.some((allocation) => allocation.length === 0) || maxAllocations.some((allocation) => allocation.length === 0)) {
+        setError("??????????????????????");
+        return;
+      }
+      const minValues = allocations.map((allocation) => Number(allocation));
+      const maxValues = maxAllocations.map((allocation) => Number(allocation));
+      if (
+        minValues.some((value) => !Number.isFinite(value) || value < 0) ||
+        maxValues.some((value) => !Number.isFinite(value) || value > 100) ||
+        minValues.some((value, index) => value > maxValues[index])
+      ) {
+        setError("????????? 0 <= ?? <= ?? <= 100?");
+        return;
+      }
+    } else if (mode === "shares") {
       if (!hasAllAllocations) {
-        setError("持仓份额模式请为每一行都填写持仓份额。");
+        setError("???????????????????");
         return;
       }
     } else if (hasAnyAllocation && !hasAllAllocations) {
-      setError("请为每一行都填写权重，或全部留空使用等权。");
+      setError("?????????????????????");
       return;
     }
 
     if (mode === "weight" && hasAllAllocations) {
       const weightValues = allocations.map((allocation) => Number(allocation));
       if (weightValues.some((value) => !Number.isFinite(value) || value < 0)) {
-        setError("权重需为非负数字。");
+        setError("?????????");
         return;
       }
       const weightTotal = weightValues.reduce((sum, value) => sum + value, 0);
       if (Math.abs(weightTotal - 100) > 0.01) {
-        setError(`权重合计需等于 100，当前为 ${weightTotal.toFixed(2)}。`);
+        setError(`??????? 100???? ${weightTotal.toFixed(2)}?`);
         return;
       }
     }
@@ -164,7 +181,7 @@ export function FundPortfolioPanel() {
     if (mode === "shares" && hasAllAllocations) {
       const shareValues = allocations.map((allocation) => Number(allocation));
       if (shareValues.some((value) => !Number.isFinite(value) || value <= 0)) {
-        setError("持仓份额需为大于 0 的数字。");
+        setError("???????? 0 ????");
         return;
       }
     }
@@ -173,14 +190,17 @@ export function FundPortfolioPanel() {
     setError(null);
     try {
       const params = new URLSearchParams({ codes: codes.join(","), range, mode });
-      if (hasAnyAllocation) {
+      if (mode === "range") {
+        params.set("min_weights", allocations.join(","));
+        params.set("max_weights", maxAllocations.join(","));
+      } else if (hasAnyAllocation) {
         params.set(mode === "shares" ? "shares" : "weights", allocations.join(","));
       }
       const data = await apiFetch<FundPortfolioSummary>(`/api/fund-portfolio?${params.toString()}`);
       setSummary(data);
     } catch (nextError) {
       setSummary(null);
-      setError(nextError instanceof Error ? nextError.message : "基金组合加载失败。");
+      setError(nextError instanceof Error ? nextError.message : "?????????");
     } finally {
       setLoading(false);
     }
@@ -207,13 +227,32 @@ export function FundPortfolioPanel() {
                   inputMode="numeric"
                   className="w-44 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                 />
-                <input
-                  value={row.allocation}
-                  onChange={(event) => updateRow(index, "allocation", event.target.value)}
-                  placeholder={mode === "weight" ? "权重 %" : "份额（份）"}
-                  inputMode="decimal"
-                  className="w-28 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-                />
+                {mode === "range" ? (
+                  <>
+                    <input
+                      value={row.allocation}
+                      onChange={(event) => updateRow(index, "allocation", event.target.value)}
+                      placeholder="?? %"
+                      inputMode="decimal"
+                      className="w-24 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <input
+                      value={row.maxAllocation}
+                      onChange={(event) => updateRow(index, "maxAllocation", event.target.value)}
+                      placeholder="?? %"
+                      inputMode="decimal"
+                      className="w-24 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </>
+                ) : (
+                  <input
+                    value={row.allocation}
+                    onChange={(event) => updateRow(index, "allocation", event.target.value)}
+                    placeholder={mode === "weight" ? "?? %" : "?????"}
+                    inputMode="decimal"
+                    className="w-28 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                )}
                 <button
                   type="button"
                   onClick={() => removeRow(index)}
@@ -241,6 +280,7 @@ export function FundPortfolioPanel() {
               className="rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
             >
               <option value="weight">百分比权重</option>
+              <option value="range">??????</option>
               <option value="shares">持仓份额</option>
             </select>
             <select
@@ -348,27 +388,39 @@ export function FundPortfolioPanel() {
             </div>
           </div>
 
+          {summary.items.some((item) => item.rebalance_status === "below" || item.rebalance_status === "above") ? (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              ????????????????????
+              {summary.items
+                .filter((item) => item.rebalance_status === "below" || item.rebalance_status === "above")
+                .map((item) => `${item.name}${item.rebalance_status === "below" ? "??" : "??"}${item.rebalance_drift_pct !== null ? ` ${item.rebalance_drift_pct.toFixed(2)}%` : ""}`)
+                .join("?")}
+            </div>
+          ) : null}
+
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[980px] border-collapse text-sm">
+            <table className="w-full min-w-[1100px] border-collapse text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
-                                    <th className="px-2 py-2">基金</th>
-                  <th className="px-2 py-2">目标权重</th>
-                  <th className="px-2 py-2">当前权重</th>
-                  <th className="px-2 py-2">偏离</th>
+                  <th className="px-2 py-2">??</th>
+                  <th className="px-2 py-2">????</th>
+                  <th className="px-2 py-2">????</th>
+                  <th className="px-2 py-2">??</th>
+                  <th className="px-2 py-2">???</th>
                   {summary.mode === "shares" ? (
                     <>
-                      <th className="px-2 py-2">持仓金额</th>
-                      <th className="px-2 py-2">最新市值</th>
-                      <th className="px-2 py-2">持仓盈亏</th>
+                      <th className="px-2 py-2">????</th>
+                      <th className="px-2 py-2">????</th>
+                      <th className="px-2 py-2">????</th>
                     </>
                   ) : null}
-<th className="px-2 py-2">区间收益</th>
-                  <th className="px-2 py-2">年化收益</th>
-                  <th className="px-2 py-2">年化波动</th>
-                  <th className="px-2 py-2">最大回撤</th>
-                  <th className="px-2 py-2">夏普</th>
-                  <th className="px-2 py-2">卡玛</th>
+                  <th className="px-2 py-2">????</th>
+                  <th className="px-2 py-2">????</th>
+                  <th className="px-2 py-2">????</th>
+                  <th className="px-2 py-2">????</th>
+                  <th className="px-2 py-2">??</th>
+                  <th className="px-2 py-2">??</th>
+                  <th className="px-2 py-2">????</th>
                 </tr>
               </thead>
               <tbody>
@@ -379,15 +431,26 @@ export function FundPortfolioPanel() {
                       <div className="text-xs text-muted-foreground">{item.code}</div>
                     </td>
                     <td className="px-2 py-3 text-slate-900">
-                      {formatNumber(item.target_weight_pct)}%
+                      {summary.mode === "range"
+                        ? `${formatNumber(item.target_weight_min_pct)}%~${formatNumber(item.target_weight_max_pct)}%`
+                        : `${formatNumber(item.target_weight_pct)}%`}
                     </td>
                     <td className="px-2 py-3 text-slate-900">
                       {formatNumber(item.current_weight_pct)}%
                     </td>
                     <td className="px-2 py-3 text-slate-900">
                       {item.weight_drift_pct === null
-                        ? "—"
+                        ? "?"
                         : `${item.weight_drift_pct > 0 ? "+" : ""}${item.weight_drift_pct.toFixed(2)}%`}
+                    </td>
+                    <td className={`px-2 py-3 font-medium ${item.rebalance_status === "below" || item.rebalance_status === "above" ? "text-amber-700" : "text-slate-900"}`}>
+                      {item.rebalance_status === "below"
+                        ? "??"
+                        : item.rebalance_status === "above"
+                          ? "??"
+                          : item.rebalance_status === "within"
+                            ? "???"
+                            : "?"}
                     </td>
                     {summary.mode === "shares" ? (
                       <>
@@ -402,7 +465,7 @@ export function FundPortfolioPanel() {
                         </td>
                       </>
                     ) : null}
-<td className={`px-2 py-3 font-medium ${returnTone(item.period_return_pct)}`}>
+                    <td className={`px-2 py-3 font-medium ${returnTone(item.period_return_pct)}`}>
                       {formatPercent(item.period_return_pct)}
                     </td>
                     <td className={`px-2 py-3 font-medium ${returnTone(item.annualized_return_pct)}`}>
@@ -419,6 +482,9 @@ export function FundPortfolioPanel() {
                     </td>
                     <td className={`px-2 py-3 font-medium ${ratioTone(item.calmar)}`}>
                       {formatNumber(item.calmar)}
+                    </td>
+                    <td className="px-2 py-3 text-slate-900">
+                      {item.risk_contribution_pct === null ? "?" : `${item.risk_contribution_pct.toFixed(2)}%`}
                     </td>
                   </tr>
                 ))}
