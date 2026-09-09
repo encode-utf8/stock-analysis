@@ -8,7 +8,20 @@ import { sourceLabel } from "@/lib/format";
 import { FUND_TRADING_MODE_LABELS, FUND_TYPE_LABELS } from "@/lib/fund-market";
 import type { FundComparisonSnapshot } from "@/lib/shared/types";
 
-const RANGE_OPTIONS = ["1m", "3m", "6m", "1y", "3y", "all"] as const;
+const RANGE_OPTIONS = [
+  { value: "1m", label: "近1个月" },
+  { value: "3m", label: "近3个月" },
+  { value: "6m", label: "近6个月" },
+  { value: "1y", label: "近1年" },
+  { value: "3y", label: "近3年" },
+  { value: "all", label: "成立以来" },
+] as const;
+
+type ComparisonRange = (typeof RANGE_OPTIONS)[number]["value"];
+
+function rangeLabel(range: string): string {
+  return RANGE_OPTIONS.find((option) => option.value === range)?.label ?? range;
+}
 
 interface ApiEnvelope<T> {
   success?: boolean;
@@ -67,19 +80,40 @@ function ratioTone(value: number | null): string {
 
 /** 基金多代码对比面板：按同一区间横向对比业绩与风险指标。 */
 export function FundComparisonPanel() {
-  const [codesInput, setCodesInput] = useState("510300,110022");
-  const [range, setRange] = useState<"1m" | "3m" | "6m" | "1y" | "3y" | "all">("1y");
+  const [codeRows, setCodeRows] = useState<string[]>(["510300", "110022"]);
+  const [range, setRange] = useState<ComparisonRange>("1y");
   const [snapshot, setSnapshot] = useState<FundComparisonSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const addRow = () => {
+    setCodeRows((previous) => (previous.length < 5 ? [...previous, ""] : previous));
+  };
+
+  const updateRow = (index: number, value: string) => {
+    setCodeRows((previous) =>
+      previous.map((code, rowIndex) => (rowIndex === index ? value : code)),
+    );
+  };
+
+  const removeRow = (index: number) => {
+    setCodeRows((previous) =>
+      previous.length > 2 ? previous.filter((_, rowIndex) => rowIndex !== index) : previous,
+    );
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const codes = codeRows.map((code) => code.trim());
+    if (codes.some((code) => code.length === 0)) {
+      setError("请填写完整，每个基金代码为 6 位数字。");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       const data = await apiFetch<FundComparisonSnapshot>(
-        `/api/fund-comparison?codes=${encodeURIComponent(codesInput)}&range=${range}`,
+        `/api/fund-comparison?codes=${encodeURIComponent(codes.join(","))}&range=${range}`,
       );
       setSnapshot(data);
     } catch (nextError) {
@@ -92,34 +126,61 @@ export function FundComparisonPanel() {
 
   return (
     <section className="rounded-xl border bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-base font-semibold">基金对比</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             输入 2–5 个基金代码，横向比较同区间业绩与风险指标。
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="flex flex-wrap gap-2">
-          <input
-            value={codesInput}
-            onChange={(event) => setCodesInput(event.target.value)}
-            placeholder="如 510300,110022"
-            className="w-56 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          <select
-            value={range}
-            onChange={(event) => setRange(event.target.value as typeof range)}
-            className="rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-          >
-            {RANGE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option === "all" ? "成立以来" : option}
-              </option>
+        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 rounded-lg border bg-slate-50 p-3">
+          <div className="flex flex-col gap-2">
+            {codeRows.map((code, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <input
+                  value={code}
+                  onChange={(event) => updateRow(index, event.target.value)}
+                  placeholder={`基金 ${index + 1}，如 510300`}
+                  maxLength={6}
+                  inputMode="numeric"
+                  className="w-52 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeRow(index)}
+                  disabled={codeRows.length <= 2}
+                  className="rounded-md border px-2 py-2 text-sm text-muted-foreground disabled:opacity-40"
+                  aria-label="删除该行"
+                >
+                  删除
+                </button>
+              </div>
             ))}
-          </select>
-          <Button type="submit" disabled={loading}>
-            {loading ? "对比中..." : "开始对比"}
-          </Button>
+            <button
+              type="button"
+              onClick={addRow}
+              disabled={codeRows.length >= 5}
+              className="self-start rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground disabled:opacity-40"
+            >
+              + 增加基金
+            </button>
+          </div>
+          <div className="ml-auto flex items-end gap-2">
+            <select
+              value={range}
+              onChange={(event) => setRange(event.target.value as ComparisonRange)}
+              className="rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              {RANGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <Button type="submit" disabled={loading}>
+              {loading ? "对比中..." : "开始对比"}
+            </Button>
+          </div>
         </form>
       </div>
 
@@ -199,7 +260,7 @@ export function FundComparisonPanel() {
             </tbody>
           </table>
           <p className="mt-2 text-xs text-muted-foreground">
-            区间：{snapshot.range === "all" ? "成立以来" : snapshot.range}；数据仅供学习参考，不构成投资建议。
+            区间：{rangeLabel(snapshot.range)}；数据仅供学习参考，不构成投资建议。
           </p>
         </div>
       ) : null}

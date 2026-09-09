@@ -216,11 +216,21 @@ export interface FundComparisonSnapshot {
   items: FundComparisonItem[];
 }
 
-/** 基金组合单项：展示权重与单基金同区间指标。 */
+/** 基金组合分析模式：百分比权重或持仓份额。 */
+export type FundPortfolioMode = "weight" | "shares";
+
+/** 基金组合单项：展示权重/持仓份额与单基金同区间指标。 */
 export interface FundPortfolioItem {
   code: string;
   name: string;
   weight_pct: number;
+  holding_shares: number | null;
+  holding_amount: number | null;
+  initial_nav: number | null;
+  latest_nav: number | null;
+  latest_value: number | null;
+  profit_loss: number | null;
+  profit_loss_pct: number | null;
   period_return_pct: number | null;
   annualized_return_pct: number | null;
   annualized_volatility_pct: number | null;
@@ -231,8 +241,12 @@ export interface FundPortfolioItem {
 
 /** 基金组合分析摘要。 */
 export interface FundPortfolioSummary {
+  mode: FundPortfolioMode;
   range: string;
   generated_at: string;
+  total_holding_amount: number | null;
+  total_latest_value: number | null;
+  total_profit_loss: number | null;
   total_return_pct: number | null;
   annualized_return_pct: number | null;
   annualized_volatility_pct: number | null;
