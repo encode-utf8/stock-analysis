@@ -25,7 +25,6 @@ import type {
   FundAnalysisStreamEvent,
   FundConversation,
   FundHoldings,
-  FundIndustryNewsSnapshot,
   FundIntraday,
   FundNavPoint,
   FundProfile,
@@ -75,8 +74,6 @@ export default function FundWorkbench() {
   const [navLoading, setNavLoading] = useState(false);
   const [intradayLoading, setIntradayLoading] = useState(false);
   const [holdingsLoading, setHoldingsLoading] = useState(false);
-  const [fundIndustryNews, setFundIndustryNews] = useState<FundIndustryNewsSnapshot | null>(null);
-  const [fundIndustryNewsLoading, setFundIndustryNewsLoading] = useState(false);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [fundReports, setFundReports] = useState<FundAnalysisReport[]>([]);
   const [fundAnalysisLoading, setFundAnalysisLoading] = useState(false);
@@ -92,7 +89,6 @@ export default function FundWorkbench() {
   const activeNavKeyRef = useRef<string | null>(null);
   const activeIntradayCodeRef = useRef<string | null>(null);
   const activeHoldingsCodeRef = useRef<string | null>(null);
-  const activeFundIndustryNewsCodeRef = useRef<string | null>(null);
   const activeRiskMetricsCodeRef = useRef<string | null>(null);
   const activeChartMetricsKeyRef = useRef<string | null>(null);
   const fundAnalysisAbortRef = useRef<AbortController | null>(null);
@@ -160,27 +156,6 @@ export default function FundWorkbench() {
     } finally {
       if (activeHoldingsCodeRef.current === nextCode) {
         setHoldingsLoading(false);
-      }
-    }
-  }, []);
-
-  const loadFundNews = useCallback(async (nextCode: string, refresh = false) => {
-    activeFundIndustryNewsCodeRef.current = nextCode;
-    setFundIndustryNewsLoading(true);
-    try {
-      const data = await apiFetch<FundIndustryNewsSnapshot>(
-        `/api/funds/${encodeURIComponent(nextCode)}/news${refresh ? "?refresh=1" : ""}`,
-      );
-      if (activeFundIndustryNewsCodeRef.current === nextCode) {
-        setFundIndustryNews(data);
-      }
-    } catch {
-      if (activeFundIndustryNewsCodeRef.current === nextCode) {
-        setFundIndustryNews(null);
-      }
-    } finally {
-      if (activeFundIndustryNewsCodeRef.current === nextCode) {
-        setFundIndustryNewsLoading(false);
       }
     }
   }, []);
@@ -296,7 +271,6 @@ export default function FundWorkbench() {
       setNav([]);
       setIntraday(null);
       setHoldings(null);
-      setFundIndustryNews(null);
       setAllMetrics(null);
       setOneYearMetrics(null);
       setChartMetrics(null);
@@ -347,10 +321,9 @@ export default function FundWorkbench() {
     const timer = setTimeout(() => {
       void loadIntraday(code);
       void loadHoldings(code);
-      void loadFundNews(code);
     }, 0);
     return () => clearTimeout(timer);
-  }, [code, queryVersion, loadIntraday, loadHoldings, loadFundNews]);
+  }, [code, queryVersion, loadIntraday, loadHoldings]);
 
   useEffect(() => {
     if (!code) {
@@ -608,7 +581,6 @@ export default function FundWorkbench() {
     setNav([]);
     setIntraday(null);
     setHoldings(null);
-    setFundIndustryNews(null);
     setAllMetrics(null);
     setOneYearMetrics(null);
     setChartMetrics(null);
@@ -665,6 +637,8 @@ export default function FundWorkbench() {
 
       <FundDcaPanel />
 
+      <FundNewsPanel />
+
       {code ? (
         <FundReplayPanel
           key={code}
@@ -675,14 +649,6 @@ export default function FundWorkbench() {
       ) : null}
 
       {profile ? <FundProfilePanel profile={profile} loading={loading} /> : null}
-
-      {code ? (
-        <FundNewsPanel
-          snapshot={fundIndustryNews}
-          loading={fundIndustryNewsLoading}
-          onRefresh={() => void loadFundNews(code, true)}
-        />
-      ) : null}
 
       {code ? (
         <FundIntradayPanel intraday={intraday} loading={intradayLoading} />
