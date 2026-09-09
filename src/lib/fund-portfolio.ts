@@ -4,12 +4,14 @@ import { calculateFundRiskMetrics } from "@/lib/fund-metrics";
 import { normalizeFundCode } from "@/lib/fund-market";
 import type {
   FundNavPoint,
+  FundPortfolioCurvePoint,
   FundPortfolioItem,
   FundPortfolioMode,
   FundPortfolioSummary,
 } from "@/lib/shared/types";
 
 const VALID_RANGES: FundNavRange[] = ["1m", "3m", "6m", "1y", "3y", "all"];
+const MAX_PORTFOLIO_CURVE_POINTS = 500;
 
 /** 规范化组合基金代码；非法输入返回 null。 */
 export function normalizeFundPortfolioCodes(raw: string | null): string[] | null {
@@ -166,6 +168,41 @@ function buildPortfolioNav(
 }
 
 /** 计算基金组合摘要与单基金指标。 */
+/** 将组合曲线均匀抽样，避免成立以来点数过多。 */
+function downsampleCurve<T>(items: T[], maxPoints: number): T[] {
+  if (items.length <= maxPoints) {
+    return items;
+  }
+  const step = (items.length - 1) / (maxPoints - 1);
+  const sampled: T[] = [];
+  for (let index = 0; index < maxPoints; index += 1) {
+    sampled.push(items[Math.round(index * step)]);
+  }
+  sampled[maxPoints - 1] = items[items.length - 1];
+  return sampled;
+}
+
+/** 根据组合净值计算累计收益与回撤曲线。 */
+function buildPortfolioCurve(portfolioNav: FundNavPoint[]): FundPortfolioCurvePoint[] {
+  let peakValue = 0;
+  return portfolioNav.map((point, index) => {
+    const cumulativeNav = point.cumulative_nav;
+    if (index === 0) {
+      peakValue = cumulativeNav;
+    } else {
+      peakValue = Math.max(peakValue, cumulativeNav);
+    }
+
+    const drawdownPct = peakValue > 0 ? round((cumulativeNav / peakValue - 1) * 100) : 0;
+    return {
+      date: point.nav_date,
+      cumulative_nav: round(cumulativeNav, 4) ?? cumulativeNav,
+      return_pct: round((cumulativeNav - 1) * 100) ?? 0,
+      drawdown_pct: drawdownPct ?? 0,
+    };
+  });
+}
+
 export async function getFundPortfolio(
   codes: string[],
   range: FundNavRange,
@@ -207,7 +244,7 @@ export async function getFundPortfolio(
   const portfolioNav = buildPortfolioNav(navSeries, weights);
   const portfolioMetrics = calculateFundRiskMetrics("portfolio", range, portfolioNav);
 
-  const items: FundPortfolioItem[] = codes.map((code, index) => {
+  const baseItems = codes.map((code, index) => {
     const nav = navSeries[index];
     const metrics = calculateFundRiskMetrics(code, range, nav);
     const profile = profiles[index];
@@ -251,6 +288,32 @@ export async function getFundPortfolio(
     };
   });
 
+  const currentProxies = baseItems.map((item, index) => {
+    const weight = weights[index] ?? 0;
+    if (mode === "shares" && item.latest_value !== null) {
+      return item.latest_value;
+    }
+    if (item.initial_nav !== null && item.latest_nav !== null && item.initial_nav > 0) {
+      return (weight / 100) * (item.latest_nav / item.initial_nav);
+    }
+    return weight / 100;
+  });
+  const totalCurrentProxy = currentProxies.reduce((sum, value) => sum + value, 0);
+  const items: FundPortfolioItem[] = baseItems.map((item, index) => {
+    const currentWeight =
+      totalCurrentProxy > 0
+        ? round((currentProxies[index] / totalCurrentProxy) * 100)
+        : null;
+    const weightDrift =
+      currentWeight === null ? null : round(currentWeight - (weights[index] ?? 0));
+    return {
+      ...item,
+      target_weight_pct: round(weights[index]) ?? 0,
+      current_weight_pct: currentWeight,
+      weight_drift_pct: weightDrift,
+    };
+  });
+
   const totalHoldingAmount =
     mode === "shares"
       ? round(items.reduce((sum, item) => sum + (item.holding_amount ?? 0), 0))
@@ -279,6 +342,7 @@ export async function getFundPortfolio(
     sharpe: portfolioMetrics?.sharpe ?? null,
     sortino: portfolioMetrics?.sortino ?? null,
     calmar: portfolioMetrics?.calmar ?? null,
+    portfolio_curve: downsampleCurve(buildPortfolioCurve(portfolioNav), MAX_PORTFOLIO_CURVE_POINTS),
     items,
   };
 }

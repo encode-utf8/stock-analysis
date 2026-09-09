@@ -5,6 +5,8 @@ import type { FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { FundPortfolioMode, FundPortfolioSummary } from "@/lib/shared/types";
+import { PortfolioDrawdownChart } from "@/components/panels/fund/PortfolioDrawdownChart";
+import { PortfolioReturnChart } from "@/components/panels/fund/PortfolioReturnChart";
 
 const RANGE_OPTIONS = [
   { value: "1m", label: "近1个月" },
@@ -329,22 +331,39 @@ export function FundPortfolioPanel() {
             />
           </div>
 
+          <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">组合累计收益曲线</h3>
+                <p className="text-xs text-muted-foreground">按共同交易日合成，起点为 0%。</p>
+              </div>
+              <PortfolioReturnChart points={summary.portfolio_curve} />
+            </div>
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">组合回撤曲线</h3>
+                <p className="text-xs text-muted-foreground">回撤为不利指标，负值以绿色展示。</p>
+              </div>
+              <PortfolioDrawdownChart points={summary.portfolio_curve} />
+            </div>
+          </div>
+
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-sm">
+            <table className="w-full min-w-[980px] border-collapse text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th className="px-2 py-2">基金</th>
+                                    <th className="px-2 py-2">基金</th>
+                  <th className="px-2 py-2">目标权重</th>
+                  <th className="px-2 py-2">当前权重</th>
+                  <th className="px-2 py-2">偏离</th>
                   {summary.mode === "shares" ? (
                     <>
                       <th className="px-2 py-2">持仓金额</th>
-                      <th className="px-2 py-2">权重</th>
                       <th className="px-2 py-2">最新市值</th>
                       <th className="px-2 py-2">持仓盈亏</th>
                     </>
-                  ) : (
-                    <th className="px-2 py-2">权重</th>
-                  )}
-                  <th className="px-2 py-2">区间收益</th>
+                  ) : null}
+<th className="px-2 py-2">区间收益</th>
                   <th className="px-2 py-2">年化收益</th>
                   <th className="px-2 py-2">年化波动</th>
                   <th className="px-2 py-2">最大回撤</th>
@@ -359,13 +378,21 @@ export function FundPortfolioPanel() {
                       <div className="font-medium">{item.name}</div>
                       <div className="text-xs text-muted-foreground">{item.code}</div>
                     </td>
+                    <td className="px-2 py-3 text-slate-900">
+                      {formatNumber(item.target_weight_pct)}%
+                    </td>
+                    <td className="px-2 py-3 text-slate-900">
+                      {formatNumber(item.current_weight_pct)}%
+                    </td>
+                    <td className="px-2 py-3 text-slate-900">
+                      {item.weight_drift_pct === null
+                        ? "—"
+                        : `${item.weight_drift_pct > 0 ? "+" : ""}${item.weight_drift_pct.toFixed(2)}%`}
+                    </td>
                     {summary.mode === "shares" ? (
                       <>
                         <td className="px-2 py-3 text-slate-900">
                           {formatMoney(item.holding_amount)}
-                        </td>
-                        <td className="px-2 py-3 text-slate-900">
-                          {formatNumber(item.weight_pct)}%
                         </td>
                         <td className="px-2 py-3 text-slate-900">
                           {formatMoney(item.latest_value)}
@@ -374,12 +401,8 @@ export function FundPortfolioPanel() {
                           {formatMoney(item.profit_loss)}
                         </td>
                       </>
-                    ) : (
-                      <td className="px-2 py-3 text-slate-900">
-                        {formatNumber(item.weight_pct)}%
-                      </td>
-                    )}
-                    <td className={`px-2 py-3 font-medium ${returnTone(item.period_return_pct)}`}>
+                    ) : null}
+<td className={`px-2 py-3 font-medium ${returnTone(item.period_return_pct)}`}>
                       {formatPercent(item.period_return_pct)}
                     </td>
                     <td className={`px-2 py-3 font-medium ${returnTone(item.annualized_return_pct)}`}>

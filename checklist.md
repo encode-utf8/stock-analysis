@@ -861,3 +861,72 @@ corepack pnpm build
 - `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
 - 调用 `/api/fund-dca?code=510300&range=1y&frequency=monthly&amount=1000`，确认定投期数、累计投入、期末市值与收益率曲线计算正确。
 - 在基金工作台切换每日、每周、每两周、每月与不同区间，确认收益率曲线同步更新；每日定投不展示明细表，其他频率可手动展开明细。
+
+
+## F13 基金风格因子分析（2026-09-09）
+
+- 关联文档：`docs/fund-workbench-spec.md` FR-F07、未来扩展
+- 分支：`feature/fund-style-factors`
+- 目标：基于真实持仓、行业配置与风险指标分析基金风格，并用 AI 归纳持仓风格与风险收益特征。
+
+### 验收项
+
+- [x] 新增 `FundStyleSnapshot` 共享类型
+- [x] 新增 `fund-style.ts`，复用持仓与风险指标计算本地风格标签
+- [x] 新增 `/api/fund-style?code=510300&range=1y`
+- [x] 新增 `FundStylePanel`，展示风格标签、风险收益指标、持仓集中度、行业配置与 AI 归纳
+- [x] 持仓为确定性回退时明确不可用，不生成演示风格结论
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/fund-style?code=510300&range=1y`，确认返回风格标签、风险指标、持仓集中度与 AI 归纳。
+- 在基金工作台切换不同基金与区间，确认风格因子面板同步更新，且不使用确定性持仓生成结论。
+
+## F14 基金工作台按需模块化（2026-09-09）
+
+- 关联文档：docs/fund-workbench-spec.md 布局与交互
+- 分支：eature/fund-industry-news-on-demand
+- 目标：参照个股工作台，将基金功能改为左侧功能选项勾选后按需展示，避免一次性堆叠。
+
+### 验收项
+
+- [x] 新增 FundOptionsSidebar，左侧查询基金、勾选功能模块、管理自选基金
+- [x] 基金工作台按模块展示档案、净值、当日行情、持仓、风险、AI 分析、对话、复盘、对比、组合、定投、行业资讯与风格因子
+- [x] 移除不可靠展示：IOPV 实时估值、基金风险等级、持仓数量与行业配置
+- [x] corepack pnpm typecheck 通过
+- [x] corepack pnpm lint 通过
+- [x] corepack pnpm build 通过
+
+### 验证方式
+
+- corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build
+- 在基金工作台左侧勾选/清空模块，确认右侧信息区按需展示，未勾选时不展示对应内容。
+- 留空基金代码查询时默认使用 510300。
+
+## F15 基金对比 / 组合 / 定投增强（2026-09-09）
+
+- 关联文档：`docs/fund-workbench-spec.md` FR-F08、FR-F09、未来扩展
+- 分支：`feature/fund-direction-two-enhance`
+- 目标：在既有基金对比、组合分析、定投回测基础上增强曲线可视化与对比维度，不使用降级假数据。
+
+### 验收项
+
+- [x] 基金对比新增共同起点归一化累计收益曲线，支持多基金叠加与悬停查看收益
+- [x] 基金组合新增组合累计收益曲线与组合回撤曲线
+- [x] 基金组合明细新增目标权重、当前权重与权重偏离展示
+- [x] 定投回测新增“定投 vs 一次性买入”收益对比曲线与一次性买入收益率指标
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/fund-comparison?codes=510300,110022&range=1y`，确认 `series` 含共同起点归一化收益曲线。
+- 调用 `/api/fund-portfolio?codes=510300,110022&mode=weight&weights=60,40&range=1y`，确认 `portfolio_curve` 与权重偏离字段返回。
+- 调用 `/api/fund-dca?code=510300&range=1y&frequency=monthly&amount=1000`，确认 `lump_sum_curve` 与 `lump_sum_return_pct` 返回。
+- 在基金工作台对比、组合、定投模块分别查看新增曲线交互与指标，确认净值降级时不生成假曲线。

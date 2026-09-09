@@ -6,7 +6,7 @@ import type { FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Toast } from "@/components/ui/toast";
-import { FUND_TRADING_MODE_LABELS, FUND_TYPE_LABELS, normalizeFundCode } from "@/lib/fund-market";
+import { FUND_TYPE_LABELS, normalizeFundCode } from "@/lib/fund-market";
 import type { FundWatchlistItem } from "@/lib/shared/types";
 
 interface ApiEnvelope<T> {
@@ -152,53 +152,50 @@ export function FundWatchlistPanel({
   };
 
   return (
-    <section className="rounded-xl border bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-semibold">自选基金</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            添加常看的基金，点击即可切换全链路上下文。
-          </p>
-        </div>
-        <form onSubmit={handleAdd} className="flex flex-wrap items-center gap-2">
-          <input
-            value={codeInput}
-            onChange={(event) => setCodeInput(event.target.value)}
-            placeholder="基金代码"
-            maxLength={6}
-            inputMode="numeric"
-            className="w-28 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          <input
-            value={noteInput}
-            onChange={(event) => setNoteInput(event.target.value)}
-            placeholder="备注（可选）"
-            className="w-40 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          <Button type="submit" disabled={saving}>
-            {saving ? "保存中" : "添加"}
-          </Button>
-        </form>
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold">自选基金</h2>
+        <p className="mt-1 text-xs text-muted-foreground">点击基金可切换上下文。</p>
       </div>
 
+      <form onSubmit={handleAdd} className="space-y-2">
+        <input
+          value={codeInput}
+          onChange={(event) => setCodeInput(event.target.value)}
+          placeholder="基金代码"
+          maxLength={6}
+          inputMode="numeric"
+          className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        <input
+          value={noteInput}
+          onChange={(event) => setNoteInput(event.target.value)}
+          placeholder="备注（可选）"
+          className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        <Button type="submit" className="w-full" disabled={saving}>
+          {saving ? "保存中" : "添加"}
+        </Button>
+      </form>
+
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </div>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="space-y-2">
         {loading ? (
           <span className="text-sm text-muted-foreground">正在加载自选基金...</span>
         ) : null}
         {!loading && items.length === 0 ? (
-          <span className="text-sm text-muted-foreground">暂无自选基金，可添加基金代码。</span>
+          <span className="text-sm text-muted-foreground">暂无自选基金。</span>
         ) : null}
         {items.map((item) => (
           <div
             key={item.code}
             className={
-              "min-w-[220px] rounded-lg border p-3 transition-colors " +
+              "rounded-lg border p-2.5 transition-colors " +
               (activeCode === item.code
                 ? "border-primary bg-primary/5"
                 : "border-slate-200 bg-slate-50")
@@ -211,17 +208,16 @@ export function FundWatchlistPanel({
                 className="min-w-0 text-left"
               >
                 <div className="truncate text-sm font-medium">{item.name}</div>
-                <div className="mt-0.5 text-xs text-muted-foreground">
-                  {item.code} · {FUND_TYPE_LABELS[item.type] ?? item.type} ·{" "}
-                  {FUND_TRADING_MODE_LABELS[item.trading_mode] ?? item.trading_mode}
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {item.code} · {FUND_TYPE_LABELS[item.type] ?? item.type}
                 </div>
                 {item.note ? (
-                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                  <div className="mt-1 line-clamp-1 text-xs text-muted-foreground">
                     备注：{item.note}
                   </div>
                 ) : null}
               </button>
-              <div className="flex shrink-0 gap-1">
+              <div className="flex shrink-0 flex-col items-end gap-1">
                 <button
                   type="button"
                   onClick={() => startEdit(item)}
@@ -240,7 +236,7 @@ export function FundWatchlistPanel({
             </div>
 
             {editingCode === item.code ? (
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex gap-1.5">
                 <input
                   value={editingNote}
                   onChange={(event) => setEditingNote(event.target.value)}

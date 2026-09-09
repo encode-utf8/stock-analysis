@@ -221,10 +221,42 @@ export interface FundDcaSnapshot {
   annualized_return_pct: number | null;
   max_drawdown_pct: number | null;
   current_drawdown_pct: number | null;
+  lump_sum_return_pct: number | null;
+  lump_sum_curve: FundDcaEquityPoint[];
   start_date: string | null;
   end_date: string | null;
   contributions: FundDcaContribution[];
   equity_curve: FundDcaEquityPoint[];
+  source: string;
+  generated_at: string;
+}
+
+/** 基金风格因子快照。 */
+export interface FundStyleSnapshot {
+  code: string;
+  name: string;
+  range: string;
+  available: boolean;
+  reason: string | null;
+  analysis_source: "ai" | "local";
+  tags: string[];
+  risk_return: {
+    annualized_return_pct: number | null;
+    annualized_volatility_pct: number | null;
+    sharpe: number | null;
+    sortino: number | null;
+    calmar: number | null;
+    max_drawdown_pct: number | null;
+    current_drawdown_pct: number | null;
+  };
+  concentration: {
+    top10_weight_pct: number | null;
+    top1_weight_pct: number | null;
+    holding_count: number;
+    industry_count: number;
+  };
+  industry_allocation: Array<{ name: string; weight_pct: number }>;
+  narrative: string | null;
   source: string;
   generated_at: string;
 }
@@ -273,10 +305,23 @@ export interface FundComparisonItem {
 }
 
 /** 基金对比返回快照。 */
+export interface FundComparisonNavPoint {
+  date: string;
+  normalized_cumulative_nav: number;
+  return_pct: number;
+}
+
+export interface FundComparisonNavSeries {
+  code: string;
+  name: string;
+  points: FundComparisonNavPoint[];
+}
+
 export interface FundComparisonSnapshot {
   range: string;
   generated_at: string;
   items: FundComparisonItem[];
+  series: FundComparisonNavSeries[];
 }
 
 /** 基金组合分析模式：百分比权重或持仓份额。 */
@@ -294,6 +339,9 @@ export interface FundPortfolioItem {
   latest_value: number | null;
   profit_loss: number | null;
   profit_loss_pct: number | null;
+  target_weight_pct: number | null;
+  current_weight_pct: number | null;
+  weight_drift_pct: number | null;
   period_return_pct: number | null;
   annualized_return_pct: number | null;
   annualized_volatility_pct: number | null;
@@ -303,6 +351,13 @@ export interface FundPortfolioItem {
 }
 
 /** 基金组合分析摘要。 */
+export interface FundPortfolioCurvePoint {
+  date: string;
+  cumulative_nav: number;
+  return_pct: number;
+  drawdown_pct: number;
+}
+
 export interface FundPortfolioSummary {
   mode: FundPortfolioMode;
   range: string;
@@ -318,5 +373,6 @@ export interface FundPortfolioSummary {
   sharpe: number | null;
   sortino: number | null;
   calmar: number | null;
+  portfolio_curve: FundPortfolioCurvePoint[];
   items: FundPortfolioItem[];
 }

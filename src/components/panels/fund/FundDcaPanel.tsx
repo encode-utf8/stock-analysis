@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { sourceLabel } from "@/lib/format";
 import type { FundDcaFrequency, FundDcaSnapshot } from "@/lib/shared/types";
 import { DcaReturnChart } from "@/components/panels/fund/DcaReturnChart";
+import { DcaComparisonChart } from "@/components/panels/fund/DcaComparisonChart";
 
 const FREQUENCY_OPTIONS: Array<{ value: FundDcaFrequency; label: string }> = [
   { value: "daily", label: "每日" },
@@ -240,6 +241,11 @@ export function FundDcaPanel() {
             <MetricCard label="累计盈亏" value={formatMoney(snapshot.profit_loss)} tone={returnTone(snapshot.profit_loss)} />
             <MetricCard label="累计收益率" value={formatPercent(snapshot.profit_loss_pct)} tone={returnTone(snapshot.profit_loss_pct)} />
             <MetricCard
+              label="一次性买入收益率"
+              value={formatPercent(snapshot.lump_sum_return_pct)}
+              tone={returnTone(snapshot.lump_sum_return_pct)}
+            />
+            <MetricCard
               label="年化收益率"
               value={formatPercent(snapshot.annualized_return_pct)}
               tone={returnTone(snapshot.annualized_return_pct)}
@@ -262,6 +268,17 @@ export function FundDcaPanel() {
               <p className="text-xs text-muted-foreground">悬停查看单日投入、市值与收益率。</p>
             </div>
             <DcaReturnChart points={snapshot.equity_curve} />
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">定投 vs 一次性买入</h3>
+              <p className="text-xs text-muted-foreground">同区间等额本金一次性投入与定投策略对比。</p>
+            </div>
+            <DcaComparisonChart
+              dcaPoints={snapshot.equity_curve}
+              lumpSumPoints={snapshot.lump_sum_curve}
+            />
           </div>
 
           {snapshot.frequency !== "daily" ? (

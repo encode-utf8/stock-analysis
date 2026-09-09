@@ -106,20 +106,16 @@ export function FundIntradayPanel({ intraday, loading }: FundIntradayPanelProps)
               : `${signed(intraday.change_pct)}%`}
           </div>
         </div>
-        <div className="rounded-lg border bg-muted/20 p-3">
-          <div className="text-xs text-muted-foreground">
-            {isEstimate ? "官方净值" : "IOPV 实时估值"}
-          </div>
-          <div className="mt-1 text-2xl font-semibold">
-            {isEstimate
-              ? intraday.official_nav === null
+        {isEstimate ? (
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <div className="text-xs text-muted-foreground">官方净值</div>
+            <div className="mt-1 text-2xl font-semibold">
+              {intraday.official_nav === null
                 ? "暂无"
-                : intraday.official_nav.toFixed(4)
-              : intraday.iopv === null
-                ? "暂无"
-                : intraday.iopv.toFixed(4)}
+                : intraday.official_nav.toFixed(4)}
+            </div>
           </div>
-        </div>
+        ) : null}
         <div className="rounded-lg border bg-muted/20 p-3">
           <div className="text-xs text-muted-foreground">
             {isEstimate ? "官方净值日期" : "溢价率"}
