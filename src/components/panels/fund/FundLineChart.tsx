@@ -242,7 +242,7 @@ export function FundLineChart({ series }: FundLineChartProps) {
             return value === null ? null : (
               <div key={`tooltip-${item.key}`}>
                 <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
-                <span className="ml-1">{item.label}?</span>
+                <span className="ml-1">{item.label}：</span>
                 <span className={valueTone(item.tone, value)}>{formatValue(value)}</span>
               </div>
             );
