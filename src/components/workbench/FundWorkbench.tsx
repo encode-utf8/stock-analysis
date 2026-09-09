@@ -5,10 +5,14 @@ import type { FormEvent } from "react";
 
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
 import { FundAnalysisPanel } from "@/components/panels/fund/FundAnalysisPanel";
+import { FundComparisonPanel } from "@/components/panels/fund/FundComparisonPanel";
+import { FundDcaPanel } from "@/components/panels/fund/FundDcaPanel";
 import { FundHoldingsPanel } from "@/components/panels/fund/FundHoldingsPanel";
+import { FundNewsPanel } from "@/components/panels/fund/FundNewsPanel";
 import { FundIntradayPanel } from "@/components/panels/fund/FundIntradayPanel";
 import { FundNavChartPanel } from "@/components/panels/fund/FundNavChartPanel";
 import { FundProfilePanel } from "@/components/panels/fund/FundProfilePanel";
+import { FundPortfolioPanel } from "@/components/panels/fund/FundPortfolioPanel";
 import { FundReplayPanel } from "@/components/panels/fund/FundReplayPanel";
 import { FundRiskPanel } from "@/components/panels/fund/FundRiskPanel";
 import { FundWatchlistPanel } from "@/components/panels/fund/FundWatchlistPanel";
@@ -21,6 +25,7 @@ import type {
   FundAnalysisStreamEvent,
   FundConversation,
   FundHoldings,
+  FundIndustryNewsSnapshot,
   FundIntraday,
   FundNavPoint,
   FundProfile,
@@ -70,6 +75,8 @@ export default function FundWorkbench() {
   const [navLoading, setNavLoading] = useState(false);
   const [intradayLoading, setIntradayLoading] = useState(false);
   const [holdingsLoading, setHoldingsLoading] = useState(false);
+  const [fundIndustryNews, setFundIndustryNews] = useState<FundIndustryNewsSnapshot | null>(null);
+  const [fundIndustryNewsLoading, setFundIndustryNewsLoading] = useState(false);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [fundReports, setFundReports] = useState<FundAnalysisReport[]>([]);
   const [fundAnalysisLoading, setFundAnalysisLoading] = useState(false);
@@ -78,15 +85,19 @@ export default function FundWorkbench() {
   const [fundChatInput, setFundChatInput] = useState("");
   const [fundChatLoading, setFundChatLoading] = useState(false);
   const [queryVersion, setQueryVersion] = useState(0);
+  const [replayRefreshToken, setReplayRefreshToken] = useState(0);
+  const [lastDeletedReportId, setLastDeletedReportId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const activeProfileCodeRef = useRef<string | null>(null);
   const activeNavKeyRef = useRef<string | null>(null);
   const activeIntradayCodeRef = useRef<string | null>(null);
   const activeHoldingsCodeRef = useRef<string | null>(null);
+  const activeFundIndustryNewsCodeRef = useRef<string | null>(null);
   const activeRiskMetricsCodeRef = useRef<string | null>(null);
   const activeChartMetricsKeyRef = useRef<string | null>(null);
   const fundAnalysisAbortRef = useRef<AbortController | null>(null);
   const fundChatAbortRef = useRef<AbortController | null>(null);
+  const lastCompletedFundReportRef = useRef<FundAnalysisReport | null>(null);
 
   const loadNav = useCallback(async (nextCode: string, nextRange: FundNavRange, nextType: FundNavType) => {
     const navKey = `${nextCode}:${nextRange}:${nextType}`;
@@ -153,6 +164,27 @@ export default function FundWorkbench() {
     }
   }, []);
 
+  const loadFundNews = useCallback(async (nextCode: string, refresh = false) => {
+    activeFundIndustryNewsCodeRef.current = nextCode;
+    setFundIndustryNewsLoading(true);
+    try {
+      const data = await apiFetch<FundIndustryNewsSnapshot>(
+        `/api/funds/${encodeURIComponent(nextCode)}/news${refresh ? "?refresh=1" : ""}`,
+      );
+      if (activeFundIndustryNewsCodeRef.current === nextCode) {
+        setFundIndustryNews(data);
+      }
+    } catch {
+      if (activeFundIndustryNewsCodeRef.current === nextCode) {
+        setFundIndustryNews(null);
+      }
+    } finally {
+      if (activeFundIndustryNewsCodeRef.current === nextCode) {
+        setFundIndustryNewsLoading(false);
+      }
+    }
+  }, []);
+
   const loadRiskMetrics = useCallback(async (nextCode: string) => {
     activeRiskMetricsCodeRef.current = nextCode;
     setMetricsLoading(true);
@@ -201,14 +233,16 @@ export default function FundWorkbench() {
     [],
   );
 
-  const loadFundReports = useCallback(async (nextCode: string) => {
+  const loadFundReports = useCallback(async (nextCode: string): Promise<FundAnalysisReport[]> => {
     try {
       const reports = await apiFetch<FundAnalysisReport[]>(
         `/api/funds/${encodeURIComponent(nextCode)}/analysis`,
       );
       setFundReports(reports);
+      return reports;
     } catch {
       setFundReports([]);
+      return [];
     }
   }, []);
 
@@ -262,6 +296,7 @@ export default function FundWorkbench() {
       setNav([]);
       setIntraday(null);
       setHoldings(null);
+      setFundIndustryNews(null);
       setAllMetrics(null);
       setOneYearMetrics(null);
       setChartMetrics(null);
@@ -312,9 +347,10 @@ export default function FundWorkbench() {
     const timer = setTimeout(() => {
       void loadIntraday(code);
       void loadHoldings(code);
+      void loadFundNews(code);
     }, 0);
     return () => clearTimeout(timer);
-  }, [code, queryVersion, loadIntraday, loadHoldings]);
+  }, [code, queryVersion, loadIntraday, loadHoldings, loadFundNews]);
 
   useEffect(() => {
     if (!code) {
@@ -401,6 +437,7 @@ export default function FundWorkbench() {
             ),
           );
         } else if (event.type === "done" && event.data?.report) {
+          lastCompletedFundReportRef.current = event.data.report;
           setFundReports((previous) =>
             previous.map((item) => (item.id === draftId ? event.data?.report ?? item : item)),
           );
@@ -424,7 +461,18 @@ export default function FundWorkbench() {
       if (buffer.trim()) {
         handleEvent(buffer);
       }
-      await loadFundReports(code);
+      const refreshedReports = await loadFundReports(code);
+      const completedReport = lastCompletedFundReportRef.current;
+      if (
+        completedReport &&
+        !refreshedReports.some((report) => report.id === completedReport.id)
+      ) {
+        setFundReports((previous) => [
+          completedReport,
+          ...previous.filter((report) => report.id !== completedReport.id),
+        ]);
+      }
+      lastCompletedFundReportRef.current = null;
     } catch (nextError) {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
@@ -560,6 +608,7 @@ export default function FundWorkbench() {
     setNav([]);
     setIntraday(null);
     setHoldings(null);
+    setFundIndustryNews(null);
     setAllMetrics(null);
     setOneYearMetrics(null);
     setChartMetrics(null);
@@ -610,9 +659,30 @@ export default function FundWorkbench() {
         onClearActive={handleWatchlistClearActive}
       />
 
-      {code ? <FundReplayPanel key={code} code={code} /> : null}
+      <FundComparisonPanel />
+
+      <FundPortfolioPanel />
+
+      <FundDcaPanel />
+
+      {code ? (
+        <FundReplayPanel
+          key={code}
+          code={code}
+          refreshToken={replayRefreshToken}
+          deletedReportId={lastDeletedReportId}
+        />
+      ) : null}
 
       {profile ? <FundProfilePanel profile={profile} loading={loading} /> : null}
+
+      {code ? (
+        <FundNewsPanel
+          snapshot={fundIndustryNews}
+          loading={fundIndustryNewsLoading}
+          onRefresh={() => void loadFundNews(code, true)}
+        />
+      ) : null}
 
       {code ? (
         <FundIntradayPanel intraday={intraday} loading={intradayLoading} />
@@ -641,10 +711,12 @@ export default function FundWorkbench() {
               await apiFetch(`/api/funds/${encodeURIComponent(code)}/reports/${encodeURIComponent(reportId)}`, {
                 method: "DELETE",
               });
+              setFundReports((previous) => previous.filter((report) => report.id !== reportId));
+              setReplayRefreshToken((value) => value + 1);
+              setLastDeletedReportId(reportId);
             } catch (nextError) {
               setError(nextError instanceof Error ? nextError.message : "删除基金报告失败。");
             }
-            await loadFundReports(code);
           }}
         />
       ) : null}

@@ -753,3 +753,111 @@ corepack pnpm build
 
 - 完成日期：2026-09-08
 - 结果：F8 全部验收通过；基金数据源状态已显示，手动基金刷新接口与每日定时任务已落地，数据源面板可触发基金数据刷新；`typecheck`、`lint`、`build` 均通过。
+
+
+## F9 基金对比（2026-09-08）
+
+- 关联文档：`docs/fund-workbench-spec.md` 未来扩展、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-comparison`
+- 目标：支持输入 2–5 个基金代码，在同一区间横向比较净值、业绩与风险指标。
+
+### 验收项
+
+- [x] 新增 `FundComparisonItem` 与 `FundComparisonSnapshot` 共享类型
+- [x] 新增 `fund-comparison.ts` 数据编排，复用基金档案、净值、行情与风险指标
+- [x] 新增 `/api/fund-comparison?codes=510300,110022&range=1y`
+- [x] 完成基金对比面板，支持区间切换与横向表格展示
+- [x] 上涨/有利指标标红，下跌/不利指标标绿，波动等无法严格定性的指标保持黑色
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/fund-comparison?codes=510300,110022&range=1y`，确认返回两只基金的同区间指标。
+- 在基金工作台切换区间后，确认对比表数据同步更新。
+
+### 完成记录
+
+- 完成日期：2026-09-08
+- 结果：F9 全部验收通过；`/api/fund-comparison` 已返回 `510300` 与 `110022` 的对比数据，对比面板已接入基金工作台；`typecheck`、`lint`、`build` 均通过。
+
+
+## F10 基金组合分析（2026-09-09）
+
+- 关联文档：`docs/fund-workbench-spec.md` 未来扩展、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-portfolio`
+- 目标：支持输入 2–5 个基金代码与权重，按共同交易日合成组合净值，展示组合与单基金风险指标。
+
+### 验收项
+
+- [x] 新增 `FundPortfolioItem` 与 `FundPortfolioSummary` 共享类型
+- [x] 新增 `fund-portfolio.ts` 数据编排，支持代码/区间/权重归一化与组合净值合成
+- [x] 新增 `/api/fund-portfolio?codes=510300,110022&weights=60,40&range=1y`
+- [x] 完成基金组合分析面板，支持权重输入、区间切换与汇总/明细表展示
+- [x] 上涨/有利指标标红，下跌/不利指标标绿，波动等无法严格定性的指标保持黑色
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/fund-portfolio?codes=510300,110022&weights=60,40&range=1y`，确认返回组合汇总与单基金指标。
+- 在基金工作台切换区间后，确认组合汇总表与单基金明细同步更新。
+
+### 完成记录
+
+- 完成日期：2026-09-09
+- 结果：F10 全部验收通过；`/api/fund-portfolio` 已返回组合与单基金指标，组合分析面板已接入基金工作台；`typecheck`、`lint`、`build` 均通过。
+
+
+## F11 基金行业资讯查询（2026-09-09）
+
+- 关联文档：`docs/fund-workbench-spec.md` 未来扩展、`docs/fund-workbench-design.md`
+- 分支：`feature/fund-news-alerts`
+- 目标：舍弃确定性基金资讯，改为先由 AI 分析持仓判断强相关行业，再检索并展示真实行业资讯。
+
+### 验收项
+
+- [x] 新增 `FundIndustryNewsSnapshot` 与 `FundNewsItem.industry` 共享类型
+- [x] 重构 `fund-news.ts`，使用 DeepSeek 分析持仓行业，并用 Tavily 搜索真实行业资讯
+- [x] 复用 `/api/funds/[code]/news`，返回关联行业、分析来源、可用状态与真实资讯列表
+- [x] 无持仓、无密钥或搜索无结果时返回明确不可用状态，不再展示降级资讯
+- [x] `FundNewsPanel` 改为行业资讯查询，展示关联行业、分析来源与真实资讯，支持手动刷新
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/funds/510300/news`，确认 `industry_analysis_source`、`industries` 与真实行业资讯返回正常。
+- 在基金工作台查询 `510300` 后，确认行业资讯面板显示 AI 识别行业与真实资讯；无密钥时明确显示不可用且不展示降级内容。
+
+
+## F12 基金定投回测（2026-09-09）
+
+- 关联文档：`docs/fund-workbench-spec.md` 未来扩展、`docs/fund-workbench-plan.md`
+- 分支：`feature/fund-dca-backtest`
+- 目标：支持单基金按每日、每周、每两周、每月频率定投回测，展示收益率变化曲线、累计投入、期末市值、年化收益与回撤指标。
+
+### 验收项
+
+- [x] 新增 `FundDcaFrequency`、`FundDcaContribution`、`FundDcaEquityPoint` 与 `FundDcaSnapshot` 共享类型
+- [x] 新增 `fund-dca.ts`，支持每日/每周/每两周/每月定投，生成收益率曲线并计算累计收益、年化收益与回撤
+- [x] 新增 `/api/fund-dca?code=510300&range=1y&frequency=monthly&amount=1000`
+- [x] 新增交互式收益率曲线，支持悬停查看单日投入、市值与收益率
+- [x] 默认隐藏明细表；非每日定投时可点击按钮展开分页明细，每日定投不提供表格
+- [x] 三年/成立以来等长期区间会校正旧缓存，并对收益率曲线做均匀抽样，避免大数据量导致页面无法渲染
+- [x] 净值降级或数据不足时明确返回不可用，不生成演示回测结果
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 调用 `/api/fund-dca?code=510300&range=1y&frequency=monthly&amount=1000`，确认定投期数、累计投入、期末市值与收益率曲线计算正确。
+- 在基金工作台切换每日、每周、每两周、每月与不同区间，确认收益率曲线同步更新；每日定投不展示明细表，其他频率可手动展开明细。

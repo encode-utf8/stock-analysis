@@ -164,6 +164,69 @@ export type FundNewsType = "announcement" | "report" | "market";
 /** 基金资讯条目。 */
 export interface FundNewsItem extends NewsItem {
   news_type: FundNewsType;
+  /** AI 识别出的关联行业；仅行业资讯查询结果使用。 */
+  industry?: string;
+}
+
+/** 基金行业资讯查询快照。 */
+export interface FundIndustryNewsSnapshot {
+  code: string;
+  industries: string[];
+  industry_analysis_source: "ai" | "holdings" | "none";
+  available: boolean;
+  reason: string | null;
+  news: FundNewsItem[];
+  generated_at: string;
+}
+
+/** 基金定投频率。 */
+export type FundDcaFrequency = "daily" | "weekly" | "biweekly" | "monthly";
+
+/** 基金定投回测单期记录。 */
+export interface FundDcaContribution {
+  date: string;
+  nav: number;
+  amount: number;
+  shares: number;
+  cumulative_shares: number;
+  cumulative_invested: number;
+  market_value: number;
+}
+
+/** 基金定投收益率曲线点。 */
+export interface FundDcaEquityPoint {
+  date: string;
+  market_value: number;
+  invested_amount: number;
+  return_pct: number;
+}
+
+/** 基金定投回测快照。 */
+export interface FundDcaSnapshot {
+  code: string;
+  name: string;
+  range: string;
+  frequency: FundDcaFrequency;
+  amount_per_period: number;
+  price_basis: "unit";
+  available: boolean;
+  reason: string | null;
+  total_periods: number;
+  total_invested: number | null;
+  total_shares: number | null;
+  final_nav: number | null;
+  final_value: number | null;
+  profit_loss: number | null;
+  profit_loss_pct: number | null;
+  annualized_return_pct: number | null;
+  max_drawdown_pct: number | null;
+  current_drawdown_pct: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  contributions: FundDcaContribution[];
+  equity_curve: FundDcaEquityPoint[];
+  source: string;
+  generated_at: string;
 }
 
 /** 自选基金条目：与个股自选列表隔离，仅保存展示与切换所需元数据。 */
@@ -186,4 +249,74 @@ export interface FundReplaySummary {
   total_analysis: number;
   total_chats: number;
   generated_at: string;
+}
+
+/** 基金对比单项：聚合档案、最新净值、区间表现与风险指标。 */
+export interface FundComparisonItem {
+  code: string;
+  name: string;
+  type: FundType;
+  trading_mode: FundTradingMode;
+  latest_nav_date: string | null;
+  latest_cumulative_nav: number | null;
+  latest_change_pct: number | null;
+  period_return_pct: number | null;
+  annualized_return_pct: number | null;
+  annualized_volatility_pct: number | null;
+  max_drawdown_pct: number | null;
+  current_drawdown_pct: number | null;
+  sharpe: number | null;
+  sortino: number | null;
+  calmar: number | null;
+  source: string;
+  fetched_at: string;
+}
+
+/** 基金对比返回快照。 */
+export interface FundComparisonSnapshot {
+  range: string;
+  generated_at: string;
+  items: FundComparisonItem[];
+}
+
+/** 基金组合分析模式：百分比权重或持仓份额。 */
+export type FundPortfolioMode = "weight" | "shares";
+
+/** 基金组合单项：展示权重/持仓份额与单基金同区间指标。 */
+export interface FundPortfolioItem {
+  code: string;
+  name: string;
+  weight_pct: number;
+  holding_shares: number | null;
+  holding_amount: number | null;
+  initial_nav: number | null;
+  latest_nav: number | null;
+  latest_value: number | null;
+  profit_loss: number | null;
+  profit_loss_pct: number | null;
+  period_return_pct: number | null;
+  annualized_return_pct: number | null;
+  annualized_volatility_pct: number | null;
+  max_drawdown_pct: number | null;
+  sharpe: number | null;
+  calmar: number | null;
+}
+
+/** 基金组合分析摘要。 */
+export interface FundPortfolioSummary {
+  mode: FundPortfolioMode;
+  range: string;
+  generated_at: string;
+  total_holding_amount: number | null;
+  total_latest_value: number | null;
+  total_profit_loss: number | null;
+  total_return_pct: number | null;
+  annualized_return_pct: number | null;
+  annualized_volatility_pct: number | null;
+  max_drawdown_pct: number | null;
+  current_drawdown_pct: number | null;
+  sharpe: number | null;
+  sortino: number | null;
+  calmar: number | null;
+  items: FundPortfolioItem[];
 }
