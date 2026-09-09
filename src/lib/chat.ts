@@ -651,6 +651,7 @@ export async function* streamChat(request: ChatRequest, signal?: AbortSignal): A
   const executions: ToolExecution[] = [];
   const toolCalls: ChatReply["toolCalls"] = [];
   let content = "";
+  let aiInvoked = false;
 
   if (!deepSeekEnabled()) {
     const fallback = await buildFallbackReply(request);
@@ -719,8 +720,10 @@ export async function* streamChat(request: ChatRequest, signal?: AbortSignal): A
       yield { type: "tool", data: { toolCalls } };
     }
 
+    aiInvoked = content.trim().length > 0;
     content = sanitizeForbiddenPromises(content);
     if (!content.trim()) {
+      aiInvoked = false;
       const fallback = await buildFallbackReply(request);
       content = sanitizeForbiddenPromises(fallback.content);
       if (!executions.length) {
@@ -750,6 +753,7 @@ export async function* streamChat(request: ChatRequest, signal?: AbortSignal): A
       messageId: assistantMessage.id,
       sources,
       riskNote: RISK_NOTE,
+      aiInvoked,
     },
   };
 }

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { sanitizeChatText } from "@/lib/format";
 
 /** 前端对话消息展示结构。 */
 export interface ChatViewMessage {
@@ -13,6 +14,7 @@ export interface ChatViewMessage {
   sources?: Array<{ title: string; url: string }>;
   riskNote?: string;
   tools?: Array<{ name: string; summary: string }>;
+  aiInvoked?: boolean;
 }
 
 interface ChatPanelProps {
@@ -64,17 +66,26 @@ export function ChatPanel({
                 message.role === "assistant" ? (
                   <div className="markdown-body">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {message.content}
+                      {sanitizeChatText(message.content)}
                     </ReactMarkdown>
                   </div>
                 ) : (
                   <pre className="whitespace-pre-wrap break-words font-sans leading-6">
-                    {message.content}
+                    {sanitizeChatText(message.content)}
                   </pre>
                 )
               ) : (
                 <span className="text-muted-foreground">思考中...</span>
               )}
+              {message.aiInvoked !== undefined && message.content ? (
+                <div
+                  className={`mt-2 rounded-md px-2 py-1 text-xs ${
+                    message.aiInvoked ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-800"
+                  }`}
+                >
+                  {message.aiInvoked ? "本次已调用 AI" : "本次未调用 AI，已使用本地数据摘要"}
+                </div>
+              ) : null}
               {message.tools?.length ? (
                 <div className="mt-2 border-t pt-2 text-xs text-muted-foreground">
                   <p className="font-medium">工具调用</p>

@@ -7,7 +7,11 @@ import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { formatDateTime } from "@/lib/format";
+import {
+  formatDateTime,
+  presentableConversationTitle,
+  sanitizeChatText,
+} from "@/lib/format";
 import { normalizeFundCode } from "@/lib/fund-market";
 import type {
   FundReplaySummary,
@@ -50,7 +54,7 @@ async function apiFetch<T>(url: string, init?: RequestInit, signal?: AbortSignal
 
 /** 将 Markdown 或消息内容转为适合摘要卡片的纯文本。 */
 function toPreviewText(content: string): string {
-  return content
+  return sanitizeChatText(content)
     .replace(/[#>*_`\[\]()~-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -86,7 +90,7 @@ function FundTimelineEventCard({
   const metaText =
     event.type === "analysis"
       ? `引用 ${event.report.source_refs.length} 项数据来源`
-      : event.conversation.title;
+      : presentableConversationTitle(event.conversation.title);
 
   return (
     <>
@@ -152,7 +156,7 @@ function FundTimelineEventCard({
                         {roleLabel[message.role] ?? message.role} · {formatDateTime(message.created_at)}
                       </div>
                       <div className="text-sm leading-6">
-                        <MarkdownContent content={message.content} />
+                        <MarkdownContent content={sanitizeChatText(message.content)} />
                       </div>
                     </div>
                   ))}
