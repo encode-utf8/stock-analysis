@@ -30,7 +30,23 @@ function returnTone(value: number): string {
 }
 
 /** 基金定投收益率变化曲线：支持鼠标悬停查看单日市值、投入与收益率。 */
-export function DcaReturnChart({ points }: { points: FundDcaEquityPoint[] }) {
+interface DcaReturnChartProps {
+  points: FundDcaEquityPoint[];
+  drawdownStart?: string | null;
+  drawdownEnd?: string | null;
+  recoveryStart?: string | null;
+  recoveryEnd?: string | null;
+  recoveryComplete?: boolean;
+}
+
+export function DcaReturnChart({
+  points,
+  drawdownStart = null,
+  drawdownEnd = null,
+  recoveryStart = null,
+  recoveryEnd = null,
+  recoveryComplete = false,
+}: DcaReturnChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   if (points.length === 0) {
@@ -59,6 +75,32 @@ export function DcaReturnChart({ points }: { points: FundDcaEquityPoint[] }) {
     };
   });
   const hovered = hoveredIndex === null ? null : points[hoveredIndex];
+
+  const indexForDate = (date: string | null) => {
+    if (!date || points.length === 0) {
+      return null;
+    }
+    let low = 0;
+    let high = points.length - 1;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const current = points[mid]?.date ?? "";
+      if (current === date) {
+        return mid;
+      }
+      if (current < date) {
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return Math.min(low, points.length - 1);
+  };
+
+  const drawdownStartIndex = indexForDate(drawdownStart ?? null);
+  const drawdownEndIndex = indexForDate(drawdownEnd ?? null);
+  const recoveryStartIndex = indexForDate(recoveryStart ?? null);
+  const recoveryEndIndex = (recoveryEnd ? indexForDate(recoveryEnd) : points.length - 1) ?? points.length - 1;
 
   const handleMouseMove = (event: MouseEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -113,6 +155,28 @@ export function DcaReturnChart({ points }: { points: FundDcaEquityPoint[] }) {
           strokeWidth="1"
           strokeDasharray="5 5"
         />
+        {drawdownStartIndex !== null && drawdownEndIndex !== null ? (
+          <rect
+            x={x(drawdownStartIndex)}
+            y={PADDING_TOP}
+            width={Math.max(x(drawdownEndIndex) - x(drawdownStartIndex), 2)}
+            height={HEIGHT - PADDING_TOP - PADDING_BOTTOM}
+            fill="#ef4444"
+            fillOpacity="0.07"
+          />
+        ) : null}
+        {recoveryStartIndex !== null ? (
+          <rect
+            x={x(recoveryStartIndex)}
+            y={PADDING_TOP}
+            width={Math.max(x(recoveryEndIndex) - x(recoveryStartIndex), 2)}
+            height={HEIGHT - PADDING_TOP - PADDING_BOTTOM}
+            fill="#22c55e"
+            fillOpacity={recoveryComplete ? 0.1 : 0.08}
+            stroke={recoveryComplete ? "none" : "#16a34a"}
+            strokeDasharray={recoveryComplete ? undefined : "4 4"}
+          />
+        ) : null}
         <path d={areaPath} fill="#3b82f6" fillOpacity="0.08" />
         <path
           d={linePath}
@@ -164,6 +228,25 @@ export function DcaReturnChart({ points }: { points: FundDcaEquityPoint[] }) {
           {points[Math.floor((points.length - 1) / 2)]?.date}
         </text>
       </svg>
+
+      {(drawdownStart || recoveryStart) ? (
+        <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
+          {drawdownStart && drawdownEnd ? (
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-3 rounded-sm bg-red-200" />
+              ?????{drawdownStart} ? {drawdownEnd}
+            </span>
+          ) : null}
+          {recoveryStart ? (
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-3 rounded-sm bg-green-200" />
+              {recoveryComplete && recoveryEnd
+                ? `?????${recoveryStart} ? ${recoveryEnd}`
+                : `??????? ${recoveryStart} ?`}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {hovered ? (
         <div className="pointer-events-none absolute left-[70px] top-[26px] rounded-md border bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm">

@@ -202,6 +202,32 @@ export interface FundDcaEquityPoint {
 }
 
 /** 基金定投回测快照。 */
+export interface FundDcaPortfolioSnapshot {
+  codes: string[];
+  name: string;
+  range: string;
+  frequency: FundDcaFrequency;
+  amount_per_period: number;
+  available: boolean;
+  reason: string | null;
+  total_invested: number | null;
+  total_value: number | null;
+  profit_loss: number | null;
+  profit_loss_pct: number | null;
+  annualized_return_pct: number | null;
+  max_drawdown_pct: number | null;
+  current_drawdown_pct: number | null;
+  equity_curve: FundDcaEquityPoint[];
+  source: string;
+  generated_at: string;
+}
+
+export interface FundDcaPaydayComparison {
+  day: number;
+  total_return_pct: number | null;
+  annualized_return_pct: number | null;
+}
+
 export interface FundDcaSnapshot {
   code: string;
   name: string;
@@ -225,6 +251,13 @@ export interface FundDcaSnapshot {
   lump_sum_curve: FundDcaEquityPoint[];
   start_date: string | null;
   end_date: string | null;
+  max_drawdown_start_date: string | null;
+  max_drawdown_end_date: string | null;
+  recovery_start_date: string | null;
+  recovery_end_date: string | null;
+  recovery_complete: boolean;
+  recovery_days: number | null;
+  payday_comparison: FundDcaPaydayComparison[];
   contributions: FundDcaContribution[];
   equity_curve: FundDcaEquityPoint[];
   source: string;

@@ -6,6 +6,8 @@ import type {
   FundDcaContribution,
   FundDcaEquityPoint,
   FundDcaFrequency,
+  FundDcaPaydayComparison,
+  FundDcaPortfolioSnapshot,
   FundDcaSnapshot,
   FundNavPoint,
 } from "@/lib/shared/types";
@@ -44,6 +46,40 @@ export function normalizeFundDcaAmount(raw: string | null): number | null {
   return Number.isFinite(amount) && amount > 0 && amount <= 10_000_000
     ? Math.round(amount * 100) / 100
     : null;
+}
+
+/** ??????????????? 2-5 ???????? */
+export function normalizeFundDcaCodes(raw: string | null): string[] | null {
+  if (!raw) {
+    return null;
+  }
+  const codes = Array.from(
+    new Set(
+      raw
+        .split(/[,?\s]+/)
+        .map((code) => normalizeFundCode(code))
+        .filter((code): code is string => Boolean(code)),
+    ),
+  );
+  return codes.length >= 2 && codes.length <= 5 ? codes : null;
+}
+
+/** ???????????????????????????? 0? */
+export function normalizeFundDcaAmounts(raw: string | null, count: number): number[] | null {
+  if (!raw) {
+    return null;
+  }
+  const values = raw
+    .split(/[,?\s]+/)
+    .filter(Boolean)
+    .map((value) => Number(value));
+  if (
+    values.length !== count ||
+    values.some((value) => !Number.isFinite(value) || value <= 0 || value > 10_000_000)
+  ) {
+    return null;
+  }
+  return values.map((value) => Math.round(value * 100) / 100);
 }
 
 function round(value: number | null, digits = 2): number | null {
@@ -168,6 +204,145 @@ function calculateDcaXirr(
   return Number.isFinite(rate) && rate > -0.99 ? round(rate * 100, 2) : null;
 }
 
+/** ?????????????????????? */
+function calculateDcaDrawdownRecovery(equityCurve: FundDcaEquityPoint[]) {
+  if (equityCurve.length < 2) {
+    return {
+      maxDrawdownStart: null,
+      maxDrawdownEnd: null,
+      recoveryStart: null,
+      recoveryEnd: null,
+      recoveryComplete: false,
+      recoveryDays: null,
+    };
+  }
+
+  let peak = equityCurve[0].market_value;
+  let peakDate = equityCurve[0].date;
+  let maxDrawdown = 0;
+  let maxDrawdownStart: string | null = null;
+  let maxDrawdownEnd: string | null = null;
+  let peakAtStart = 0;
+
+  for (let index = 1; index < equityCurve.length; index += 1) {
+    const point = equityCurve[index];
+    if (point.market_value >= peak) {
+      peak = point.market_value;
+      peakDate = point.date;
+      continue;
+    }
+    const drawdown = point.market_value / peak - 1;
+    if (drawdown < maxDrawdown) {
+      maxDrawdown = drawdown;
+      maxDrawdownStart = peakDate;
+      maxDrawdownEnd = point.date;
+      peakAtStart = peak;
+    }
+  }
+
+  if (!maxDrawdownStart || !maxDrawdownEnd || peakAtStart <= 0) {
+    return {
+      maxDrawdownStart,
+      maxDrawdownEnd,
+      recoveryStart: maxDrawdownEnd,
+      recoveryEnd: null,
+      recoveryComplete: false,
+      recoveryDays: null,
+    };
+  }
+
+  const recoveryStart = maxDrawdownEnd;
+  let recoveryEnd: string | null = null;
+  let recoveryComplete = false;
+  const recoveryStartIndex = equityCurve.findIndex((point) => point.date === recoveryStart);
+  if (recoveryStartIndex >= 0) {
+    for (let index = recoveryStartIndex + 1; index < equityCurve.length; index += 1) {
+      if (equityCurve[index].market_value >= peakAtStart) {
+        recoveryEnd = equityCurve[index].date;
+        recoveryComplete = true;
+        break;
+      }
+    }
+  }
+
+  const recoveryDays =
+    recoveryEnd === null
+      ? null
+      : Math.max(
+          1,
+          (parseDate(recoveryEnd).getTime() - parseDate(recoveryStart).getTime()) / 86_400_000,
+        );
+
+  return {
+    maxDrawdownStart,
+    maxDrawdownEnd,
+    recoveryStart,
+    recoveryEnd,
+    recoveryComplete,
+    recoveryDays,
+  };
+}
+
+/** ????????????????????? */
+function calculatePaydayComparison(
+  nav: FundNavPoint[],
+  frequency: FundDcaFrequency,
+  amountPerPeriod: number,
+): FundDcaPaydayComparison[] {
+  if (frequency !== "monthly" || nav.length < 2) {
+    return [];
+  }
+
+  const firstDate = parseDate(nav[0].nav_date);
+  const lastDate = parseDate(nav.at(-1)!.nav_date);
+  const candidateDays = [1, 5, 10, 15, 20, 25, 28];
+
+  return candidateDays.map((day) => {
+    const scheduledDates = new Set<string>();
+    const cursor = new Date(firstDate.getFullYear(), firstDate.getMonth(), day);
+    while (cursor.getTime() <= lastDate.getTime()) {
+      const point = nav.find((item) => item.nav_date >= formatDate(cursor));
+      if (point) {
+        scheduledDates.add(point.nav_date);
+      }
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    const contributionDates = Array.from(scheduledDates).sort((left, right) => left.localeCompare(right));
+    if (contributionDates.length === 0) {
+      return { day, total_return_pct: null, annualized_return_pct: null };
+    }
+
+    const contributionDateSet = new Set(contributionDates);
+    const contributions: FundDcaContribution[] = [];
+    let cumulativeShares = 0;
+    let cumulativeInvested = 0;
+    for (const point of nav) {
+      if (contributionDateSet.has(point.nav_date)) {
+        const shares = amountPerPeriod / point.unit_nav;
+        cumulativeShares += shares;
+        cumulativeInvested += amountPerPeriod;
+        contributions.push({
+          date: point.nav_date,
+          nav: round(point.unit_nav, 4) ?? point.unit_nav,
+          amount: amountPerPeriod,
+          shares: round(shares, 6) ?? shares,
+          cumulative_shares: round(cumulativeShares, 6) ?? cumulativeShares,
+          cumulative_invested: round(cumulativeInvested) ?? cumulativeInvested,
+          market_value: round(cumulativeShares * point.unit_nav) ?? cumulativeShares * point.unit_nav,
+        });
+      }
+    }
+
+    const finalPoint = nav.at(-1)!;
+    const finalValue = cumulativeShares * finalPoint.unit_nav;
+    const totalReturnPct =
+      cumulativeInvested > 0 ? round((finalValue / cumulativeInvested - 1) * 100) : null;
+    const annualized = calculateDcaXirr(contributions, finalPoint.nav_date, finalValue);
+    return { day, total_return_pct: totalReturnPct, annualized_return_pct: annualized };
+  });
+}
+
 function unavailableSnapshot(
   code: string,
   name: string,
@@ -201,6 +376,13 @@ function unavailableSnapshot(
     lump_sum_curve: [],
     start_date: null,
     end_date: null,
+    max_drawdown_start_date: null,
+    max_drawdown_end_date: null,
+    recovery_start_date: null,
+    recovery_end_date: null,
+    recovery_complete: false,
+    recovery_days: null,
+    payday_comparison: [],
     contributions: [],
     equity_curve: [],
     source,
@@ -351,6 +533,9 @@ export async function getFundDcaBacktest(
     lumpSumReturnPct = round((finalLumpValue / totalInvested - 1) * 100);
   }
 
+  const drawdownRecovery = calculateDcaDrawdownRecovery(equityCurve);
+  const paydayComparison = calculatePaydayComparison(nav, frequency, amountPerPeriod);
+
   return {
     code,
     name: profile.name,
@@ -374,6 +559,13 @@ export async function getFundDcaBacktest(
     lump_sum_curve: lumpSumCurve,
     start_date: nav[0].nav_date,
     end_date: finalPoint.nav_date,
+    max_drawdown_start_date: drawdownRecovery.maxDrawdownStart,
+    max_drawdown_end_date: drawdownRecovery.maxDrawdownEnd,
+    recovery_start_date: drawdownRecovery.recoveryStart,
+    recovery_end_date: drawdownRecovery.recoveryEnd,
+    recovery_complete: drawdownRecovery.recoveryComplete,
+    recovery_days: round(drawdownRecovery.recoveryDays, 0),
+    payday_comparison: paydayComparison,
     contributions: frequency === "daily" ? [] : contributions,
     equity_curve: downsampleEquityCurve(equityCurve, MAX_EQUITY_POINTS),
     source,
@@ -396,4 +588,229 @@ async function getDcaNav(code: string, range: FundNavRange): Promise<FundNavPoin
     return getFundNav(code, range, "unit", true);
   }
   return nav;
+}
+
+/** ??????????????????????? */
+function buildSingleFundDcaCurve(
+  nav: FundNavPoint[],
+  frequency: FundDcaFrequency,
+  amountPerPeriod: number,
+) {
+  const contributionDates = buildContributionDates(nav, frequency);
+  const contributionDateSet = new Set(contributionDates);
+  const contributions: FundDcaContribution[] = [];
+  let cumulativeShares = 0;
+  let cumulativeInvested = 0;
+
+  for (const point of nav) {
+    if (contributionDateSet.has(point.nav_date)) {
+      const shares = amountPerPeriod / point.unit_nav;
+      cumulativeShares += shares;
+      cumulativeInvested += amountPerPeriod;
+      contributions.push({
+        date: point.nav_date,
+        nav: round(point.unit_nav, 4) ?? point.unit_nav,
+        amount: amountPerPeriod,
+        shares: round(shares, 6) ?? shares,
+        cumulative_shares: round(cumulativeShares, 6) ?? cumulativeShares,
+        cumulative_invested: round(cumulativeInvested) ?? cumulativeInvested,
+        market_value: round(cumulativeShares * point.unit_nav) ?? cumulativeShares * point.unit_nav,
+      });
+    }
+  }
+
+  const contributionByDate = new Map(contributions.map((item) => [item.date, item]));
+  const curve: FundDcaEquityPoint[] = [];
+  let peakValue = 0;
+  let maxDrawdown = 0;
+  let curveShares = 0;
+  let curveInvested = 0;
+  for (const point of nav) {
+    const contribution = contributionByDate.get(point.nav_date);
+    if (contribution) {
+      curveShares = contribution.cumulative_shares;
+      curveInvested = contribution.cumulative_invested;
+    }
+    const marketValue = curveShares * point.unit_nav;
+    curve.push({
+      date: point.nav_date,
+      market_value: round(marketValue) ?? marketValue,
+      invested_amount: round(curveInvested) ?? curveInvested,
+      return_pct: curveInvested > 0 ? round((marketValue / curveInvested - 1) * 100, 2) ?? 0 : 0,
+    });
+    peakValue = Math.max(peakValue, marketValue);
+    if (peakValue > 0) {
+      maxDrawdown = Math.min(maxDrawdown, (marketValue / peakValue - 1) * 100);
+    }
+  }
+
+  const finalPoint = nav.at(-1)!;
+  const totalShares = contributions.at(-1)?.cumulative_shares ?? 0;
+  const totalInvested = contributions.at(-1)?.cumulative_invested ?? 0;
+  const finalValue = totalShares * finalPoint.unit_nav;
+
+  return {
+    curve,
+    contributions,
+    totalInvested,
+    finalValue,
+    annualizedReturn: calculateDcaXirr(contributions, finalPoint.nav_date, finalValue),
+    maxDrawdown,
+  };
+}
+
+/** ???????????????????????? */
+export async function getFundDcaPortfolioBacktest(
+  codes: string[],
+  range: FundNavRange,
+  frequency: FundDcaFrequency,
+  amounts: number[],
+  now = new Date(),
+): Promise<FundDcaPortfolioSnapshot> {
+  const [profiles, rawNavSeries] = await Promise.all([
+    Promise.all(codes.map((code) => getFundProfile(code))),
+    Promise.all(codes.map((code) => getDcaNav(code, range))),
+  ]);
+  const source = rawNavSeries[0]?.[0]?.source ?? profiles[0]?.source ?? "computed";
+
+  if (
+    rawNavSeries.some(
+      (nav) => nav.length < 2 || nav.some((item) => item.source === "deterministic-fallback"),
+    )
+  ) {
+    return {
+      codes,
+      name: "???????",
+      range,
+      frequency,
+      amount_per_period: amounts.reduce((sum, value) => sum + value, 0),
+      available: false,
+      reason: "???????????????????????",
+      total_invested: null,
+      total_value: null,
+      profit_loss: null,
+      profit_loss_pct: null,
+      annualized_return_pct: null,
+      max_drawdown_pct: null,
+      current_drawdown_pct: null,
+      equity_curve: [],
+      source,
+      generated_at: now.toISOString(),
+    };
+  }
+
+  const navSeries = rawNavSeries.map((nav) =>
+    nav
+      .filter((item) => item.unit_nav > 0)
+      .sort((left, right) => left.nav_date.localeCompare(right.nav_date)),
+  );
+  if (navSeries.some((nav) => nav.length < 2)) {
+    return {
+      codes,
+      name: "???????",
+      range,
+      frequency,
+      amount_per_period: amounts.reduce((sum, value) => sum + value, 0),
+      available: false,
+      reason: "??????????????????????",
+      total_invested: null,
+      total_value: null,
+      profit_loss: null,
+      profit_loss_pct: null,
+      annualized_return_pct: null,
+      max_drawdown_pct: null,
+      current_drawdown_pct: null,
+      equity_curve: [],
+      source,
+      generated_at: now.toISOString(),
+    };
+  }
+
+  const singleFunds = navSeries.map((nav, index) =>
+    buildSingleFundDcaCurve(nav, frequency, amounts[index]),
+  );
+  const curveMaps = singleFunds.map((fund) => new Map(fund.curve.map((point) => [point.date, point])));
+
+  const dateSet = new Set<string>();
+  for (const nav of navSeries) {
+    for (const point of nav) {
+      dateSet.add(point.nav_date);
+    }
+  }
+  const allDates = Array.from(dateSet).sort((left, right) => left.localeCompare(right));
+
+  const lastValues = singleFunds.map(() => ({ marketValue: 0, investedAmount: 0 }));
+  const equityCurve: FundDcaEquityPoint[] = [];
+  let peakValue = 0;
+  let maxDrawdown = 0;
+  for (const date of allDates) {
+    let marketValue = 0;
+    let investedAmount = 0;
+    for (let index = 0; index < singleFunds.length; index += 1) {
+      const point = curveMaps[index].get(date);
+      if (point) {
+        lastValues[index] = { marketValue: point.market_value, investedAmount: point.invested_amount };
+      }
+      marketValue += lastValues[index].marketValue;
+      investedAmount += lastValues[index].investedAmount;
+    }
+    equityCurve.push({
+      date,
+      market_value: round(marketValue) ?? marketValue,
+      invested_amount: round(investedAmount) ?? investedAmount,
+      return_pct: investedAmount > 0 ? round((marketValue / investedAmount - 1) * 100, 2) ?? 0 : 0,
+    });
+    peakValue = Math.max(peakValue, marketValue);
+    if (peakValue > 0) {
+      maxDrawdown = Math.min(maxDrawdown, (marketValue / peakValue - 1) * 100);
+    }
+  }
+
+  const finalPoint = equityCurve.at(-1)!;
+  const totalInvested = singleFunds.reduce((sum, fund) => sum + fund.totalInvested, 0);
+  const totalValue = finalPoint.market_value;
+  const profitLoss = totalValue - totalInvested;
+  const profitLossPct = totalInvested > 0 ? (totalValue / totalInvested - 1) * 100 : null;
+  const currentDrawdown = peakValue > 0 ? (totalValue / peakValue - 1) * 100 : null;
+
+  const contributionDateSet = new Set<string>();
+  const contributionAmountByDate = new Map<string, number>();
+  for (let index = 0; index < navSeries.length; index += 1) {
+    const dates = buildContributionDates(navSeries[index], frequency);
+    for (const date of dates) {
+      contributionDateSet.add(date);
+      contributionAmountByDate.set(date, (contributionAmountByDate.get(date) ?? 0) + amounts[index]);
+    }
+  }
+  const aggregateContributions: FundDcaContribution[] = Array.from(contributionDateSet)
+    .sort((left, right) => left.localeCompare(right))
+    .map((date) => ({
+      date,
+      nav: 1,
+      amount: contributionAmountByDate.get(date) ?? 0,
+      shares: 0,
+      cumulative_shares: 0,
+      cumulative_invested: 0,
+      market_value: 0,
+    }));
+
+  return {
+    codes,
+    name: "???????",
+    range,
+    frequency,
+    amount_per_period: round(amounts.reduce((sum, value) => sum + value, 0)) ?? 0,
+    available: true,
+    reason: null,
+    total_invested: round(totalInvested),
+    total_value: round(totalValue),
+    profit_loss: round(profitLoss),
+    profit_loss_pct: round(profitLossPct),
+    annualized_return_pct: calculateDcaXirr(aggregateContributions, finalPoint.date, totalValue),
+    max_drawdown_pct: round(maxDrawdown),
+    current_drawdown_pct: round(currentDrawdown),
+    equity_curve: downsampleEquityCurve(equityCurve, MAX_EQUITY_POINTS),
+    source,
+    generated_at: now.toISOString(),
+  };
 }

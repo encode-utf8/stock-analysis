@@ -5,7 +5,7 @@ import type { FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { sourceLabel } from "@/lib/format";
-import type { FundDcaFrequency, FundDcaSnapshot } from "@/lib/shared/types";
+import type { FundDcaFrequency, FundDcaPortfolioSnapshot, FundDcaSnapshot } from "@/lib/shared/types";
 import { DcaReturnChart } from "@/components/panels/fund/DcaReturnChart";
 import { DcaComparisonChart } from "@/components/panels/fund/DcaComparisonChart";
 
@@ -105,6 +105,14 @@ export function FundDcaPanel() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [showTable, setShowTable] = useState(false);
+  const [showPortfolio, setShowPortfolio] = useState(false);
+  const [portfolioRows, setPortfolioRows] = useState<Array<{ code: string; amount: string }>>([
+    { code: "510300", amount: "1000" },
+    { code: "110022", amount: "1000" },
+  ]);
+  const [portfolioSnapshot, setPortfolioSnapshot] = useState<FundDcaPortfolioSnapshot | null>(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioError, setPortfolioError] = useState<string | null>(null);
 
   const contributions = snapshot?.contributions ?? [];
   const pageSize = 10;
@@ -146,6 +154,62 @@ export function FundDcaPanel() {
       setError(nextError instanceof Error ? nextError.message : "基金定投回测加载失败。");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updatePortfolioRow = (index: number, field: "code" | "amount", value: string) => {
+    setPortfolioRows((previous) =>
+      previous.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [field]: value } : row,
+      ),
+    );
+  };
+
+  const addPortfolioRow = () => {
+    setPortfolioRows((previous) =>
+      previous.length < 5 ? [...previous, { code: "", amount: "" }] : previous,
+    );
+  };
+
+  const removePortfolioRow = (index: number) => {
+    setPortfolioRows((previous) =>
+      previous.length > 2 ? previous.filter((_, rowIndex) => rowIndex !== index) : previous,
+    );
+  };
+
+  const handlePortfolioSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const codes = portfolioRows.map((row) => row.code.trim());
+    if (codes.some((code) => !/^\d{6}$/.test(code))) {
+      setPortfolioError("??????? 6 ??????");
+      return;
+    }
+    const amounts = portfolioRows.map((row) => row.amount.trim());
+    const amountValues = amounts.map((amount) => Number(amount));
+    if (
+      amounts.some((amount) => amount.length === 0) ||
+      amountValues.some((value) => !Number.isFinite(value) || value <= 0 || value > 10_000_000)
+    ) {
+      setPortfolioError("???????????? 0 ???? 1000 ?????");
+      return;
+    }
+
+    setPortfolioLoading(true);
+    setPortfolioError(null);
+    setPortfolioSnapshot(null);
+    try {
+      const params = new URLSearchParams({
+        codes: codes.join(","),
+        range,
+        frequency,
+        amounts: amounts.join(","),
+      });
+      const data = await apiFetch<FundDcaPortfolioSnapshot>(`/api/fund-dca?${params.toString()}`);
+      setPortfolioSnapshot(data);
+    } catch (nextError) {
+      setPortfolioError(nextError instanceof Error ? nextError.message : "???????????");
+    } finally {
+      setPortfolioLoading(false);
     }
   };
 
@@ -267,9 +331,49 @@ export function FundDcaPanel() {
               <h3 className="text-sm font-semibold">收益率变化曲线</h3>
               <p className="text-xs text-muted-foreground">悬停查看单日投入、市值与收益率。</p>
             </div>
-            <DcaReturnChart points={snapshot.equity_curve} />
+            <DcaReturnChart
+              points={snapshot.equity_curve}
+              drawdownStart={snapshot.max_drawdown_start_date}
+              drawdownEnd={snapshot.max_drawdown_end_date}
+              recoveryStart={snapshot.recovery_start_date}
+              recoveryEnd={snapshot.recovery_end_date}
+              recoveryComplete={snapshot.recovery_complete}
+            />
           </div>
 
+
+          {snapshot.frequency === "monthly" && snapshot.payday_comparison.length > 0 ? (
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">?????????</h3>
+                <p className="text-xs text-muted-foreground">????????????????</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      <th className="px-2 py-2">???</th>
+                      <th className="px-2 py-2">?????</th>
+                      <th className="px-2 py-2">?????</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snapshot.payday_comparison.map((item) => (
+                      <tr key={item.day} className="border-b last:border-0">
+                        <td className="px-2 py-3">?? {item.day} ?</td>
+                        <td className={`px-2 py-3 font-medium ${returnTone(item.total_return_pct)}`}>
+                          {item.total_return_pct === null ? "?" : `${item.total_return_pct > 0 ? "+" : ""}${item.total_return_pct.toFixed(2)}%`}
+                        </td>
+                        <td className={`px-2 py-3 font-medium ${returnTone(item.annualized_return_pct)}`}>
+                          {item.annualized_return_pct === null ? "?" : `${item.annualized_return_pct > 0 ? "+" : ""}${item.annualized_return_pct.toFixed(2)}%`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
           <div className="mt-4">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold">定投 vs 一次性买入</h3>
@@ -358,6 +462,133 @@ export function FundDcaPanel() {
           </p>
         </div>
       ) : null}
+      {showPortfolio ? (
+        <div className="mt-4 rounded-lg border bg-slate-50 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">???????</h3>
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowPortfolio(false)}>
+              ??
+            </Button>
+          </div>
+          <form onSubmit={handlePortfolioSubmit} className="flex flex-col gap-2">
+            {portfolioRows.map((row, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <input
+                  value={row.code}
+                  onChange={(event) => updatePortfolioRow(index, "code", event.target.value)}
+                  placeholder={`?? ${index + 1}?? 510300`}
+                  maxLength={6}
+                  inputMode="numeric"
+                  className="w-44 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <input
+                  value={row.amount}
+                  onChange={(event) => updatePortfolioRow(index, "amount", event.target.value)}
+                  placeholder="????"
+                  inputMode="decimal"
+                  className="w-32 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <button
+                  type="button"
+                  onClick={() => removePortfolioRow(index)}
+                  disabled={portfolioRows.length <= 2}
+                  className="rounded-md border px-2 py-2 text-sm text-muted-foreground disabled:opacity-40"
+                  aria-label="????"
+                >
+                  ??
+                </button>
+              </div>
+            ))}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addPortfolioRow}
+                disabled={portfolioRows.length >= 5}
+              >
+                + ????
+              </Button>
+              <Button type="submit" size="sm" disabled={portfolioLoading}>
+                {portfolioLoading ? "???..." : "????"}
+              </Button>
+            </div>
+          </form>
+
+          {portfolioError ? (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {portfolioError}
+            </div>
+          ) : null}
+
+          {portfolioSnapshot && !portfolioSnapshot.available ? (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {portfolioSnapshot.reason ?? "?????????????"}
+            </div>
+          ) : null}
+
+          {portfolioSnapshot?.available ? (
+            <div className="mt-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <MetricCard
+                  label="????"
+                  value={formatMoney(portfolioSnapshot.amount_per_period)}
+                  tone="text-slate-900"
+                />
+                <MetricCard
+                  label="????"
+                  value={formatMoney(portfolioSnapshot.total_invested)}
+                  tone="text-slate-900"
+                />
+                <MetricCard
+                  label="????"
+                  value={formatMoney(portfolioSnapshot.total_value)}
+                  tone="text-slate-900"
+                />
+                <MetricCard
+                  label="????"
+                  value={formatMoney(portfolioSnapshot.profit_loss)}
+                  tone={returnTone(portfolioSnapshot.profit_loss)}
+                />
+                <MetricCard
+                  label="?????"
+                  value={formatPercent(portfolioSnapshot.profit_loss_pct)}
+                  tone={returnTone(portfolioSnapshot.profit_loss_pct)}
+                />
+                <MetricCard
+                  label="?????"
+                  value={formatPercent(portfolioSnapshot.annualized_return_pct)}
+                  tone={returnTone(portfolioSnapshot.annualized_return_pct)}
+                />
+                <MetricCard
+                  label="????"
+                  value={portfolioSnapshot.max_drawdown_pct === null ? "?" : `-${formatNumber(portfolioSnapshot.max_drawdown_pct)}%`}
+                  tone={drawdownTone(portfolioSnapshot.max_drawdown_pct)}
+                />
+                <MetricCard
+                  label="????"
+                  value={portfolioSnapshot.current_drawdown_pct === null ? "?" : `-${formatNumber(portfolioSnapshot.current_drawdown_pct)}%`}
+                  tone={drawdownTone(portfolioSnapshot.current_drawdown_pct)}
+                />
+              </div>
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">?????????</h3>
+                  <p className="text-xs text-muted-foreground">??????????????????</p>
+                </div>
+                <DcaReturnChart points={portfolioSnapshot.equity_curve} />
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-4">
+          <Button type="button" variant="outline" size="sm" onClick={() => setShowPortfolio(true)}>
+            ???????
+          </Button>
+        </div>
+      )}
+
     </section>
   );
 }
