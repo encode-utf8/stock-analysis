@@ -4,3 +4,4 @@ export * from "./api";
 export * from "./next-phase";
 export * from "./p7";
 export * from "./funds";
+export * from "./alerts";

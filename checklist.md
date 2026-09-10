@@ -1068,3 +1068,73 @@ corepack pnpm build
 - 数值核对：亏损样本（2024-01 至 2024-08 每月定投 1000 元）年化由 `null` 修正为 -68.2%，与独立二分法验算一致；盈利样本年化为正，且与区间收益同号。
 - 覆盖范围：单基金定投、组合定投与每月扣款日对比共用同一实现，结果一致；未改动其它指标口径与接口字段。
 - 修改文件：`src/lib/fund-dca.ts`、`tests/fund-dca.test.ts`、`checklist.md`。
+
+## T3 自选池监控与预警（预警中心）（2026-09-10）
+
+- 关联文档：`docs/alert-center-plan.md`（v0.2）
+- 分支：`feature/alert-center`
+- 目标：把自选股 / 自选基金、定时调度、数据快照与邮件通道串成「扫描 → 判定 → 事件 → 页面 + 邮件」闭环，面向初学者提供涨幅、最新价、单位净值、净值单日涨跌、区间最大回撤、当前回撤等观测指标。
+
+### 需求确认结论
+
+- 冷却期 12 小时；非交易时段不触发。
+- 支持邮件推送到本机预留的收件邮箱；未配置 SMTP 时仅页面展示。
+- 交易日每 30 分钟扫描一次（系统运行时），另提供手动「立即评估」。
+- 最多 3 个自选标的（股票 + 基金合计）可配置预警任务，可用 `ALERT_MAX_TARGETS` 调整。
+- 单条规则支持 1 个条件，或 2–4 个条件按 AND / OR 组合。
+
+### 验收项
+
+- [x] 新增 `alert_rules`、`alert_events` 两张表与迁移 `0008`，仅新增不改既有表
+- [x] 未配置数据库时规则与事件落 `.data/alerts.json`，重启不丢失
+- [x] 有效时段判定：股票仅 09:30–11:30、13:00–15:00；基金为交易时段或工作日 15:00 后；周末不触发
+- [x] 冷却期 12 小时生效，冷却期内重复扫描不产生新事件
+- [x] 单条件与 AND / OR 组合条件均可配置并生效，条件数限制在 1–4
+- [x] 等于阈值按命中处理（`≥` / `≤` 含边界）
+- [x] 观测值来自 `deterministic-fallback` 时跳过并计入跳过计数
+- [x] 预警标的数量上限默认 3，超出时拒绝并提示
+- [x] 规则标的必须在对应自选池内；删除自选标的时其规则自动停用
+- [x] 邮件：配置 SMTP 后可发送测试邮件；触发时汇总发送一封摘要邮件；失败不影响入库并记录原因
+- [x] 手动评估与定时评估口径一致，均写入 `job_runs`
+- [x] 预警中心面板可在个股 / 基金工作台挂载，展示规则、事件流与邮件通道状态
+- [x] `tests/alerts.test.ts` 覆盖时段、组合、边界、冷却、降级、缺指标、邮件文案
+- [x] `corepack pnpm test` 全部通过
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+- [x] `.env.example` 与 `README.md` 补充 `ALERT_CRON`、`ALERT_MAX_TARGETS`、`SMTP_*`、`ALERT_EMAIL_TO`
+- [x] 代码注释为中文，未提交真实密钥
+
+### 验证方式
+
+- `corepack pnpm test && corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 端到端：新增 510300 规则「净值单日涨跌 ≤ -1% 或区间最大回撤 ≥ 20%」→ 立即评估 → 事件出现 → 12 小时内再次评估不新增 → 标记已读 → 删除规则
+- `corepack pnpm dev` 后打开预警中心面板核对空态、未配置 SMTP 提示与手动评估按钮
+
+### 通过标准
+
+- 单条件与组合条件均按配置生效；冷却、时段、降级三条防线不产生误报；既有 M1–M8、MF1–MF6 行为无回归。
+
+### 风险与遗留
+
+- 本地无交易日历，节假日按「工作日 + 时段」近似，后续可在 data-service 接入 AkShare 交易日历精确化。
+- 本地为快照数据而非逐笔行情，事件已固化观测时间与数据来源并统一标注。
+
+### 完成记录
+
+- 完成日期：2026-09-10
+- 分支：`feature/alert-center`
+- 结果：T3 全部验收通过；`corepack pnpm test` 8 个测试文件 / 87 个用例通过，`typecheck`、`lint`、`build` 均通过。
+- 交付物：共享契约 `src/lib/shared/types/alerts.ts`；判定引擎 `src/lib/alerts.ts`；请求解析 `src/lib/alert-input.ts`；持久化 `src/lib/alert-store.ts`（Drizzle + `.data` 文件回退）；邮件 `src/lib/alert-email.ts`；扫描 `src/lib/alert-scan.ts`；调度 `src/lib/scheduler.ts` 新增 `alert-scan`；迁移 `drizzle/0008_married_lethal_legion.sql`；接口 `src/app/api/alerts/**` 与 `src/app/api/admin/alerts/**`；面板 `src/components/panels/AlertPanel.tsx`（个股 / 基金工作台均挂载）。
+- 端到端实测（本地未运行 PostgreSQL、未配置 SMTP，数据侧车运行中）：
+  - 规则创建：股票 300502「当日涨跌幅 ≤ 99」与基金 510300「净值单日涨跌 ≤ -1% 或区间最大回撤 ≥ 20%」创建成功。
+  - 手动评估：`scanned_targets=2`、命中 1 条（300502，观测值 -0.68%，来源 akshare），邮件因未配置 SMTP 记为 `skipped` 且不影响事件入库。
+  - 冷却期：12 小时内再次评估 `triggered_count=0`，跳过原因含「处于 12 小时冷却期内」。
+  - 降级防护：数据侧车未启动时观测值来源为 `deterministic-fallback`，命中数 0 并计入跳过原因。
+  - 参数校验：指标与标的类型不匹配、条件数超过 4、标的不在自选池、非 JSON 请求体、非法邮箱、非法事件状态均返回 400；不存在的规则或事件返回 404。
+  - 数量上限：已有 3 条规则时新增第 4 条被拒绝，提示「最多只能为 3 个自选标的配置预警任务」。
+  - 自选池联动：删除自选股 600519 后，其预警规则自动变为「已停用」。
+  - 事件流转：标记已读 / 未读、删除均正常。
+  - 设置与邮件：收件邮箱与推送开关可保存；未配置 SMTP 时测试邮件返回 `skipped` 并说明原因。
+  - 界面：`/` 页面服务端渲染输出含两处「预警中心」（个股与基金侧栏），面板随模块勾选挂载。
+- 遗留：本地未启动 Docker，迁移 `0008` 已生成但尚未在本地数据库执行；启动 PostgreSQL 后执行 `corepack pnpm db:migrate` 即可建表。SMTP 参数写入本地 `.env` 后才能真实发信。

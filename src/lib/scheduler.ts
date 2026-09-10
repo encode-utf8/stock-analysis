@@ -12,11 +12,12 @@ import { getFundIntraday } from "@/lib/fund-intraday";
 import { SAMPLE_FUND_CODES } from "@/lib/fund-market";
 import { getFundMetrics } from "@/lib/fund-metrics";
 import { getFundNav, getFundProfile } from "@/lib/fund-data";
+import { runAlertScan } from "@/lib/alert-scan";
 import { recordTaskRun } from "@/lib/observability";
 import { store } from "@/lib/store";
 import type { JobRun, NewsItem } from "@/lib/shared/types";
 
-type JobName = "cleanup" | "refresh" | "fund-refresh";
+type JobName = "cleanup" | "refresh" | "fund-refresh" | "alert-scan";
 type JobSource = "manual" | "cron";
 type RefreshTarget = "quote" | "kline" | "news" | "all";
 export type FundRefreshTarget = "profile" | "intraday" | "nav" | "holdings" | "metrics" | "all";
@@ -236,6 +237,20 @@ export function runScheduledFundRefresh(): Promise<JobRun> {
   });
 }
 
+/** 预警扫描任务选项。 */
+export interface AlertScanJobOptions {
+  source?: JobSource;
+}
+
+/** 预警扫描：交易日每 30 分钟触发一次（是否真正评估由有效时段判定决定）。 */
+export function runAlertScanJob(options: AlertScanJobOptions = {}): Promise<JobRun> {
+  return trackJob("alert-scan", { source: options.source ?? "cron" }, async () => {
+    recordTaskRun("refresh");
+    const result = await runAlertScan();
+    return { ...result };
+  });
+}
+
 /** 每日资讯清理。 */
 export function runScheduledCleanup(): Promise<JobRun> {
   return runCleanupJob({ source: "cron" });
@@ -285,4 +300,5 @@ export function startScheduler(): void {
     "sample-fund-refresh",
     runScheduledFundRefresh,
   );
+  safeSchedule(process.env.ALERT_CRON ?? "*/30 9-15 * * 1-5", "alert-scan", runAlertScanJob);
 }

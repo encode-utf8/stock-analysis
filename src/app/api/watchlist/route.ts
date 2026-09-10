@@ -1,4 +1,5 @@
 import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
+import { alertRepository } from "@/lib/alert-store";
 import {
   buildWatchlistItem,
   watchlistRepository,
@@ -127,6 +128,8 @@ export async function DELETE(request: NextRequest): Promise<Response> {
     }
 
     await watchlistRepository.remove(normalizedCode);
+    // 标的已移出自选池，对应预警规则自动停用，避免扫描无效标的。
+    await alertRepository.disableRulesByCode("stock", normalizedCode);
     return apiOk({ code: normalizedCode });
   } catch (error) {
     return apiUnexpected(error);

@@ -14,7 +14,7 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 
-import type { FundHoldingItem } from "@/lib/shared/types";
+import type { AlertCondition, AlertConditionHit, AlertMetric, FundHoldingItem } from "@/lib/shared/types";
 
 /** 股票元数据。 */
 export const stocks = pgTable("stocks", {
@@ -363,3 +363,54 @@ export const fundWatchlist = pgTable("fund_watchlist", {
   sortOrder: integer("sort_order").notNull(),
   note: text("note"),
 });
+
+/** 预警规则：一个自选标的对应一条规则，条件以 jsonb 数组保存。 */
+export const alertRules = pgTable("alert_rules", {
+  id: text("id").primaryKey(),
+  target: text("target").notNull(),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  logic: text("logic").notNull().default("and"),
+  conditions: jsonb("conditions")
+    .$type<AlertCondition[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  enabled: boolean("enabled").notNull().default(true),
+  cooldownHours: integer("cooldown_hours").notNull().default(12),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  lastTriggeredAt: timestamp("last_triggered_at", { withTimezone: true }),
+});
+
+/** 预警事件：固化触发时的观测值、数据来源与邮件推送结果。 */
+export const alertEvents = pgTable(
+  "alert_events",
+  {
+    id: text("id").primaryKey(),
+    ruleId: text("rule_id").notNull(),
+    target: text("target").notNull(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    logic: text("logic").notNull(),
+    metrics: jsonb("metrics")
+      .$type<AlertMetric[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    hits: jsonb("hits")
+      .$type<AlertConditionHit[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    dataSource: text("data_source").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    level: text("level").notNull().default("warn"),
+    message: text("message").notNull(),
+    emailStatus: text("email_status").notNull().default("skipped"),
+    emailReason: text("email_reason"),
+    status: text("status").notNull().default("unread"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index("alert_events_created_at_idx").on(table.createdAt),
+    index("alert_events_status_idx").on(table.status),
+  ],
+);
