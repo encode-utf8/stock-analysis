@@ -961,3 +961,58 @@ corepack pnpm build
 
 - 完成日期：2026-09-10
 - 结果：F16 全部验收通过；组合与定投增强已落地，`typecheck`、`lint`、`build` 均通过。
+
+## T1 自动化测试底座（2026-09-10）
+
+- 关联文档：`docs/plan.md` 质量与协作约定、根 `checklist.md` 既有验收项
+- 分支：`feature/test-infra`
+- 目标：引入 Vitest 作为单元测试运行器，为纯计算模块建立可重复的自动化回归测试，补齐 `typecheck`/`lint`/`build` 之外的计算正确性验证。
+
+### 验收项
+
+- [x] 引入 `vitest` 与 `@vitest/coverage-v8` 开发依赖，新增 `vitest.config.ts`
+- [x] 新增 `pnpm test`、`pnpm test:watch`、`pnpm test:coverage` 脚本
+- [x] 测试默认使用 node 环境且不加载 `.env`，不连接数据库与外部服务
+- [x] `tests/indicators.test.ts` 覆盖 MA/MACD/KDJ/RSI/BOLL 与数据不足边界
+- [x] `tests/fund-metrics.test.ts` 覆盖区间收益、最大回撤、修复天数、当前回撤与空值
+- [x] `tests/fund-dca.test.ts` 覆盖参数规范化、每月定投份额与市值、一次性买入对比、扣款日对比与降级不可用
+- [x] `tests/fund-portfolio.test.ts` 覆盖权重/份额/区间参数规范化、组合曲线、权重偏离与风险贡献
+- [x] `tests/replay.test.ts` 覆盖复盘天数与窗口规范化
+- [x] `tests/fund-market.test.ts` 覆盖基金代码校验、类型与交易模式识别
+- [x] `tests/format.test.ts` 覆盖时间/新鲜度/来源与乱码文本处理
+- [x] `corepack pnpm test` 全部用例通过
+- [x] `corepack pnpm typecheck` 通过
+- [x] `corepack pnpm lint` 通过
+- [x] `corepack pnpm build` 通过
+
+### 验证方式
+
+- `corepack pnpm test`
+- `corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- `corepack pnpm test:coverage` 查看纯计算模块覆盖率
+
+### 通过标准
+
+- 新增测试全部通过，失败时能定位到具体指标口径；不改动既有业务逻辑与共享类型。
+
+### 风险与遗留
+
+- 本阶段只覆盖无外部依赖的纯计算模块；涉及数据库、HTTP 与 AI 的编排留待后续阶段补充。
+- AkShare/DeepSeek/Tavily 等外部依赖不纳入单测，避免网络抖动导致结果不稳定。
+
+### 完成记录
+
+- 完成日期：2026-09-10
+- 分支：`feature/test-infra`
+- 结果：T1 全部验收通过；`corepack pnpm test` 7 个测试文件 / 62 个用例全部通过，`typecheck`、`lint`、`build` 均通过。
+- 覆盖率（`corepack pnpm test:coverage`，行覆盖率）：
+  - `indicators.ts` 100%，`fund-portfolio.ts` 93.65%，`fund-dca.ts` 90.24%，`fund-metrics.ts` 78.19%。
+  - `src/lib/**` 整体行覆盖率 23.02%，未覆盖部分主要是依赖数据库、HTTP 与 AI 的编排模块。
+- 新增文件：`vitest.config.mts`、`tests/helpers/fixtures.ts`、`tests/indicators.test.ts`、`tests/fund-metrics.test.ts`、`tests/fund-dca.test.ts`、`tests/fund-portfolio.test.ts`、`tests/replay.test.ts`、`tests/fund-market.test.ts`、`tests/format.test.ts`。
+- 修改文件：`package.json`（新增 test 脚本与开发依赖）、`.gitignore`、`eslint.config.mjs`（忽略 `coverage/**`）。
+
+### 遗留与发现（本任务不修复，另行评估）
+
+- 定投年化收益在亏损路径上返回 `null`：`src/lib/fund-dca.ts` 的 `calculateDcaXirr` 使用牛顿迭代且初值固定为 0.1，亏损样本会发散（实测 2024-01 至 2024-08 每月定投 1000 元、区间收益 -26.75% 时，真实年化约 -68.2%，但接口返回 null）。
+- 影响面：单基金定投与组合定投的 `annualized_return_pct`、每月扣款日对比的 `annualized_return_pct` 在亏损时会显示为空。
+- 建议方案：改用二分法或带边界的牛顿迭代（限定下界 -0.99），后续单独建分支修复并补测试。

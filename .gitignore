@@ -28,6 +28,9 @@ yarn-error.log*
 /.pnp
 .pnp.*
 
+# 测试覆盖率产物
+coverage/
+
 # Next.js 与构建产物
 .next/
 out/
