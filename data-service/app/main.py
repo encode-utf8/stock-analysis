@@ -123,17 +123,25 @@ def _tencent_symbol(code: str) -> str:
     return f"sz{code}"
 
 
-def _build_tencent_quote(code: str) -> dict | None:
-    """通过腾讯行情构造真实快照。"""
-    symbol = _tencent_symbol(code)
-    text = _curl_get_text(f"https://qt.gtimg.cn/q={symbol}")
+def _tencent_parts(text: str | None) -> list[str] | None:
+    """从腾讯行情文本中拆出字段数组；无有效荷载时返回 None。"""
     if not text or '="' not in text:
         return None
+    return text.split('="', 1)[1].rsplit('"', 1)[0].split("~")
 
+
+def _tencent_name(parts: list[str]) -> str | None:
+    """从腾讯行情字段中提取标的名称。"""
+    if len(parts) < 2:
+        return None
+    name = parts[1].strip()
+    return name or None
+
+
+def _parse_tencent_quote(code: str, parts: list[str]) -> dict | None:
+    """将腾讯行情字段解析为标准化快照；字段不足或不匹配时返回 None。"""
     try:
-        payload = text.split('="', 1)[1].rsplit('"', 1)[0]
-        parts = payload.split("~")
-        target_code = symbol[-6:]
+        target_code = _tencent_symbol(code)[-6:]
         if len(parts) < 47 or parts[2] not in (code, target_code):
             return None
 
@@ -186,6 +194,15 @@ def _build_tencent_quote(code: str) -> dict | None:
     except Exception as exc:
         logger.warning("腾讯行情解析失败：%s", exc)
         return None
+
+
+def _build_tencent_quote(code: str) -> dict | None:
+    """通过腾讯行情构造真实快照。"""
+    symbol = _tencent_symbol(code)
+    parts = _tencent_parts(_curl_get_text(f"https://qt.gtimg.cn/q={symbol}"))
+    if parts is None:
+        return None
+    return _parse_tencent_quote(code, parts)
 
 
 def _series_value(row: Any, names: list[str]) -> Any:
@@ -857,6 +874,49 @@ def health() -> dict[str, str]:
 def quote(code: str = Query(..., min_length=6, max_length=6)) -> dict:
     """返回当前行情快照。"""
     return _build_tencent_quote(code) or _build_akshare_quote(code) or _build_fallback_quote(code)
+
+
+@app.get("/quote/verify")
+def quote_verify(code: str = Query(..., min_length=6, max_length=6)) -> dict:
+    """校验股票代码在权威行情源是否存在，供自选池拦截未知代码。
+
+    返回三态结论：
+    - ok：上游返回有效行情快照
+    - not_found：上游可达但查不到该代码的数据
+    - upstream_unavailable：上游不可达，无法判定，调用方应放行以免误拦
+    """
+    now = _now_utc()
+    url = f"https://qt.gtimg.cn/q={_tencent_symbol(code)}"
+    # 腾讯行情文本为 GBK 编码，显式解码以免名称乱码。
+    text = _curl_get_text(url, encoding="gbk") or _curl_get_text(url, encoding="gbk")
+    if not text:
+        return {
+            "code": code,
+            "status": "upstream_unavailable",
+            "name": None,
+            "source": SOURCE_FALLBACK,
+            "fetched_at": now.isoformat(),
+        }
+
+    parts = _tencent_parts(text)
+    quote = _parse_tencent_quote(code, parts) if parts else None
+    if quote is None:
+        return {
+            "code": code,
+            "status": "not_found",
+            "name": _tencent_name(parts) if parts else None,
+            "source": SOURCE_FALLBACK,
+            "fetched_at": now.isoformat(),
+        }
+
+    return {
+        "code": code,
+        "status": "ok",
+        "name": _tencent_name(parts) if parts else None,
+        "price": quote.get("price"),
+        "source": quote.get("source", SOURCE_AKSHARE),
+        "fetched_at": now.isoformat(),
+    }
 
 
 @app.get("/kline")

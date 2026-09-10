@@ -1,4 +1,5 @@
 // FastAPI 行情侧车客户端：失败时回退确定性数据，保证单机可运行。
+import type { CodeVerifyResult } from "@/lib/code-verify";
 import { recordExternalCall } from "@/lib/observability";
 import type {
   AdjustType,
@@ -15,6 +16,8 @@ const DEFAULT_DATA_SERVICE_URL = "http://127.0.0.1:8000";
 const REQUEST_TIMEOUT_MS = 6_000;
 const QUOTE_TIMEOUT_MS = 3_000;
 const KLINE_TIMEOUT_MS = 5_000;
+// 代码存在性校验会串联多个上游（基金名录可能较慢），超时放宽到 15 秒。
+const VERIFY_TIMEOUT_MS = 15_000;
 
 /** 获取侧车地址，读取环境变量或使用默认值。 */
 function dataServiceUrl(): string {
@@ -84,6 +87,41 @@ export async function fetchQuoteFromSidecar(code: string): Promise<MarketQuote |
   }
 }
 
+/** 校验侧车返回的代码存在性结构是否可用。 */
+function isCodeVerifyResult(value: unknown): value is CodeVerifyResult {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const item = value as Partial<CodeVerifyResult>;
+  return (
+    typeof item.code === "string" &&
+    (item.status === "ok" ||
+      item.status === "not_found" ||
+      item.status === "upstream_unavailable")
+  );
+}
+
+/** 请求侧车代码校验接口；侧车不可达或响应异常时返回 null（按上游不可用处理）。 */
+async function verifyCodeFromSidecar(path: string): Promise<CodeVerifyResult | null> {
+  try {
+    const data = await fetchJson<CodeVerifyResult>(path, VERIFY_TIMEOUT_MS);
+    recordExternalCall(true);
+    return isCodeVerifyResult(data) ? data : null;
+  } catch {
+    recordExternalCall(false);
+    return null;
+  }
+}
+
+/** 校验股票代码在当前行情源是否存在。 */
+export async function verifyStockCode(code: string): Promise<CodeVerifyResult | null> {
+  return verifyCodeFromSidecar(`/quote/verify?code=${encodeURIComponent(code)}`);
+}
+
+/** 校验基金代码在权威基金名录与行情源是否存在。 */
+export async function verifyFundCode(code: string): Promise<CodeVerifyResult | null> {
+  return verifyCodeFromSidecar(`/fund/verify?code=${encodeURIComponent(code)}`);
+}
 /** 从行情侧车获取 K 线；不可用时返回 null。 */
 export async function fetchKlinesFromSidecar(
   code: string,

@@ -1,5 +1,7 @@
 import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
 import { alertRepository } from "@/lib/alert-store";
+import { resolveVerifyVerdict } from "@/lib/code-verify";
+import { verifyStockCode } from "@/lib/data-service";
 import {
   buildWatchlistItem,
   watchlistRepository,
@@ -44,6 +46,20 @@ export async function POST(request: NextRequest): Promise<Response> {
     const item = result.item;
     if (await watchlistRepository.getByCode(item.code)) {
       return apiFail("VALIDATION_ERROR", "该股票已在自选股中。", 409);
+    }
+
+    // 写入前先向上游确认该代码确有数据，避免把无数据的代码加入自选池。
+    const verdict = resolveVerifyVerdict(
+      await verifyStockCode(item.code),
+      "stock",
+      item.code,
+    );
+    if (verdict.blocked) {
+      return apiFail("CODE_NOT_FOUND", verdict.message, 400);
+    }
+    if (verdict.name) {
+      // 用上游真实名称回填，避免显示「股票 xxxxxx」这类占位名称。
+      item.name = verdict.name;
     }
 
     const items = await watchlistRepository.list();

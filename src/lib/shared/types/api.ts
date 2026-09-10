@@ -24,6 +24,7 @@ export type ApiErrorCode =
   | "BAD_REQUEST"
   | "NOT_FOUND"
   | "VALIDATION_ERROR"
+  | "CODE_NOT_FOUND"
   | "UPSTREAM_ERROR"
   | "RATE_LIMITED"
   | "INTERNAL_ERROR";

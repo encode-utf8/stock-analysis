@@ -875,10 +875,74 @@ def _build_fallback_fund_holdings(code: str) -> dict:
     }
 
 
+def _verify_fund_code(code: str) -> dict:
+    """校验基金代码在权威上游是否存在，返回三态结论。
+
+    判定顺序：
+    1. 东财全市场基金名录命中 → 存在；
+    2. 场内基金：腾讯实时行情可用 → 存在；
+    3. 同花顺基金档案可用 → 存在（覆盖尚未进入名录的场外新基金）；
+    4. 名录可用但以上均未命中 → not_found；
+    5. 名录不可用（AkShare 缺失或上游异常）→ upstream_unavailable，调用方应放行。
+    """
+    now = _now_utc()
+    fund_type = _classify_fund_type(code)
+    trading_mode = _classify_trading_mode(code, fund_type)
+    known_name = KNOWN_FUNDS.get(code, {}).get("name")
+
+    rows = _fund_name_rows()
+    matched = next(
+        (
+            row
+            for row in rows
+            if str(_series_value(row, ["基金代码"])).zfill(6) == code
+        ),
+        None,
+    )
+
+    name: str | None = None
+    if matched is not None:
+        name = str(_series_value(matched, ["基金简称"]) or known_name or f"基金 {code}")
+    elif trading_mode == "exchange" and _build_exchange_realtime(code) is not None:
+        name = known_name
+    else:
+        basic_info = _fund_basic_info(code)
+        if basic_info:
+            name = str(
+                basic_info.get("基金简称")
+                or basic_info.get("基金全称")
+                or known_name
+                or f"基金 {code}"
+            )
+
+    if name is not None:
+        return {
+            "code": code,
+            "status": "ok",
+            "name": name,
+            "trading_mode": trading_mode,
+            "source": SOURCE_AKSHARE,
+            "fetched_at": now.isoformat(),
+        }
+
+    return {
+        "code": code,
+        "status": "not_found" if rows else "upstream_unavailable",
+        "name": None,
+        "trading_mode": trading_mode,
+        "source": SOURCE_FALLBACK,
+        "fetched_at": now.isoformat(),
+    }
+
 @router.get("/profile")
 def fund_profile(code: str = Query(..., min_length=6, max_length=6)) -> dict:
     """基金档案与类型识别。"""
     return _build_akshare_fund_profile(code) or _build_fallback_fund_profile(code)
+
+@router.get("/verify")
+def fund_verify(code: str = Query(..., min_length=6, max_length=6)) -> dict:
+    """校验基金代码在权威上游是否存在，供自选池拦截未知代码。"""
+    return _verify_fund_code(code)
 
 
 @router.get("/nav")

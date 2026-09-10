@@ -1387,3 +1387,53 @@ corepack pnpm build
 - 全市场涨跌家数与行业板块上游只提供「当日」口径，历史日期补生成的日报会在正文与面板显式标注该缺失
 - 定时任务依赖 Next 进程存活，与既有 cleanup / 预警扫描约束一致；未启动时段可用面板「立即生成」或按指定日期补生成
 - 面板交互（勾选模块、点击列表、日期选择器）为客户端行为，已通过 SSR 渲染与接口级验证；建议在浏览器里再点一遍确认视觉效果
+## 自选代码存在性校验与「无数据」弹窗验收（2026-09-10）
+
+- 关联文档：`docs/design.md`（统一响应约定）、`README.md`（自选池说明）
+- 分支：`feature/watchlist-verify-code`
+- 目标：新增自选股/自选基金时，若代码在权威上游查不到可靠数据，弹窗提示「当前无数据，请检查输入代码是否正确」，并阻止写入自选池。
+
+### 可行性分析
+
+- 现状缺陷：`buildWatchlistItem` / `buildFundWatchlistItem` 只校验 6 位数字，非法代码（如 `560713`）会被写入自选池，后续所有面板走 `deterministic-fallback` 造出看起来真实的假价格。
+- 权威上游可判空：腾讯 `qt.gtimg.cn` 对不存在的代码返回 `v_pv_none_match="1"`，字段数不足 47，侧车现有解析函数天然拒收；基金可用 AkShare `fund_name_em()` 全市场名录判存在性。
+- 关键约束：必须区分「代码不存在」与「上游不可用」。上游不可用时误拦会伤及正常用户，因此采用三态结论 `ok / not_found / upstream_unavailable`，仅 `not_found` 拦截。
+- 退市、停牌标的仍有可靠名称与历史数据（腾讯不会返回 none_match），不拦截，避免误伤。
+
+### 验收项
+
+- [x] 侧车 `GET /quote/verify?code=` 返回三态结论，`not_found` 仅在上游可达但无数据时给出
+- [x] 侧车 `GET /fund/verify?code=` 返回三态结论，场内基金用腾讯实时行情、场外基金用东财名录/同花顺档案判定
+- [x] 侧车不可达（连接失败/非 2xx）时 Web 端按「上游不可用」放行，不误拦
+- [x] `POST /api/watchlist` 对未知代码返回 400 `CODE_NOT_FOUND`，提示含「当前无数据，请检查输入代码是否正确」
+- [x] `POST /api/fund-watchlist` 对未知代码（如 `560713`）返回 400 `CODE_NOT_FOUND`，同上
+- [x] 合法代码（如 `600519`、`560710`、`110022`）仍可正常添加
+- [x] 新增单按钮提示弹窗组件 `NoticeDialog`，与红色删除确认弹窗区分
+- [x] 个股/基金自选面板收到 `CODE_NOT_FOUND` 时弹窗提示，其他错误仍走行内错误条
+- [x] 添加成功时用上游真实名称回填自选条目，避免显示「股票 xxxxxx / 基金 xxxxxx」
+- [x] 纯函数 `resolveVerifyVerdict` 等有单元测试覆盖
+- [x] `corepack pnpm test`、`typecheck`、`lint`、`build` 全部通过
+- [x] 中文注释，未提交临时文件
+
+### 验证方式
+
+- 侧车：`curl "http://127.0.0.1:8000/quote/verify?code=sh600519"` → `ok`；`?code=sh999999` → `not_found`
+- 侧车：`curl "http://127.0.0.1:8000/fund/verify?code=560710"` → `ok`；`?code=560713` → `not_found`
+- 端到端：`POST /api/fund-watchlist {code:"560713"}` → 400 `CODE_NOT_FOUND`；`{code:"560710"}` → 201 且名称为真实基金名
+- 停掉侧车后 `POST /api/watchlist {code:"600519"}` → 仍可添加（放行策略生效）
+- 命令：`corepack pnpm test && corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+
+### 实测结果（2026-09-10）
+
+- 侧车 `/quote/verify`：`600519` → `ok`（名称 UTF-8 校验为「贵州茅台」）、`600001` → `ok`（退市股仍有可靠行情，按设计放行）、`999999` / `000000` → `not_found`
+- 侧车 `/fund/verify`：`560710` → `ok exchange`（船舶ETF富国）、`510300` → `ok`、`110022` → `ok otc`、`560713` / `999999` → `not_found`
+- 端到端拦截：`POST /api/fund-watchlist {code:"560713"}` → 400 `CODE_NOT_FOUND`；`POST /api/watchlist {code:"000000"}` → 400 `CODE_NOT_FOUND`
+- 名称回填：`POST /api/fund-watchlist {code:"159915"}` → 201 且名称为「创业板ETF易方达」；`POST /api/watchlist {code:"600001"}` → 201 且名称为「邯郸钢铁」（验证后已删除，自选池恢复原状）
+- 防误拦：停掉侧车后 `POST /api/fund-watchlist {code:"560713"}` → 201（按上游不可用放行），恢复侧车后重新拦截
+- 重复校验前置：已在自选池中的 `560710` 直接返回 409，不会额外发起上游校验
+- 命令：`corepack pnpm test`（11 文件 / 137 用例）、`typecheck`、`lint`、`build` 全部通过
+
+### 风险与遗留
+
+- 东财基金名录偶发不可用时按「上游不可用」放行；新成立且尚未进入名录的场外基金存在极小概率被误拦，已在判定中增加同花顺档案作为正向兜底。
+- 界面弹窗为客户端行为，已通过接口与构建验证，建议在浏览器里再手动点一次确认视觉效果。
