@@ -1,4 +1,4 @@
-﻿// 自选股数据访问层：优先使用远程 PostgreSQL 的 watchlist 表，否则使用内存 stub。
+// 自选股数据访问层：优先使用远程 PostgreSQL 的 watchlist 表，否则使用内存 stub。
 // 代码校验与市场识别复用 lib/market，保持沪深北 A 股口径一致。
 import { asc, eq } from "drizzle-orm";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -42,6 +42,7 @@ export interface WatchlistRepository {
   add(item: WatchlistItem): Promise<void>;
   remove(code: string): Promise<void>;
   updateNote(code: string, note: string | null): Promise<void>;
+  updateName(code: string, name: string): Promise<void>;
   reorder(codes: string[]): Promise<void>;
 }
 
@@ -153,6 +154,14 @@ function createFileWatchlistRepository(): WatchlistRepository {
         await persist();
       }
     },
+    async updateName(code, name) {
+      await ensureLoaded();
+      const item = items.get(code);
+      if (item) {
+        items.set(code, { ...item, name });
+        await persist();
+      }
+    },
     async reorder(codes) {
       await ensureLoaded();
       const ordered = Array.from(items.values()).sort(
@@ -234,6 +243,12 @@ function createDrizzleWatchlistRepository(): WatchlistRepository {
         .set({ note })
         .where(eq(schema.watchlist.code, code));
     },
+    async updateName(code, name) {
+      await db
+        .update(schema.watchlist)
+        .set({ name })
+        .where(eq(schema.watchlist.code, code));
+    },
     async reorder(codes) {
       await Promise.all(
         codes.map((code, index) =>
@@ -274,6 +289,7 @@ function createResilientWatchlistRepository(): WatchlistRepository {
     add: (item) => run("add", [item]),
     remove: (code) => run("remove", [code]),
     updateNote: (code, note) => run("updateNote", [code, note]),
+    updateName: (code, name) => run("updateName", [code, name]),
     reorder: (codes) => run("reorder", [codes]),
   };
 }

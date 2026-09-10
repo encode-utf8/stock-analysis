@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CodeNotFoundError,
+  isPlaceholderName,
   buildCodeNotFoundMessage,
   resolveVerifyVerdict,
   type CodeVerifyResult,
@@ -66,6 +67,22 @@ describe("resolveVerifyVerdict", () => {
   it("名称为空白时不回填", () => {
     const verdict = resolveVerifyVerdict(verifyResult("ok", "   "), "fund", "510300");
     expect(verdict.name).toBeNull();
+  });
+});
+
+describe("isPlaceholderName", () => {
+  it("识别本地兜底占位名", () => {
+    expect(isPlaceholderName("fund", "基金 560710")).toBe(true);
+    expect(isPlaceholderName("fund", "基金560710")).toBe(true);
+    expect(isPlaceholderName("stock", "股票 600519")).toBe(true);
+  });
+
+  it("不误判真实名称与其它格式", () => {
+    expect(isPlaceholderName("fund", "船舶ETF富国")).toBe(false);
+    expect(isPlaceholderName("fund", "沪深300ETF")).toBe(false);
+    expect(isPlaceholderName("stock", "贵州茅台")).toBe(false);
+    expect(isPlaceholderName("stock", "基金 560710")).toBe(false);
+    expect(isPlaceholderName("fund", "基金 56071")).toBe(false);
   });
 });
 
