@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { AlertPanel } from "@/components/panels/AlertPanel";
 import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
 import { ChartPanel } from "@/components/panels/ChartPanel";
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
@@ -732,6 +733,9 @@ export default function StockWorkbench() {
     }
     if (key === "datasource") {
       return enabledModules.datasource ? <DataSourcePanel /> : null;
+    }
+    if (key === "alerts") {
+      return enabledModules.alerts ? <AlertPanel defaultTarget="stock" /> : null;
     }
     return null;
   };

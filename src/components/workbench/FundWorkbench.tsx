@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { AlertPanel } from "@/components/panels/AlertPanel";
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
 import {
   isUnusableConversationTitle,
@@ -751,6 +752,9 @@ export default function FundWorkbench() {
     }
     if (key === "style") {
       return enabledModules.style ? <FundStylePanel /> : null;
+    }
+    if (key === "alerts") {
+      return enabledModules.alerts ? <AlertPanel defaultTarget="fund" /> : null;
     }
     return null;
   };

@@ -16,6 +16,7 @@ export const MODULE_OPTIONS = [
   { key: "observability", label: "系统可观测性" },
   { key: "replay", label: "历史复盘" },
   { key: "datasource", label: "数据源与调度" },
+  { key: "alerts", label: "预警中心" },
 ] as const;
 
 export type ModuleKey = (typeof MODULE_OPTIONS)[number]["key"];
