@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   getJsonObject,
   isR2Configured,
+  listJsonObjects,
   putJsonObject,
   withR2Timeout,
 } from "@/lib/r2";
@@ -20,6 +21,8 @@ import type {
 
 const LOCAL_ROOT = path.join(process.cwd(), ".data", "daily-reports");
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+/** R2 索引损坏时最多恢复的日报篇数，控制列举+读取成本。 */
+const RECOVER_LIMIT = 30;
 
 /** 全部日报类型，供接口与面板遍历。 */
 export const DAILY_REPORT_KINDS: readonly DailyReportKind[] = ["stock", "fund"];
@@ -170,7 +173,46 @@ async function scanLocalIndex(kind: DailyReportKind): Promise<DailyReportSummary
   }
 }
 
-/** 读取 R2 上的摘要索引；未配置或读取失败返回空数组。 */
+/**
+ * R2 索引损坏或缺失时的恢复路径：按前缀列举对象键，最多回读 RECOVER_LIMIT 篇重建索引。
+ * 正常情况下列表只读一次索引，不会走到这里。
+ */
+async function recoverRemoteIndex(kind: DailyReportKind): Promise<DailyReportSummary[]> {
+  try {
+    const keys = await listJsonObjects(`daily-reports/${kind}/`);
+    const dates = keys
+      .map((key) => key.slice(key.lastIndexOf("/") + 1).replace(/\.json$/i, ""))
+      .filter((date) => DATE_PATTERN.test(date))
+      .sort((a, b) => (a < b ? 1 : -1))
+      .slice(0, RECOVER_LIMIT);
+
+    const summaries: DailyReportSummary[] = [];
+    for (const date of dates) {
+      const report = await withR2Timeout(
+        getJsonObject<unknown>(dailyReportObjectKey(kind, date)),
+      );
+      if (isDailyReport(report)) {
+        summaries.push({ ...toDailyReportSummary(report), storage: "r2" });
+      }
+    }
+    if (summaries.length === 0) {
+      return [];
+    }
+
+    const merged = dedupeDailyReportSummaries(summaries);
+    await withR2Timeout(
+      putJsonObject(dailyReportIndexKey(kind), {
+        updated_at: new Date().toISOString(),
+        reports: merged,
+      }),
+    );
+    return merged;
+  } catch {
+    return [];
+  }
+}
+
+/** 读取 R2 上的摘要索引；索引缺失或损坏时按前缀列举恢复。 */
 async function readRemoteIndex(kind: DailyReportKind): Promise<DailyReportSummary[]> {
   if (!isR2Configured()) {
     return [];
@@ -180,10 +222,14 @@ async function readRemoteIndex(kind: DailyReportKind): Promise<DailyReportSummar
       getJsonObject<{ reports?: unknown }>(dailyReportIndexKey(kind)),
     );
     const reports = payload?.reports;
-    return Array.isArray(reports) ? reports.filter(isDailyReportSummary) : [];
+    const parsed = Array.isArray(reports) ? reports.filter(isDailyReportSummary) : [];
+    if (parsed.length > 0) {
+      return parsed;
+    }
   } catch {
-    return [];
+    // 读取异常时继续尝试恢复路径。
   }
+  return recoverRemoteIndex(kind);
 }
 
 /** 合并写入本地索引（始终写）与 R2 索引（配置且可用时写）。 */
