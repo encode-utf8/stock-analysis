@@ -42,6 +42,7 @@ export interface FundWatchlistRepository {
   add(item: FundWatchlistItem): Promise<void>;
   remove(code: string): Promise<void>;
   updateNote(code: string, note: string | null): Promise<void>;
+  updateName(code: string, name: string): Promise<void>;
   reorder(codes: string[]): Promise<void>;
 }
 
@@ -154,6 +155,14 @@ function createFileFundWatchlistRepository(): FundWatchlistRepository {
         await persist();
       }
     },
+    async updateName(code, name) {
+      await ensureLoaded();
+      const item = items.get(code);
+      if (item) {
+        items.set(code, { ...item, name });
+        await persist();
+      }
+    },
     async reorder(codes) {
       await ensureLoaded();
       const ordered = Array.from(items.values()).sort(
@@ -237,6 +246,12 @@ function createDrizzleFundWatchlistRepository(): FundWatchlistRepository {
         .set({ note })
         .where(eq(schema.fundWatchlist.code, code));
     },
+    async updateName(code, name) {
+      await db
+        .update(schema.fundWatchlist)
+        .set({ name })
+        .where(eq(schema.fundWatchlist.code, code));
+    },
     async reorder(codes) {
       await Promise.all(
         codes.map((code, index) =>
@@ -277,6 +292,7 @@ function createResilientFundWatchlistRepository(): FundWatchlistRepository {
     add: (item) => run("add", [item]),
     remove: (code) => run("remove", [code]),
     updateNote: (code, note) => run("updateNote", [code, note]),
+    updateName: (code, name) => run("updateName", [code, name]),
     reorder: (codes) => run("reorder", [codes]),
   };
 }

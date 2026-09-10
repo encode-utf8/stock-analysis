@@ -15,6 +15,12 @@ export interface CodeVerifyResult {
 export type VerifyTargetKind = "stock" | "fund";
 
 /** 代码在权威上游查不到数据时抛出的专用错误，由界面弹窗提示。 */
+/** 判断自选条目名称是否为本地兜底占位名（如「基金 560710」「股票 600519」）。 */
+export function isPlaceholderName(kind: VerifyTargetKind, name: string): boolean {
+  const label = kind === "stock" ? "股票" : "基金";
+  return new RegExp(`^${label}\\s*\\d{6}$`).test(name.trim());
+}
+
 export class CodeNotFoundError extends Error {
   constructor(message: string) {
     super(message);

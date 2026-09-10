@@ -2,6 +2,7 @@ import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
 import { alertRepository } from "@/lib/alert-store";
 import { resolveVerifyVerdict } from "@/lib/code-verify";
 import { verifyFundCode } from "@/lib/data-service";
+import { repairWatchlistNames } from "@/lib/watchlist-name-repair";
 import {
   buildFundWatchlistItem,
   fundWatchlistRepository,
@@ -24,7 +25,15 @@ async function readJson(request: NextRequest): Promise<Record<string, unknown> |
 /** GET /api/fund-watchlist：返回按 sort_order 排序的自选基金列表。 */
 export async function GET(): Promise<Response> {
   try {
-    return apiOk(await fundWatchlistRepository.list());
+    const items = await fundWatchlistRepository.list();
+    // 历史数据可能存着「基金 xxxxxx」占位名，读取时用上游真实名称自愈。
+    const repaired = await repairWatchlistNames(
+      items,
+      "fund",
+      verifyFundCode,
+      (code, name) => fundWatchlistRepository.updateName(code, name),
+    );
+    return apiOk(repaired);
   } catch (error) {
     return apiUnexpected(error);
   }
