@@ -215,16 +215,16 @@ function isConcreteAnalysis(
 }
 
 /** 判断 DeepSeek 是否已配置真实密钥。 */
-function deepSeekConfigured(): boolean {
+export function deepSeekConfigured(): boolean {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   return Boolean(apiKey && apiKey !== "replace-me");
 }
 
-function deepSeekBaseUrl(): string {
+export function deepSeekBaseUrl(): string {
   return (process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com").replace(/\/$/, "");
 }
 
-function deepSeekModel(): string {
+export function deepSeekModel(): string {
   return process.env.DEEPSEEK_MODEL ?? "deepseek-chat";
 }
 

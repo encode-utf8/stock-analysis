@@ -5,6 +5,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -214,4 +215,46 @@ export async function saveNewsSnapshot(code: string, items: NewsItem[]): Promise
     recordExternalCall(false);
     return null;
   }
+}
+
+/** 为 R2 操作提供统一的硬超时包装，避免远端不可达时阻塞调用方。 */
+export function withR2Timeout<T>(
+  promise: Promise<T>,
+  timeoutMs = SNAPSHOT_TIMEOUT_MS,
+): Promise<T> {
+  return withTimeout(promise, timeoutMs);
+}
+
+/** 按前缀列举对象键；自动翻页，单次前缀最多返回 5000 个键。 */
+export async function listJsonObjects(prefix: string): Promise<string[]> {
+  const config = getR2Config();
+  const clientInstance = getClient();
+  const keys: string[] = [];
+  let token: string | undefined;
+
+  do {
+    const output = await withTimeout(
+      clientInstance.send(
+        new ListObjectsV2Command({
+          Bucket: config.bucket,
+          Prefix: prefix,
+          ContinuationToken: token,
+          MaxKeys: 1000,
+        }),
+      ),
+      SNAPSHOT_TIMEOUT_MS,
+    );
+    for (const item of output.Contents ?? []) {
+      if (item.Key) {
+        keys.push(item.Key);
+      }
+    }
+    token = output.IsTruncated ? output.NextContinuationToken : undefined;
+    if (keys.length >= 5000) {
+      break;
+    }
+  } while (token);
+
+  recordExternalCall(true);
+  return keys;
 }

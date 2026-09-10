@@ -9,6 +9,7 @@ import {
   isUnusableConversationTitle,
   sanitizeChatText,
 } from "@/lib/format";
+import { DailyReportPanel } from "@/components/panels/DailyReportPanel";
 import { FundAnalysisPanel } from "@/components/panels/fund/FundAnalysisPanel";
 import { FundComparisonPanel } from "@/components/panels/fund/FundComparisonPanel";
 import { FundDcaPanel } from "@/components/panels/fund/FundDcaPanel";
@@ -865,6 +866,9 @@ export default function FundWorkbench() {
     }
     if (key === "alerts") {
       return <AlertPanel target="fund" />;
+    }
+    if (key === "daily-report") {
+      return <DailyReportPanel kind="fund" />;
     }
     return null;
   };

@@ -5,3 +5,4 @@ export * from "./next-phase";
 export * from "./p7";
 export * from "./funds";
 export * from "./alerts";
+export * from "./daily-report";

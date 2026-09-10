@@ -20,6 +20,7 @@ export const FUND_MODULE_OPTIONS = [
   { key: "news", label: "行业资讯" },
   { key: "style", label: "风格因子分析" },
   { key: "alerts", label: "预警中心" },
+  { key: "daily-report", label: "AI 基金日报" },
 ] as const;
 
 export type FundModuleKey = (typeof FUND_MODULE_OPTIONS)[number]["key"];
