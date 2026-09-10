@@ -17,6 +17,7 @@ export const MODULE_OPTIONS = [
   { key: "replay", label: "历史复盘" },
   { key: "datasource", label: "数据源与调度" },
   { key: "alerts", label: "预警中心" },
+  { key: "daily-report", label: "AI 股市日报" },
 ] as const;
 
 export type ModuleKey = (typeof MODULE_OPTIONS)[number]["key"];

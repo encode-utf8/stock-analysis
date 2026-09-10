@@ -85,8 +85,15 @@ def _integer(value: Any, default: int = 0) -> int:
     return int(number) if number is not None else default
 
 
-def _curl_get_text(url: str, params: dict | None = None) -> str | None:
-    """使用 curl_cffi 获取文本，规避部分上游源的 TLS 指纹限制。"""
+def _curl_get_text(
+    url: str,
+    params: dict | None = None,
+    encoding: str | None = None,
+) -> str | None:
+    """使用 curl_cffi 获取文本，规避部分上游源的 TLS 指纹限制。
+
+    encoding：上游返回 GBK 等非 UTF-8 字符集时显式解码，避免中文乱码。
+    """
     try:
         from curl_cffi import requests as curl_requests
 
@@ -97,6 +104,8 @@ def _curl_get_text(url: str, params: dict | None = None) -> str | None:
             impersonate="chrome",
         )
         response.raise_for_status()
+        if encoding:
+            return response.content.decode(encoding, errors="ignore")
         return response.text
     except Exception as exc:
         logger.debug("curl_cffi 请求失败：%s", exc)
@@ -338,9 +347,14 @@ def _parse_tencent_kline_payload(text: str, symbol: str, adjust: AdjustType) -> 
         return None
 
 
-def _tencent_daily_rows(code: str, adjust: AdjustType, years: int) -> list[dict]:
-    """获取腾讯日线，按年份拼接。"""
-    symbol = _tencent_symbol(code)
+def _tencent_daily_rows(
+    code: str,
+    adjust: AdjustType,
+    years: int,
+    symbol: str | None = None,
+) -> list[dict]:
+    """获取腾讯日线，按年份拼接；symbol 用于大盘指数等非股票代码。"""
+    symbol = symbol or _tencent_symbol(code)
     url = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get"
     today = datetime.now(CHINA_TZ).date()
     tx_adjust = "" if adjust == "none" else adjust
@@ -854,3 +868,292 @@ def kline(
 ) -> list[dict]:
     """返回标准化 K 线数据。"""
     return _build_tencent_kline(code, period, adjust, limit) or _build_akshare_kline(code, period, adjust, limit) or _build_fallback_kline(code, period, adjust, limit)
+
+
+# ===== 大盘指数 / 全市场涨跌家数 / 行业板块（供 AI 收盘日报使用） =====
+
+SOURCE_TENCENT = "tencent"
+SOURCE_LEGU = "legulegu"
+
+# 指数白名单：只允许查询下列代码，避免把任意输入拼进上游 URL。
+INDEX_WHITELIST: dict[str, str] = {
+    "sh000001": "上证指数",
+    "sz399001": "深证成指",
+    "sz399006": "创业板指",
+    "sh000300": "沪深300",
+    "sh000905": "中证500",
+    "sh000688": "科创50",
+    "sz399005": "中小100",
+}
+
+INDEX_MAX_CODES = 6
+
+
+def _parse_tencent_index_line(text: str, code: str) -> dict | None:
+    """解析腾讯指数行情单行文本；字段不足或价格异常时返回 None。"""
+    if '="' not in text:
+        return None
+    try:
+        payload = text.split('="', 1)[1].rsplit('"', 1)[0]
+        parts = payload.split("~")
+        if len(parts) < 38:
+            return None
+
+        price = _number(parts[3])
+        prev_close = _number(parts[4])
+        if price is None or price <= 0:
+            return None
+
+        change = _number(parts[31])
+        change_pct = _number(parts[32])
+        if change_pct is None:
+            change_pct = (price / prev_close - 1) * 100 if prev_close else 0.0
+        if change is None:
+            change = price - prev_close if prev_close else 0.0
+
+        amount_wan = _number(parts[37], 0.0) or 0.0
+        return {
+            "code": code,
+            "name": parts[1].strip() or INDEX_WHITELIST.get(code, code),
+            "price": _round(price),
+            "change": _round(change),
+            "change_pct": _round(change_pct),
+            "prev_close": _round(prev_close) if prev_close is not None else None,
+            "high": _round(_number(parts[33], price) or price),
+            "low": _round(_number(parts[34], price) or price),
+            "amount": int(amount_wan * 10000),
+            "source": SOURCE_TENCENT,
+            "fetched_at": _now_utc().isoformat(),
+        }
+    except Exception as exc:
+        logger.warning("腾讯指数解析失败：%s", exc)
+        return None
+
+
+@app.get("/index/quote")
+def index_quote(codes: str = Query(..., min_length=1, max_length=120)) -> dict:
+    """返回大盘指数行情快照；仅支持白名单代码，非法输入返回 400。"""
+    requested = [item.strip().lower() for item in codes.split(",") if item.strip()]
+    if not requested:
+        raise HTTPException(status_code=400, detail="codes 不能为空。")
+    if len(requested) > INDEX_MAX_CODES:
+        raise HTTPException(status_code=400, detail=f"一次最多查询 {INDEX_MAX_CODES} 个指数。")
+
+    invalid = sorted({code for code in requested if code not in INDEX_WHITELIST})
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的指数代码：{','.join(invalid)}；允许值：{','.join(INDEX_WHITELIST)}",
+        )
+
+    now = _now_utc()
+    text = _curl_get_text(f"https://qt.gtimg.cn/q={','.join(requested)}", encoding="gbk")
+    quotes: list[dict] = []
+    if text:
+        for raw_line in text.split(";"):
+            line = raw_line.strip()
+            if "=" not in line:
+                continue
+            symbol = line.split("=", 1)[0].strip()
+            if symbol.startswith("v_"):
+                symbol = symbol[2:]
+            if symbol not in INDEX_WHITELIST:
+                continue
+            parsed = _parse_tencent_index_line(line, symbol)
+            if parsed:
+                quotes.append(parsed)
+
+    if not quotes:
+        raise HTTPException(status_code=502, detail="指数行情上游暂不可用。")
+
+    order = {code: index for index, code in enumerate(requested)}
+    quotes.sort(key=lambda item: order.get(item["code"], len(order)))
+    return {"quotes": quotes, "source": SOURCE_TENCENT, "fetched_at": now.isoformat()}
+
+
+_BREADTH_CACHE: dict | None = None
+_BREADTH_LOADED_AT: datetime | None = None
+_BREADTH_TTL = timedelta(seconds=60)
+
+
+def _market_breadth() -> dict | None:
+    """全市场涨跌家数（AkShare 乐咕乐股），缓存 60 秒；不可用时返回 None。"""
+    global _BREADTH_CACHE, _BREADTH_LOADED_AT
+
+    now = _now_utc()
+    if (
+        _BREADTH_CACHE is not None
+        and _BREADTH_LOADED_AT is not None
+        and now - _BREADTH_LOADED_AT < _BREADTH_TTL
+    ):
+        return _BREADTH_CACHE
+
+    if not HAS_AKSHARE:
+        return None
+
+    try:
+        frame = ak.stock_market_activity_legu()
+        if frame is None or frame.empty:
+            return None
+
+        raw_map: dict[str, Any] = {}
+        for _, row in frame.iterrows():
+            key = str(_series_value(row, ["item", "指标"]) or "").strip()
+            if key:
+                raw_map[key] = _series_value(row, ["value", "数值"])
+
+        def pick(label: str) -> float | None:
+            """读取数值型指标；自动去掉百分号等修饰符。"""
+            raw = raw_map.get(label)
+            if raw is None:
+                return None
+            if isinstance(raw, str):
+                raw = raw.strip().rstrip("%")
+            return _number(raw)
+
+        stat_raw = raw_map.get("统计日期")
+        result = {
+            "up": _integer(pick("上涨"), 0),
+            "down": _integer(pick("下跌"), 0),
+            "flat": _integer(pick("平盘"), 0),
+            "limit_up": _integer(pick("涨停"), 0),
+            "limit_down": _integer(pick("跌停"), 0),
+            "suspended": _integer(pick("停牌"), 0),
+            "activity_pct": _number(pick("活跃度")),
+            "stat_date": str(stat_raw).strip() if stat_raw is not None else None,
+            "source": SOURCE_LEGU,
+            "fetched_at": now.isoformat(),
+        }
+        _BREADTH_CACHE = result
+        _BREADTH_LOADED_AT = now
+        return result
+    except Exception as exc:
+        logger.warning("获取全市场涨跌家数失败：%s", exc)
+        return None
+
+
+@app.get("/market/breadth")
+def market_breadth() -> dict:
+    """返回全市场上涨/下跌/涨跌停家数与活跃度，供日报的「全市场涨跌」使用。"""
+    breadth = _market_breadth()
+    if not breadth:
+        raise HTTPException(status_code=502, detail="全市场涨跌家数上游暂不可用。")
+    return breadth
+
+
+_SECTOR_CACHE: list[dict] | None = None
+_SECTOR_LOADED_AT: datetime | None = None
+_SECTOR_TTL = timedelta(seconds=60)
+
+
+def _sector_rows() -> list[dict] | None:
+    """行业板块行情（AkShare 新浪行业），缓存 60 秒，按涨跌幅降序；不可用时返回 None。"""
+    global _SECTOR_CACHE, _SECTOR_LOADED_AT
+
+    now = _now_utc()
+    if (
+        _SECTOR_CACHE is not None
+        and _SECTOR_LOADED_AT is not None
+        and now - _SECTOR_LOADED_AT < _SECTOR_TTL
+    ):
+        return _SECTOR_CACHE
+
+    if not HAS_AKSHARE:
+        return None
+
+    try:
+        frame = ak.stock_sector_spot()
+        if frame is None or frame.empty:
+            return None
+
+        rows: list[dict] = []
+        for _, row in frame.iterrows():
+            name = str(_series_value(row, ["板块", "label"]) or "").strip()
+            change_pct = _number(_series_value(row, ["涨跌幅"]))
+            if not name or change_pct is None:
+                continue
+            rows.append(
+                {
+                    "name": name,
+                    "change_pct": _round(change_pct),
+                    "companies": _integer(_series_value(row, ["公司家数"]), 0),
+                    "amount": _number(_series_value(row, ["总成交额"]), 0.0) or 0.0,
+                    "avg_price": _round(_number(_series_value(row, ["平均价格"])) or 0.0, 4),
+                    "leader": str(_series_value(row, ["股票名称"]) or "").strip() or None,
+                }
+            )
+
+        if not rows:
+            return None
+
+        rows.sort(key=lambda item: item["change_pct"], reverse=True)
+        _SECTOR_CACHE = rows
+        _SECTOR_LOADED_AT = now
+        return rows
+    except Exception as exc:
+        logger.warning("获取行业板块行情失败：%s", exc)
+        return None
+
+
+@app.get("/market/sectors")
+def market_sectors(limit: int = Query(5, ge=1, le=20)) -> dict:
+    """返回行业板块涨幅榜与跌幅榜，供日报的「板块涨幅」使用。"""
+    now = _now_utc()
+    rows = _sector_rows()
+    if not rows:
+        raise HTTPException(status_code=502, detail="行业板块数据上游暂不可用。")
+
+    size = min(limit, len(rows))
+    return {
+        "top": rows[:size],
+        "bottom": list(reversed(rows[-size:])),
+        "total": len(rows),
+        "source": SOURCE_AKSHARE,
+        "fetched_at": now.isoformat(),
+    }
+@app.get("/index/kline")
+def index_kline(
+    code: str = Query(..., min_length=8, max_length=8),
+    limit: int = Query(120, ge=10, le=500),
+) -> dict:
+    """返回白名单指数的日线，用于按指定日期补生成历史日报。"""
+    symbol = code.strip().lower()
+    if symbol not in INDEX_WHITELIST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的指数代码：{symbol}；允许值：{','.join(INDEX_WHITELIST)}",
+        )
+
+    years = max(1, math.ceil(limit / 240) + 1)
+    rows = _tencent_daily_rows(symbol, "none", years, symbol=symbol)
+    if not rows:
+        raise HTTPException(status_code=502, detail="指数日线上游暂不可用。")
+
+    now = _now_utc()
+    days: list[dict] = []
+    for row in rows[-limit:]:
+        close = row["close"]
+        if close is None:
+            continue
+        ts = datetime(row["date"].year, row["date"].month, row["date"].day, tzinfo=CHINA_TZ)
+        days.append(
+            {
+                "date": row["date"].isoformat(),
+                "open": _round(row["open"]) if row["open"] is not None else None,
+                "close": _round(close),
+                "high": _round(row["high"]) if row["high"] is not None else None,
+                "low": _round(row["low"]) if row["low"] is not None else None,
+                "ts": ts.isoformat(),
+            }
+        )
+
+    if not days:
+        raise HTTPException(status_code=502, detail="指数日线解析为空。")
+
+    return {
+        "code": symbol,
+        "name": INDEX_WHITELIST[symbol],
+        "days": days,
+        "source": SOURCE_TENCENT,
+        "fetched_at": now.isoformat(),
+    }

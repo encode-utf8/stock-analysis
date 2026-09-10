@@ -13,11 +13,15 @@ import { SAMPLE_FUND_CODES } from "@/lib/fund-market";
 import { getFundMetrics } from "@/lib/fund-metrics";
 import { getFundNav, getFundProfile } from "@/lib/fund-data";
 import { runAlertScan } from "@/lib/alert-scan";
+import { runDailyReportJob } from "@/lib/daily-report";
+import type { DailyReportJobOptions } from "@/lib/daily-report";
+import { dailyReportExists } from "@/lib/daily-report-store";
+import { beijingDateKey, getTradingCalendar } from "@/lib/trading-calendar";
 import { recordTaskRun } from "@/lib/observability";
 import { store } from "@/lib/store";
-import type { JobRun, NewsItem } from "@/lib/shared/types";
+import type { DailyReportJobResult, DailyReportKind, JobRun, NewsItem } from "@/lib/shared/types";
 
-type JobName = "cleanup" | "refresh" | "fund-refresh" | "alert-scan";
+type JobName = "cleanup" | "refresh" | "fund-refresh" | "alert-scan" | "daily-report";
 type JobSource = "manual" | "cron";
 type RefreshTarget = "quote" | "kline" | "news" | "all";
 export type FundRefreshTarget = "profile" | "intraday" | "nav" | "holdings" | "metrics" | "all";
@@ -251,6 +255,76 @@ export function runAlertScanJob(options: AlertScanJobOptions = {}): Promise<JobR
   });
 }
 
+/** 日报任务：手动与定时共用同一套执行器，统一写入 job_runs。 */
+function trackDailyReportJob(
+  kind: DailyReportKind,
+  options: DailyReportJobOptions,
+  onResult: (result: DailyReportJobResult) => void,
+): Promise<JobRun> {
+  return trackJob(
+    "daily-report",
+    {
+      source: options.source ?? "manual",
+      kind,
+      date: options.date ?? null,
+      force: options.force ?? false,
+    },
+    async () => {
+      recordTaskRun("analysis");
+      const result = await runDailyReportJob(kind, options);
+      onResult(result);
+      return { ...result };
+    },
+  );
+}
+
+/** 手动生成日报（含按指定日期补生成历史日报），返回任务结果。 */
+export async function runDailyReportManual(
+  kind: DailyReportKind,
+  options: DailyReportJobOptions = {},
+): Promise<DailyReportJobResult> {
+  const holder: { result: DailyReportJobResult | null } = { result: null };
+  await trackDailyReportJob(kind, options, (result) => {
+    holder.result = result;
+  });
+
+  return (
+    holder.result ?? {
+      kind,
+      date: options.date ?? beijingDateKey(new Date()),
+      status: "skipped",
+      reason: "任务未返回结果。",
+      storage: null,
+      report_source: null,
+    }
+  );
+}
+
+/**
+ * 探测式触发：交易日且当天日报尚未生成时才进入生成流程。
+ * 非交易日或已生成时直接跳过，避免污染 job_runs。
+ */
+async function probeDailyReport(kind: DailyReportKind): Promise<JobRun | null> {
+  const date = beijingDateKey(new Date());
+  const calendar = await getTradingCalendar();
+  if (!calendar.isTradingDay(date)) {
+    return null;
+  }
+  if (await dailyReportExists(kind, date)) {
+    return null;
+  }
+  return trackDailyReportJob(kind, { source: "cron", date }, () => undefined);
+}
+
+/** 定时股市日报：交易日 15:00 后每 10 分钟探测一次，数据就绪即生成。 */
+function runScheduledStockReport(): Promise<JobRun | null> {
+  return probeDailyReport("stock");
+}
+
+/** 定时基金日报：交易日晚间每 20 分钟探测一次，净值公布即生成。 */
+function runScheduledFundReport(): Promise<JobRun | null> {
+  return probeDailyReport("fund");
+}
 /** 每日资讯清理。 */
 export function runScheduledCleanup(): Promise<JobRun> {
   return runCleanupJob({ source: "cron" });
@@ -259,7 +333,7 @@ export function runScheduledCleanup(): Promise<JobRun> {
 function safeSchedule(
   expression: string,
   name: string,
-  action: () => Promise<JobRun>,
+  action: () => Promise<JobRun | null>,
 ): void {
   if (!validate(expression)) {
     console.error(`无效的定时表达式 ${expression}，已跳过任务 ${name}。`);
@@ -301,4 +375,14 @@ export function startScheduler(): void {
     runScheduledFundRefresh,
   );
   safeSchedule(process.env.ALERT_CRON ?? "*/30 9-15 * * 1-5", "alert-scan", runAlertScanJob);
+  safeSchedule(
+    process.env.DAILY_STOCK_REPORT_CRON ?? "*/10 15-16 * * 1-5",
+    "daily-stock-report",
+    runScheduledStockReport,
+  );
+  safeSchedule(
+    process.env.DAILY_FUND_REPORT_CRON ?? "*/20 20-23 * * 1-5",
+    "daily-fund-report",
+    runScheduledFundReport,
+  );
 }

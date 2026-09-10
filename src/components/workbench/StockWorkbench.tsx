@@ -11,6 +11,7 @@ import {
   isUnusableConversationTitle,
   sanitizeChatText,
 } from "@/lib/format";
+import { DailyReportPanel } from "@/components/panels/DailyReportPanel";
 import { DataSourcePanel } from "@/components/panels/DataSourcePanel";
 import { DisclaimerFooter } from "@/components/panels/DisclaimerFooter";
 import {
@@ -736,6 +737,9 @@ export default function StockWorkbench() {
     }
     if (key === "alerts") {
       return enabledModules.alerts ? <AlertPanel target="stock" /> : null;
+    }
+    if (key === "daily-report") {
+      return enabledModules["daily-report"] ? <DailyReportPanel kind="stock" /> : null;
     }
     return null;
   };

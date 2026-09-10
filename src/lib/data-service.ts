@@ -1,10 +1,14 @@
-﻿// FastAPI 行情侧车客户端：失败时回退确定性数据，保证单机可运行。
+// FastAPI 行情侧车客户端：失败时回退确定性数据，保证单机可运行。
 import { recordExternalCall } from "@/lib/observability";
 import type {
   AdjustType,
+  IndexKlineSeries,
+  IndexQuoteSnapshot,
   Kline,
   KlinePeriod,
+  MarketBreadthSnapshot,
   MarketQuote,
+  MarketSectorsSnapshot,
 } from "@/lib/shared/types";
 
 const DEFAULT_DATA_SERVICE_URL = "http://127.0.0.1:8000";
@@ -100,6 +104,139 @@ export async function fetchKlinesFromSidecar(
     );
     recordExternalCall(true);
     return isKlineList(data) ? data : null;
+  } catch {
+    recordExternalCall(false);
+    return null;
+  }
+}
+
+const INDEX_TIMEOUT_MS = 5_000;
+const MARKET_TIMEOUT_MS = 10_000;
+
+/** 指数代码格式（sh/sz + 6 位数字）；侧车仍会做白名单二次校验。 */
+const INDEX_CODE_PATTERN = /^(sh|sz)\d{6}$/;
+
+function isIndexQuote(value: unknown): value is IndexQuoteSnapshot {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const item = value as Partial<IndexQuoteSnapshot>;
+  return (
+    typeof item.code === "string" &&
+    typeof item.name === "string" &&
+    typeof item.price === "number" &&
+    typeof item.change_pct === "number" &&
+    typeof item.fetched_at === "string"
+  );
+}
+
+function isIndexKlineSeries(value: unknown): value is IndexKlineSeries {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const item = value as Partial<IndexKlineSeries>;
+  return (
+    typeof item.code === "string" &&
+    Array.isArray(item.days) &&
+    item.days.every(
+      (day) =>
+        Boolean(day) &&
+        typeof day.date === "string" &&
+        typeof day.close === "number",
+    )
+  );
+}
+
+function isMarketBreadth(value: unknown): value is MarketBreadthSnapshot {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const item = value as Partial<MarketBreadthSnapshot>;
+  return (
+    typeof item.up === "number" &&
+    typeof item.down === "number" &&
+    typeof item.flat === "number" &&
+    typeof item.source === "string"
+  );
+}
+
+function isMarketSectors(value: unknown): value is MarketSectorsSnapshot {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const item = value as Partial<MarketSectorsSnapshot>;
+  return (
+    Array.isArray(item.top) &&
+    Array.isArray(item.bottom) &&
+    typeof item.total === "number"
+  );
+}
+
+/** 从行情侧车获取大盘指数行情；不可用或返回非法结构时返回空数组。 */
+export async function fetchIndexQuotesFromSidecar(
+  codes: readonly string[],
+): Promise<IndexQuoteSnapshot[]> {
+  const allowed = codes.filter((code) => INDEX_CODE_PATTERN.test(code));
+  if (allowed.length === 0) {
+    return [];
+  }
+  try {
+    const data = await fetchJson<{ quotes?: unknown }>(
+      `/index/quote?codes=${encodeURIComponent(allowed.join(","))}`,
+      INDEX_TIMEOUT_MS,
+    );
+    recordExternalCall(true);
+    return Array.isArray(data.quotes) ? data.quotes.filter(isIndexQuote) : [];
+  } catch {
+    recordExternalCall(false);
+    return [];
+  }
+}
+
+/** 从行情侧车获取指数日线；用于按指定日期补生成历史日报。 */
+export async function fetchIndexKlineFromSidecar(
+  code: string,
+  limit: number,
+): Promise<IndexKlineSeries | null> {
+  if (!INDEX_CODE_PATTERN.test(code)) {
+    return null;
+  }
+  try {
+    const data = await fetchJson<unknown>(
+      `/index/kline?code=${encodeURIComponent(code)}&limit=${limit}`,
+      INDEX_TIMEOUT_MS,
+    );
+    recordExternalCall(true);
+    return isIndexKlineSeries(data) ? data : null;
+  } catch {
+    recordExternalCall(false);
+    return null;
+  }
+}
+
+/** 从行情侧车获取全市场涨跌家数；不可用时返回 null。 */
+export async function fetchMarketBreadthFromSidecar(): Promise<MarketBreadthSnapshot | null> {
+  try {
+    const data = await fetchJson<unknown>("/market/breadth", MARKET_TIMEOUT_MS);
+    recordExternalCall(true);
+    return isMarketBreadth(data) ? data : null;
+  } catch {
+    recordExternalCall(false);
+    return null;
+  }
+}
+
+/** 从行情侧车获取行业板块涨跌榜；不可用时返回 null。 */
+export async function fetchMarketSectorsFromSidecar(
+  limit = 5,
+): Promise<MarketSectorsSnapshot | null> {
+  try {
+    const data = await fetchJson<unknown>(
+      `/market/sectors?limit=${limit}`,
+      MARKET_TIMEOUT_MS,
+    );
+    recordExternalCall(true);
+    return isMarketSectors(data) ? data : null;
   } catch {
     recordExternalCall(false);
     return null;
