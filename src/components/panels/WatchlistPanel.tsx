@@ -5,7 +5,9 @@ import type { FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { NoticeDialog } from "@/components/ui/notice-dialog";
 import { Toast } from "@/components/ui/toast";
+import { CodeNotFoundError } from "@/lib/code-verify";
 import { normalizeStockCode } from "@/lib/market";
 import type { WatchlistItem } from "@/lib/shared/types";
 
@@ -13,7 +15,7 @@ import type { WatchlistItem } from "@/lib/shared/types";
 interface ApiEnvelope<T> {
   success: boolean;
   data?: T;
-  error?: { message?: string };
+  error?: { code?: string; message?: string };
 }
 
 /** 读取统一 JSON 响应并抛出可展示错误。 */
@@ -24,7 +26,12 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, { ...init, signal: controller.signal });
     const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new Error(payload?.error?.message ?? "自选股请求失败。");
+      const message = payload?.error?.message ?? "自选股请求失败。";
+      // 代码在上游查不到数据时抛出专用错误，交由界面弹窗提示。
+      if (payload?.error?.code === "CODE_NOT_FOUND") {
+        throw new CodeNotFoundError(message);
+      }
+      throw new Error(message);
     }
     return payload.data;
   } catch (error) {
@@ -67,6 +74,8 @@ export function WatchlistPanel({
   const [error, setError] = useState<string | null>(null);
   const [pendingDeleteCode, setPendingDeleteCode] = useState<string | null>(null);
   const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
+  // 上游查不到代码时的提示弹窗文案。
+  const [notice, setNotice] = useState<string | null>(null);
 
   const showToast = (message: string) => {
     setToast({ id: Date.now(), message });
@@ -119,7 +128,12 @@ export function WatchlistPanel({
       setNoteInput("");
       await loadWatchlist();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "添加自选股失败。");
+      if (nextError instanceof CodeNotFoundError) {
+        // 无数据类错误用弹窗告知，避免只显示为一行小字被忽略。
+        setNotice(nextError.message);
+      } else {
+        setError(nextError instanceof Error ? nextError.message : "添加自选股失败。");
+      }
     } finally {
       setSaving(false);
     }
@@ -369,6 +383,12 @@ export function WatchlistPanel({
             void handleDelete(pendingDeleteCode);
           }
         }}
+      />
+      <NoticeDialog
+        open={Boolean(notice)}
+        title="当前无数据"
+        description={notice ?? ""}
+        onClose={() => setNotice(null)}
       />
       {toast ? <Toast key={toast.id} message={toast.message} /> : null}
     </section>
