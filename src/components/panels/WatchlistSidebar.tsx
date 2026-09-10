@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Toast } from "@/components/ui/toast";
 import { normalizeStockCode } from "@/lib/market";
+import { emitWatchlistChange } from "@/lib/watchlist-bus";
 import type { WatchlistItem } from "@/lib/shared/types";
 
 const DEFAULT_GROUP = "默认";
@@ -136,6 +137,8 @@ export function WatchlistSidebar({
       setGroupInput("");
       setNoteInput("");
       await loadWatchlist();
+      // 通知预警面板等订阅方：自选股已变化，立即刷新可选标的。
+      emitWatchlistChange("stock");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "添加自选股失败。");
     } finally {
@@ -155,6 +158,7 @@ export function WatchlistSidebar({
         onClearActive?.();
       }
       await loadWatchlist();
+      emitWatchlistChange("stock");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "删除自选股失败。");
     } finally {

@@ -28,6 +28,7 @@ router = APIRouter(prefix="/fund", tags=["fund"])
 FundNavType = Literal["unit", "cumulative"]
 
 SOURCE_AKSHARE = "akshare"
+SOURCE_SINA = "sina"
 SOURCE_FALLBACK = "deterministic-fallback"
 CHINA_TZ = timezone(timedelta(hours=8))
 
@@ -120,18 +121,30 @@ def _series_value_contains(row: Any, keyword: str) -> Any:
         return None
 
 
-def _curl_get_text(url: str, params: dict | None = None) -> str | None:
-    """使用 curl_cffi 获取文本，规避部分上游源的 TLS 指纹限制。"""
+def _curl_get_text(
+    url: str,
+    params: dict | None = None,
+    headers: dict | None = None,
+    encoding: str | None = None,
+) -> str | None:
+    """使用 curl_cffi 获取文本，规避部分上游源的 TLS 指纹限制。
+
+    headers：部分上游（如新浪行情）要求携带 Referer，否则返回空内容。
+    encoding：上游返回 GBK 等非 UTF-8 字符集时显式解码，避免中文乱码。
+    """
     try:
         from curl_cffi import requests as curl_requests
 
         response = curl_requests.get(
             url,
             params=params,
+            headers=headers,
             timeout=15,
             impersonate="chrome",
         )
         response.raise_for_status()
+        if encoding:
+            return response.content.decode(encoding, errors="ignore")
         return response.text
     except Exception:
         return None
@@ -227,6 +240,105 @@ def _estimation_rows() -> list[dict]:
             logger.debug("获取场外估值排行失败（第 %s 次）：%s", attempt + 1, exc)
     return []
 
+
+SINA_FUND_HEADERS = {
+    "Referer": "https://finance.sina.com.cn",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+}
+
+
+def _sina_payload(text: str, key: str) -> list[str] | None:
+    """从新浪行情文本中取出指定代码的字段数组。"""
+    for line in text.splitlines():
+        if f"hq_str_{key}=" not in line:
+            continue
+        if '"' not in line:
+            return None
+        payload = line.split('="', 1)[1].rsplit('"', 1)[0]
+        if not payload:
+            return None
+        return payload.split(",")
+    return None
+
+
+def _build_sina_estimate(code: str) -> dict | None:
+    """通过新浪财经获取场外基金盘中估算净值。
+
+    一次请求同时取两类数据：
+    - `fu_` 盘中估算：名称, 估算时间, 估算净值, 昨日单位净值, 累计净值, 保留位, 估算涨跌幅(%), 估算日期, ...
+    - `f_`  公布净值：名称, 单位净值, 累计净值, 参考值, 净值日期, ...
+    这样既拿到盘中估算，也能顺带补上最近公布净值及其日期。
+    """
+    text = _curl_get_text(
+        f"https://hq.sinajs.cn/list=fu_{code},f_{code}",
+        headers=SINA_FUND_HEADERS,
+        encoding="gbk",
+    )
+    if not text:
+        return None
+
+    estimate_parts = _sina_payload(text, f"fu_{code}")
+    if not estimate_parts or len(estimate_parts) < 8:
+        return None
+
+    estimated_nav = _number(estimate_parts[2])
+    previous_nav = _number(estimate_parts[3])
+    change_pct = _number(estimate_parts[6])
+    estimate_date = (estimate_parts[7] or "").strip()
+    if estimated_nav is None or previous_nav is None or change_pct is None:
+        return None
+    if estimated_nav <= 0 or previous_nav <= 0:
+        return None
+
+    # 估算日期必须是当天（北京时间），否则说明上游给的是旧快照，宁可不用。
+    today = _now_utc().astimezone(CHINA_TZ).date().isoformat()
+    if estimate_date != today:
+        return None
+
+    # 一致性校验：估算净值相对昨日净值的涨跌幅应与接口给出的估算涨跌幅吻合，偏差过大说明字段错位。
+    derived_pct = (estimated_nav / previous_nav - 1) * 100
+    if abs(derived_pct - change_pct) > 0.5:
+        return None
+
+    official_nav: float | None = None
+    official_nav_date: str | None = None
+    nav_parts = _sina_payload(text, f"f_{code}")
+    if nav_parts and len(nav_parts) >= 5:
+        candidate_nav = _number(nav_parts[1])
+        candidate_date = (nav_parts[4] or "").strip()
+        if candidate_nav is not None and candidate_nav > 0:
+            official_nav = _round(candidate_nav)
+            official_nav_date = candidate_date if len(candidate_date) == 10 else None
+
+    estimate_time = (estimate_parts[1] or "").strip()
+    ts = (
+        f"{estimate_date}T{estimate_time}+08:00"
+        if len(estimate_time) == 8 and estimate_time.count(":") == 2
+        else _now_utc().isoformat()
+    )
+    now = _now_utc()
+    return {
+        "code": code,
+        "mode": "estimate",
+        "ts": ts,
+        "price": None,
+        "estimated_nav": _round(estimated_nav),
+        "change_pct": _round(change_pct, 2),
+        "open": None,
+        "high": None,
+        "low": None,
+        "volume": None,
+        "amount": None,
+        "iopv": None,
+        "premium_rate": None,
+        "official_nav": official_nav,
+        "official_nav_date": official_nav_date,
+        "source": SOURCE_SINA,
+        "fetched_at": now.isoformat(),
+    }
 
 def _build_akshare_estimate(code: str) -> dict | None:
     """通过 AkShare 构造场外基金盘中估算快照。"""
@@ -788,7 +900,12 @@ def fund_intraday(code: str = Query(..., min_length=6, max_length=6)) -> dict:
     trading_mode = _classify_trading_mode(code, fund_type)
     if trading_mode == "exchange":
         return _build_exchange_realtime(code) or _build_fallback_fund_intraday(code)
-    return _build_akshare_estimate(code) or _build_fallback_fund_intraday(code)
+    # 场外优先用新浪单只估值（按需、无鉴权），失败再退到东财估值排行。
+    return (
+        _build_sina_estimate(code)
+        or _build_akshare_estimate(code)
+        or _build_fallback_fund_intraday(code)
+    )
 
 
 @router.get("/holdings")

@@ -12,6 +12,9 @@ function fundSourceLabel(source: string): string {
   if (source === "akshare") {
     return "AkShare 基金数据";
   }
+  if (source === "sina") {
+    return "新浪财经盘中估值";
+  }
   if (source === "deterministic-fallback") {
     return "确定性降级数据";
   }

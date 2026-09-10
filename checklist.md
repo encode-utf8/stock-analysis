@@ -1,4 +1,4 @@
-# M5 集成与整体验收清单
+﻿# M5 集成与整体验收清单
 
 - 关联文档：`docs/plan.md`、`docs/design.md`、`docs/checklists/05-feature-integration-polish.md`
 - 分支：`feature/integration-polish`
@@ -1210,3 +1210,90 @@ corepack pnpm build
 #### 环境提示
 
 - `next dev` 与 `next build` 产物共用 `.next` 时，动态路由 `[id]` 会出现 404；清理 `.next` 后重启 dev 即恢复（工具链现象，非代码缺陷）。
+## T5 预警面板工作台绑定、自选池实时同步与场外估值源扩展（2026-09-10）
+
+- 分支：`feature/alert-workbench-bind`
+- 关联文档：`docs/alert-center-plan.md`、`README.md`
+
+### 需求
+
+1. 左侧自选股/自选基金增删后，预警面板的可选标的要立即同步，无需刷新页面
+2. 补充更多免费场外基金盘中估算源（付费源不考虑）
+3. 邮箱配置已完善，需要实测通道是否打通
+4. 预警面板不再单独切换股票/基金，改为跟随所在工作台
+
+### 免费估值源调研结论（2026-09-10 实测）
+
+| 源 | 接口 | 状态 | 覆盖 |
+| --- | --- | --- | --- |
+| 新浪财经盘中估值 | `https://hq.sinajs.cn/list=fu_{code}`（需 `Referer: https://finance.sina.com.cn`） | 可用 | 场外开放式基金（含 QDII 联接），单只按需、无鉴权、响应快 |
+| 东财估值排行静态页 | AkShare `fund_value_estimation_em(symbol="指数型")` | 可用，偶发 SSL 中断 | 实测 681 只指数型，盘后仍保留当日快照 |
+| 东财估值排行 API | `api.fund.eastmoney.com/FundGuZhi/GetFundGZList` | 盘中可用；盘后返回「暂无数据」 | 全市场，按类型分页 |
+| 天天基金单只估值 | `fundgz.1234567.com.cn/js/{code}.js` | 已下线（返回 404 页面） | - |
+| 东财移动端 | `fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?Fcodes=` | 净值可用；`GSZ/GSZZL` 仅盘中填充 | 全市场 |
+| 蛋卷 / 雪球 | `danjuanfunds.com/djapi/...`、`stock.xueqiu.com/v5/...` | 需登录 token | - |
+| 腾讯基金估值 | `qt.gtimg.cn/q=jj_{code}` | 无此代码（`v_pv_none_match`） | - |
+| 自建持仓穿透估算 | 季报前十大持仓 + 实时行情加权 | 可行但成本高、依赖季报披露 | 全市场（精度受限） |
+
+- 交叉验证：2026-09-10 当日快照，000008 新浪估算 2.2789 / -0.6042%，东财估算 2.2779 / -0.65%，两源同日口径一致。
+- 结论：以**新浪 `fu_` 单只估值**作为场外首选源（按需、稳定），东财估值排行降级为兜底。
+
+### 验收项
+
+- [x] 预警面板移除股票/基金切换按钮，改为绑定所在工作台（股票工作台→股票预警，基金工作台→基金预警）
+- [x] 新增 `src/lib/watchlist-bus.ts` 事件总线；自选股与自选基金增删后广播变更
+- [x] 预警面板订阅变更事件，立即刷新可选标的，无需刷新页面
+- [x] 侧车 `/fund/intraday` 场外链路改为：新浪估值 → 东财估值排行 → 确定性降级
+- [x] 新增 `SOURCE_SINA = "sina"`，前端来源标签展示「新浪财经估值」
+- [x] 新浪估算做一致性校验（估算净值/昨日净值 与 估算涨跌幅 偏差过大则丢弃）
+- [x] 新浪估算仅在估算日期等于当日（北京时间）时采用，避免陈旧数据误报
+- [x] 接口实测：`/fund/intraday?code=000008` 返回 `source=sina` 且数值正确
+- [x] 邮件通道实测：`/api/admin/alerts/test-email` 返回已发送
+- [x] 新增测试：事件总线（广播、订阅、取消订阅、种类回退）
+- [x] `corepack pnpm test`、`typecheck`、`lint`、`build` 全部通过
+- [x] README 与 `docs/alert-center-plan.md` 同步更新
+
+### 验证方式
+
+- `corepack pnpm test && corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 侧车：`curl "http://127.0.0.1:8000/fund/intraday?code=000008"`，检查 `source`、`estimated_nav`、`change_pct`
+- 端到端：启动 `pnpm dev` 与侧车 → 在股票工作台左侧新增/删除自选股 → 预警面板下拉立即出现/移除该标的
+- 端到端：切换到基金工作台 → 预警面板标题与规则列表只呈现基金内容，无切换按钮
+- 邮件：`POST /api/admin/alerts/test-email`（面板「发送测试邮件」按钮）
+
+### 通过标准
+
+- 自选池增删后 1 秒内预警面板选项同步完成，且不触发整页刷新
+- 场外基金盘中估算优先取新浪源；新浪不可用时回退东财；两者都无数据时按「缺少指标观测值」跳过，不产生误报
+- 测试、类型检查、lint、构建全部通过
+
+### 风险与遗留
+
+- 场外基金估值仍非官方净值，属估算口径，存在偏差；面板继续保留口径说明
+- 广发/货币等部分基金新浪无估值（实测 000187 返回空），此类标的按缺少观测值跳过
+- 自建持仓穿透估算未实现，后续如需提高覆盖率可另行评估
+
+### 完成记录
+
+- 完成日期：待填写
+
+### 完成记录
+
+- 完成日期：2026-09-10
+- 分支：`feature/alert-workbench-bind`
+- 结果：T5 全部验收通过。
+
+#### 实测结果
+
+- 场外估值源：`/fund/intraday?code=000008` → `mode=estimate source=sina estimated_nav=2.2789 change_pct=-0.6 official_nav=2.2928 official_nav_date=2026-09-09 ts=2026-09-10T16:04:00+08:00`
+- 场外主动基金：`/fund/intraday?code=110022` → `source=sina estimated_nav=2.8418 change_pct=-1.67`
+- 场内基金：`/fund/intraday?code=510300`（及 LOF 161725）→ 仍走腾讯实时价 `mode=realtime`
+- 无估值基金：`/fund/intraday?code=000187` → 新浪与东财均无数据，回退 `deterministic-fallback`（预警会按缺少观测值跳过）
+- 邮件通道：`GET /api/alerts/settings` 返回 `email_configured=true`（收件人已配置）；`POST /api/admin/alerts/test-email` 返回 `{"status":"sent"}`，测试邮件已真实发出
+- 测试：`corepack pnpm test` 9 个文件 / 102 个用例通过（新增 5 个事件总线用例）
+- `corepack pnpm typecheck`、`corepack pnpm lint`、`corepack pnpm build` 均通过；构建后 dev 服务（3000）复核仍正常
+
+#### 说明与遗留
+
+- 自选池同步属于纯前端交互，仓库测试约定只覆盖纯计算模块，因此以事件总线单测 + 类型检查 + 构建 + 手工验证为准；手工验证步骤：股票工作台左侧新增自选股 → 预警面板下拉立即出现该标的，删除后立即消失；切换到基金工作台 → 预警面板只呈现基金预警且无切换按钮。
+- 新浪 `fu_` 单只估值在盘后仍保留当日快照（实测 16:04 定格），盘中会随行情刷新；若上游在盘中不可用，自动回退东财估值排行。

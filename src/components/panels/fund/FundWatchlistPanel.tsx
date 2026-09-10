@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Toast } from "@/components/ui/toast";
 import { FUND_TYPE_LABELS, normalizeFundCode } from "@/lib/fund-market";
+import { emitWatchlistChange } from "@/lib/watchlist-bus";
 import type { FundWatchlistItem } from "@/lib/shared/types";
 
 interface ApiEnvelope<T> {
@@ -101,6 +102,8 @@ export function FundWatchlistPanel({
       setCodeInput("");
       setNoteInput("");
       await loadFundWatchlist();
+      // 通知预警面板等订阅方：自选基金已变化，立即刷新可选标的。
+      emitWatchlistChange("fund");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "添加自选基金失败。");
     } finally {
@@ -120,6 +123,7 @@ export function FundWatchlistPanel({
         onClearActive?.();
       }
       await loadFundWatchlist();
+      emitWatchlistChange("fund");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "删除自选基金失败。");
     } finally {

@@ -754,7 +754,7 @@ export default function FundWorkbench() {
       return enabledModules.style ? <FundStylePanel /> : null;
     }
     if (key === "alerts") {
-      return enabledModules.alerts ? <AlertPanel defaultTarget="fund" /> : null;
+      return enabledModules.alerts ? <AlertPanel target="fund" /> : null;
     }
     return null;
   };

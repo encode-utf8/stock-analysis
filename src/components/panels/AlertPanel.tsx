@@ -24,6 +24,7 @@ import type {
   JobRun,
   WatchlistItem,
 } from "@/lib/shared/types";
+import { subscribeWatchlistChange, type WatchlistKind } from "@/lib/watchlist-bus";
 
 /** 统一接口响应包装。 */
 interface ApiEnvelope<T> {
@@ -111,13 +112,12 @@ const EMPTY_SETTINGS: AlertSettings = {
 };
 
 interface AlertPanelProps {
-  /** 面板默认展示的标的类型，由所在工作台决定。 */
-  defaultTarget: AlertTarget;
+  /** 面板绑定的工作台标的类型：股票工作台传 stock，基金工作台传 fund。 */
+  target: AlertTarget;
 }
 
 /** 预警中心：规则编排、事件流与邮件通道设置。 */
-export function AlertPanel({ defaultTarget }: AlertPanelProps) {
-  const [activeTarget, setActiveTarget] = useState<AlertTarget>(defaultTarget);
+export function AlertPanel({ target }: AlertPanelProps) {
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [events, setEvents] = useState<AlertEvent[]>([]);
   const [settings, setSettings] = useState<AlertSettings>(EMPTY_SETTINGS);
@@ -134,7 +134,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
   const [formCode, setFormCode] = useState("");
   const [formLogic, setFormLogic] = useState<AlertLogic>("and");
   const [formConditions, setFormConditions] = useState<AlertCondition[]>([
-    defaultCondition(ALERT_TARGET_METRICS[defaultTarget][0]),
+    defaultCondition(ALERT_TARGET_METRICS[target][0]),
   ]);
   const [savingRule, setSavingRule] = useState(false);
 
@@ -175,18 +175,38 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
     void Promise.resolve().then(() => loadAll());
   }, [loadAll]);
 
+  /** 自选池增删后只刷新可选标的，不必重拉规则与事件。 */
+  const refreshOptions = useCallback(async (kind: WatchlistKind) => {
+    try {
+      if (kind === "stock") {
+        setStockOptions(await apiFetch<WatchlistItem[]>("/api/watchlist"));
+      } else {
+        setFundOptions(await apiFetch<FundWatchlistItem[]>("/api/fund-watchlist"));
+      }
+    } catch {
+      // 同步失败不打断主流程：用户仍可通过重新加载页面获取最新自选池。
+    }
+  }, []);
+
+  // 左侧自选池变化时立即同步下拉选项，避免用户手动刷新页面。
+  useEffect(() => {
+    return subscribeWatchlistChange((kind) => {
+      void refreshOptions(kind);
+    });
+  }, [refreshOptions]);
+
   const targetRules = useMemo(
-    () => rules.filter((rule) => rule.target === activeTarget),
-    [rules, activeTarget],
+    () => rules.filter((rule) => rule.target === target),
+    [rules, target],
   );
   const targetEvents = useMemo(
     () =>
       events
-        .filter((event) => event.target === activeTarget)
+        .filter((event) => event.target === target)
         .filter((event) => (onlyUnread ? event.status === "unread" : true)),
-    [events, activeTarget, onlyUnread],
+    [events, target, onlyUnread],
   );
-  const codeOptions = activeTarget === "stock" ? stockOptions : fundOptions;
+  const codeOptions = target === "stock" ? stockOptions : fundOptions;
   const unreadCount = events.filter((event) => event.status === "unread").length;
   const targetLimit = settings.max_targets;
 
@@ -199,12 +219,6 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
     },
     [],
   );
-
-  const switchTarget = (target: AlertTarget) => {
-    setActiveTarget(target);
-    resetForm(target);
-    setNotice(null);
-  };
 
   const editRule = (rule: AlertRule) => {
     setEditingId(rule.id);
@@ -272,7 +286,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
         await apiFetch<AlertRule>(
           "/api/alerts/rules",
           jsonInit("POST", {
-            target: activeTarget,
+            target: target,
             code: formCode,
             logic: formLogic,
             conditions: formConditions,
@@ -280,7 +294,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
         );
         setNotice("规则已创建。");
       }
-      resetForm(activeTarget);
+      resetForm(target);
       await loadAll();
     } catch (nextError) {
       setError(errorText(nextError, "规则保存失败"));
@@ -307,7 +321,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
     try {
       await apiFetch<{ id: string }>(`/api/alerts/rules/${rule.id}`, { method: "DELETE" });
       if (editingId === rule.id) {
-        resetForm(activeTarget);
+        resetForm(target);
       }
       await loadAll();
     } catch (nextError) {
@@ -389,21 +403,9 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex rounded-md border p-0.5">
-              {(["stock", "fund"] as AlertTarget[]).map((target) => (
-                <button
-                  key={target}
-                  type="button"
-                  onClick={() => switchTarget(target)}
-                  className={
-                    "rounded px-3 py-1 text-sm transition-colors " +
-                    (activeTarget === target ? "bg-primary text-primary-foreground" : "text-muted-foreground")
-                  }
-                >
-                  {target === "stock" ? "股票预警" : "基金预警"}
-                </button>
-              ))}
-            </div>
+            <span className="rounded-md border bg-muted px-2 py-1 text-xs text-muted-foreground">
+              当前工作台：{target === "stock" ? "个股预警" : "基金预警"}
+            </span>
             <Button type="button" size="sm" disabled={scanning} onClick={() => void handleScan()}>
               {scanning ? "评估中..." : "立即评估"}
             </Button>
@@ -453,7 +455,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
             <div className="mt-3 space-y-3">
               <div>
                 <label htmlFor="alert-rule-code" className="text-xs font-medium text-muted-foreground">
-                  自选标的（{activeTarget === "stock" ? "股票" : "基金"}）
+                  自选标的（{target === "stock" ? "股票" : "基金"}）
                 </label>
                 <select
                   id="alert-rule-code"
@@ -471,7 +473,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
                 </select>
                 {codeOptions.length === 0 ? (
                   <p className="mt-1 text-xs text-amber-600">
-                    当前自选池为空，请先在左侧加入自选{activeTarget === "stock" ? "股" : "基金"}。
+                    当前自选池为空，请先在左侧加入自选{target === "stock" ? "股" : "基金"}。
                   </p>
                 ) : null}
               </div>
@@ -502,7 +504,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
                       onChange={(event) => changeConditionMetric(index, event.target.value as AlertMetric)}
                       className="rounded-md border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-primary"
                     >
-                      {ALERT_TARGET_METRICS[activeTarget].map((metric) => (
+                      {ALERT_TARGET_METRICS[target].map((metric) => (
                         <option key={metric} value={metric}>
                           {ALERT_METRIC_LABELS[metric]}
                         </option>
@@ -556,7 +558,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
                   onClick={() =>
                     setFormConditions((current) => [
                       ...current,
-                      defaultCondition(ALERT_TARGET_METRICS[activeTarget][0]),
+                      defaultCondition(ALERT_TARGET_METRICS[target][0]),
                     ])
                   }
                 >
@@ -570,7 +572,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => resetForm(activeTarget)}
+                    onClick={() => resetForm(target)}
                   >
                     取消编辑
                   </Button>
@@ -581,7 +583,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
 
           <div className="rounded-lg border p-4">
             <h3 className="text-sm font-semibold">
-              已配置规则（{activeTarget === "stock" ? "股票" : "基金"}）
+              已配置规则（{target === "stock" ? "股票" : "基金"}）
             </h3>
             {loading ? (
               <p className="mt-2 text-sm text-muted-foreground">加载中...</p>
