@@ -20,7 +20,18 @@ import {
   isTradingSession,
   validateAlertRuleInput,
 } from "@/lib/alerts";
-import { ALERT_DEFAULT_COOLDOWN_HOURS, formatAlertCondition } from "@/lib/shared/types";
+import {
+  ALERT_DEFAULT_COOLDOWN_HOURS,
+  ALERT_METRIC_LABELS,
+  ALERT_TARGET_METRICS,
+  formatAlertCondition,
+} from "@/lib/shared/types";
+import {
+  FALLBACK_CALENDAR_SOURCE,
+  beijingDateKey,
+  buildFallbackTradingCalendar,
+  buildTradingCalendar,
+} from "@/lib/trading-calendar";
 
 const TRADING_DAY = "2024-03-05"; // 周二
 const WEEKEND = "2024-03-09"; // 周六
@@ -46,12 +57,52 @@ describe("isTradingSession", () => {
     expect(isTradingSession("fund", beijingTime(WEEKEND, 20)).active).toBe(false);
   });
 
-  it("基金在盘中与工作日收盘后均可评估", () => {
+  it("基金只盯盘中，盘后不再触发", () => {
     expect(isTradingSession("fund", beijingTime(TRADING_DAY, 10)).active).toBe(true);
-    expect(isTradingSession("fund", beijingTime(TRADING_DAY, 16)).active).toBe(true);
-    expect(isTradingSession("fund", beijingTime(TRADING_DAY, 23, 59)).active).toBe(true);
+    expect(isTradingSession("fund", beijingTime(TRADING_DAY, 14, 59)).active).toBe(true);
+    expect(isTradingSession("fund", beijingTime(TRADING_DAY, 16)).active).toBe(false);
+    expect(isTradingSession("fund", beijingTime(TRADING_DAY, 23, 59)).active).toBe(false);
     expect(isTradingSession("fund", beijingTime(TRADING_DAY, 12)).active).toBe(false);
     expect(isTradingSession("fund", beijingTime(TRADING_DAY, 9)).active).toBe(false);
+    expect(isTradingSession("fund", beijingTime(TRADING_DAY, 16)).reason).toContain("非盘中时段");
+  });
+
+  it("接入交易日历后，法定节假日不触发", () => {
+    // 2026-10-01 为国庆节：日历覆盖范围内但不在交易日列表中。
+    const calendar = buildTradingCalendar({
+      source: "akshare",
+      fetched_at: "2026-09-30T00:00:00.000Z",
+      days: ["2026-09-30", "2026-10-09"],
+    });
+    expect(isTradingSession("stock", beijingTime("2026-10-01", 10), calendar).active).toBe(false);
+    expect(isTradingSession("fund", beijingTime("2026-10-01", 14), calendar).active).toBe(false);
+    expect(isTradingSession("stock", beijingTime("2026-10-01", 10), calendar).reason).toContain("非交易日");
+  });
+
+  it("日历覆盖范围之外回退工作日规则", () => {
+    const calendar = buildTradingCalendar({
+      source: "akshare",
+      fetched_at: "2026-09-30T00:00:00.000Z",
+      days: ["2026-09-30"],
+    });
+    // 2026-10-12 是周一，超出日历覆盖范围 → 按工作日判定为交易日。
+    expect(isTradingSession("stock", beijingTime("2026-10-12", 10), calendar).active).toBe(true);
+    // 2026-10-11 是周日 → 非交易日。
+    expect(isTradingSession("stock", beijingTime("2026-10-11", 10), calendar).active).toBe(false);
+  });
+
+  it("降级日历按工作日近似，周末不触发", () => {
+    const calendar = buildFallbackTradingCalendar(new Date("2026-09-10T02:00:00.000Z"));
+    expect(calendar.source).toBe(FALLBACK_CALENDAR_SOURCE);
+    expect(calendar.isTradingDay("2026-09-10")).toBe(true);
+    expect(calendar.isTradingDay("2026-09-12")).toBe(false);
+    expect(isTradingSession("stock", beijingTime("2026-09-10", 10), calendar).active).toBe(true);
+    expect(isTradingSession("stock", beijingTime("2026-09-12", 10), calendar).active).toBe(false);
+  });
+
+  it("北京日期键不依赖服务器时区", () => {
+    expect(beijingDateKey(new Date("2026-09-09T16:00:00.000Z"))).toBe("2026-09-10");
+    expect(beijingDateKey(new Date("2026-09-09T15:59:00.000Z"))).toBe("2026-09-09");
   });
 });
 
@@ -270,5 +321,84 @@ describe("请求解析", () => {
     expect(parseCooldownHours("abc")).toBe(12);
     expect(parseCooldownHours(-1)).toBe(12);
     expect(parseCooldownHours("6")).toBe(6);
+  });
+});
+
+describe("基金盘中估算预警", () => {
+  const morning = beijingTime(TRADING_DAY, 10);
+  const fundConditions = [
+    { metric: "estimate_change_pct" as const, operator: "lte" as const, threshold: -1 },
+  ];
+  const fundRule = alertRule({
+    target: "fund",
+    code: "510300",
+    name: "沪深300ETF",
+    conditions: fundConditions,
+  });
+
+  it("盘中估算指标只对基金开放，文案与校验一致", () => {
+    expect(ALERT_TARGET_METRICS.fund).toContain("estimate_change_pct");
+    expect(ALERT_TARGET_METRICS.fund[0]).toBe("estimate_change_pct");
+    expect(ALERT_TARGET_METRICS.stock).not.toContain("estimate_change_pct");
+    expect(ALERT_METRIC_LABELS.estimate_change_pct).toBe("盘中估算涨跌幅");
+    expect(formatAlertCondition({ metric: "estimate_change_pct", operator: "lte", threshold: -1 })).toBe(
+      "盘中估算涨跌幅 ≤ -1%",
+    );
+    expect(validateAlertRuleInput({ target: "fund", logic: "and", conditions: fundConditions }).ok).toBe(true);
+    expect(validateAlertRuleInput({ target: "stock", logic: "and", conditions: fundConditions }).ok).toBe(false);
+  });
+
+  it("盘中估算命中即触发，事件记录估算来源", () => {
+    const observations = [
+      alertObservation("estimate_change_pct", -1.4),
+      alertObservation("estimate_nav", 3.912),
+    ];
+    const decision = evaluateAlertRule(fundRule, observations, morning);
+    expect(decision.triggered).toBe(true);
+    expect(decision.hits[0].value).toBe(-1.4);
+
+    const event = buildAlertEvent(fundRule, decision, observations, morning);
+    expect(event.data_source).toBe("akshare");
+    expect(event.metrics).toEqual(["estimate_change_pct"]);
+    expect(event.message).toContain("盘中估算涨跌幅 -1.4");
+  });
+
+  it("盘后不再评估基金规则", () => {
+    const decision = evaluateAlertRule(
+      fundRule,
+      [alertObservation("estimate_change_pct", -2)],
+      beijingTime(TRADING_DAY, 16),
+    );
+    expect(decision.triggered).toBe(false);
+    expect(decision.reason).toContain("非盘中时段");
+  });
+
+  it("条件未引用的降级指标不影响判定", () => {
+    const observations = [
+      alertObservation("estimate_change_pct", -1.4),
+      alertObservation("drawdown_pct", 35, { source: FALLBACK_SOURCE }),
+    ];
+    expect(evaluateAlertRule(fundRule, observations, morning).triggered).toBe(true);
+  });
+
+  it("条件引用的降级指标仍然跳过", () => {
+    const decision = evaluateAlertRule(
+      fundRule,
+      [alertObservation("estimate_change_pct", -1.4, { source: FALLBACK_SOURCE })],
+      morning,
+    );
+    expect(decision.triggered).toBe(false);
+    expect(decision.reason).toContain("降级");
+  });
+
+  it("请求解析接受盘中估算指标", () => {
+    const parsed = parseAlertConditions([
+      { metric: "estimate_change_pct", operator: "lte", threshold: "-1" },
+    ]);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.conditions[0].metric).toBe("estimate_change_pct");
+      expect(parsed.conditions[0].threshold).toBe(-1);
+    }
   });
 });

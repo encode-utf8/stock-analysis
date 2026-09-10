@@ -10,10 +10,10 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 
 from .fund_routes import router as fund_router
 
@@ -745,6 +745,88 @@ def _build_fallback_kline(code: str, period: KlinePeriod, adjust: AdjustType, li
 
     return result
 
+
+_TRADING_DAYS: set[str] | None = None
+_TRADING_DAYS_LOADED_AT: datetime | None = None
+
+
+def _trading_days() -> set[str] | None:
+    """获取全量交易日列表（AkShare），缓存 12 小时；不可用时返回 None。"""
+    global _TRADING_DAYS, _TRADING_DAYS_LOADED_AT
+
+    now = _now_utc()
+    if (
+        _TRADING_DAYS is not None
+        and _TRADING_DAYS_LOADED_AT is not None
+        and now - _TRADING_DAYS_LOADED_AT < timedelta(hours=12)
+    ):
+        return _TRADING_DAYS
+
+    if not HAS_AKSHARE:
+        return None
+
+    try:
+        frame = ak.tool_trade_date_hist_sina()
+        if frame is None or frame.empty:
+            return None
+        days = {str(value)[:10] for value in frame["trade_date"].tolist()}
+        days = {day for day in days if len(day) == 10 and day[4] == "-"}
+        if not days:
+            return None
+        _TRADING_DAYS = days
+        _TRADING_DAYS_LOADED_AT = now
+        return days
+    except Exception as exc:  # 上游不可用时退回工作日近似
+        logger.warning("获取交易日历失败：%s", exc)
+        return None
+
+
+def _weekday_days(start_date: date, end_date: date) -> list[str]:
+    """按工作日近似生成交易日列表，用于交易日历降级。"""
+    days: list[str] = []
+    cursor = start_date
+    while cursor <= end_date:
+        if cursor.weekday() < 5:
+            days.append(cursor.isoformat())
+        cursor = cursor + timedelta(days=1)
+    return days
+
+
+@app.get("/trading-calendar")
+def trading_calendar(
+    start: str = Query(..., min_length=10, max_length=10),
+    end: str = Query(..., min_length=10, max_length=10),
+) -> dict:
+    """返回 [start, end] 区间内的交易日；AkShare 不可用时退回工作日近似。"""
+    try:
+        start_date = date.fromisoformat(start)
+        end_date = date.fromisoformat(end)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="start/end 必须是 YYYY-MM-DD 格式。") from exc
+    if end_date < start_date:
+        raise HTTPException(status_code=400, detail="end 不能早于 start。")
+    if (end_date - start_date).days > 1500:
+        raise HTTPException(status_code=400, detail="查询区间不能超过 1500 天。")
+
+    now = _now_utc()
+    calendar = _trading_days()
+    if calendar is None:
+        return {
+            "source": SOURCE_FALLBACK,
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat(),
+            "days": _weekday_days(start_date, end_date),
+            "fetched_at": now.isoformat(),
+        }
+
+    selected = sorted(day for day in calendar if start_date.isoformat() <= day <= end_date.isoformat())
+    return {
+        "source": SOURCE_AKSHARE,
+        "start": start_date.isoformat(),
+        "end": end_date.isoformat(),
+        "days": selected,
+        "fetched_at": now.isoformat(),
+    }
 
 @app.get("/health")
 def health() -> dict[str, str]:

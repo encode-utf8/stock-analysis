@@ -1138,3 +1138,75 @@ corepack pnpm build
   - 设置与邮件：收件邮箱与推送开关可保存；未配置 SMTP 时测试邮件返回 `skipped` 并说明原因。
   - 界面：`/` 页面服务端渲染输出含两处「预警中心」（个股与基金侧栏），面板随模块勾选挂载。
 - 遗留：本地未启动 Docker，迁移 `0008` 已生成但尚未在本地数据库执行；启动 PostgreSQL 后执行 `corepack pnpm db:migrate` 即可建表。SMTP 参数写入本地 `.env` 后才能真实发信。
+## T4 基金盘中估算预警与交易日历（2026-09-10）
+
+- 关联文档：`docs/alert-center-plan.md`（v0.3）
+- 分支：`feature/alert-intraday-calendar`
+- 背景：T3 的基金预警只在「盘中 + 工作日 15:00 后」评估，且盘中用的是最新公布的官方净值，等于用昨天的数据报警，盘后触发对盯盘没有意义。本次改为以盘中估算为主，并接入真实交易日历。
+
+### 可行性结论
+
+- 场内基金（ETF/LOF）：侧车 `/fund/intraday` 通过腾讯行情返回实时价与 IOPV，`mode=realtime`，可取到盘中实时价格与涨跌幅。
+- 场外基金：侧车通过 AkShare `fund_value_estimation_em` 返回全市场盘中估算列表（缓存 60 秒），`mode=estimate`，可取到估算净值与估算涨跌幅。
+- 交易日历：AkShare `tool_trade_date_hist_sina` 提供全量交易日列表，侧车新增 `/trading-calendar` 暴露给 Web 端；不可用时退回「工作日 + 时段」近似。
+- 结论：盘中监控可行，预警窗口改为交易时段，盘后窗口取消。
+
+### 验收项
+
+- [x] 新增 `GET /trading-calendar`（侧车）：返回交易日列表、来源与抓取时间；AkShare 不可用时返回工作日近似并标注来源
+- [x] 新增 `src/lib/trading-calendar.ts`：侧车优先、内存缓存、失败回退工作日规则，并提供「是否为交易日」同步查询
+- [x] 预警引擎按交易日历判定：法定节假日（日历内非交易日）不触发，日历覆盖范围之外回退工作日规则
+- [x] 基金预警窗口改为盘中（09:30–11:30、13:00–15:00），取消 15:00 后窗口
+- [x] 基金盘中观测值改用估算：新增指标「盘中估算净值」「盘中估算涨跌幅」，来源为 `/fund/intraday`
+- [x] 观测值按规则实际引用的指标按需采集，减少扫描成本
+- [x] 估算数据来源为 `deterministic-fallback` 时仍跳过，不产生误报
+- [x] 面板展示「今日是否交易日 / 日历来源」与盘中监控说明
+- [x] `tests/alerts.test.ts` 覆盖交易日历判定、节假日不触发、估算指标解析与窗口边界
+- [x] `.env.example` 与本地 `.env` 补齐 QQ 邮箱 SMTP 占位变量
+- [x] 执行 `corepack pnpm db:migrate` 应用迁移 0008
+- [x] 删除临时文件 `.git/COMMIT_MSG_ALERTS.txt`
+- [x] `corepack pnpm test`、`typecheck`、`lint`、`build` 全部通过
+- [x] README 与预警方案文档同步更新
+
+### 验证方式
+
+- `corepack pnpm test && corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 侧车：`curl http://127.0.0.1:8000/trading-calendar?start=2026-09-01&end=2026-10-31`
+- 端到端：盘中为基金配置「盘中估算涨跌幅 ≤ -1%」→ 立即评估 → 事件来源为 akshare 估算；把系统时间口径切到节假日 → 不触发
+
+### 完成记录
+
+- 完成日期：2026-09-10
+- 分支：`feature/alert-intraday-calendar`
+- 结果：T4 全部验收通过；`corepack pnpm test` 8 个测试文件 / 97 个用例通过，`typecheck`、`lint`、`build` 均通过。
+
+#### 可行性复核结论
+
+- 场内基金（ETF/LOF，如 510300、161725）：侧车 `/fund/intraday` 走腾讯行情，实测 510300 盘中 `mode=realtime`、涨跌幅 -0.26%，稳定可用。
+- 场外基金：东财估值排行（AkShare `fund_value_estimation_em`）覆盖约 680 只且上游偶发 SSL 中断（已加 3 次重试），单只 `fundgz.1234567.com.cn` 接口已下线；取不到估算时该规则按「缺少指标观测值」跳过，绝不用降级数据报假警。
+- 交易日历：AkShare `tool_trade_date_hist_sina` 可用，实测 2026-10-01 国庆节被正确排除，2026-09-10 判定为交易日。
+
+#### 改动要点
+
+- 基金预警窗口收敛为盘中（09:30–11:30、13:00–15:00），取消 15:00 后窗口，盘后不再产生事件。
+- 新增基金指标「盘中估算涨跌幅」「盘中估算净值」，来源 `/fund/intraday`；公布净值与回撤保留为辅助口径。
+- 观测值按规则实际引用的指标按需采集；降级数据判定收敛到条件实际引用的指标。
+- 判定引擎接入交易日历；侧车新增 `GET /trading-calendar`，Web 端新增 `src/lib/trading-calendar.ts` 与 `GET /api/alerts/calendar`，面板展示今日交易日状态与日历来源。
+
+#### 端到端实测（本地 PostgreSQL 已运行、数据侧车在线）
+
+- 交易日历：`source=akshare`、`2026-09-10` 为交易日、覆盖区间 2025-08-06 ~ 2026-12-31。
+- 盘中正例（14:40）：510300 规则命中，事件来源 `akshare`、观测值 `estimate_change_pct=-0.28`；股票 600519 同步命中 `change_pct=-0.36`。
+- 冷却期：12 小时内二次评估 `triggered_count=0`，跳过原因「处于 12 小时冷却期内」。
+- 盘后（15:10 复测）：基金规则返回「非盘中时段（09:30-11:30、13:00-15:00）」，不再产生事件。
+- 组合条件：510300「盘中估算涨跌幅 ≤ -0.1% 且 当前回撤 ≥ 0%」创建成功（2 条件 AND）。
+
+#### 运维事项
+
+- `corepack pnpm db:migrate` 已执行：`alert_rules`、`alert_events` 已在本地 PostgreSQL 建表（drizzle 迁移记录 9 条）。
+- 本地 `.env` 与 `.env.example` 已补 QQ 邮箱 SMTP 占位变量（`SMTP_HOST=smtp.qq.com`、`SMTP_PORT=465`、`SMTP_USER`、`SMTP_PASS`、`SMTP_FROM`、`ALERT_EMAIL_TO`），需替换为真实 QQ 号与授权码后才能发信。
+- 临时文件 `.git/COMMIT_MSG_ALERTS.txt` 已删除；测试产生的规则、事件与自选标的均已清理，数据库与 `.data` 恢复为空。
+
+#### 环境提示
+
+- `next dev` 与 `next build` 产物共用 `.next` 时，动态路由 `[id]` 会出现 404；清理 `.next` 后重启 dev 即恢复（工具链现象，非代码缺陷）。

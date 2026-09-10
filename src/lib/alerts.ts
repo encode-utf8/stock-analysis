@@ -1,6 +1,7 @@
-// 预警判定引擎：有效时段、条件组合、冷却期与降级过滤。
+// 预警判定引擎：交易日历、有效时段、条件组合、冷却期与降级过滤。
 // 本模块只包含纯函数，便于单测覆盖各种边界口径。
 
+import { beijingDateKey, type TradingCalendar } from "@/lib/trading-calendar";
 import {
   ALERT_DEFAULT_COOLDOWN_HOURS,
   ALERT_MAX_CONDITIONS,
@@ -32,9 +33,8 @@ const STOCK_SESSIONS: Array<[number, number]> = [
   [13 * 60, 15 * 60],
 ];
 
-/** 场外基金净值在收盘后更新，允许在工作日 15:00-23:59 评估。 */
-const FUND_SESSION_START = 15 * 60;
-const FUND_SESSION_END = 23 * 60 + 59;
+/** 判定引擎只依赖 isTradingDay，便于单测注入假日历。 */
+export type TradingCalendarLike = Pick<TradingCalendar, "isTradingDay">;
 
 /** 有效时段判定结果。 */
 export interface TradingSessionState {
@@ -50,14 +50,25 @@ export interface AlertDecision {
   hits: AlertConditionHit[];
 }
 
-/** 按北京时间判断当前是否处于该标的的有效评估时段。 */
-export function isTradingSession(target: AlertTarget, now: Date): TradingSessionState {
+/**
+ * 按北京时间判断当前是否处于该标的的有效评估时段。
+ * 传入交易日历时按日历判定交易日（可识别法定节假日）；未传入时退回工作日近似。
+ * 基金只盯盘中：场外估算与场内实时价都只在交易时段更新，盘后触发没有盯盘意义。
+ */
+export function isTradingSession(
+  target: AlertTarget,
+  now: Date,
+  calendar?: TradingCalendarLike,
+): TradingSessionState {
   const shifted = new Date(now.getTime() + CHINA_OFFSET_MS);
   const weekday = shifted.getUTCDay();
   const minutes = shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
 
-  if (weekday === 0 || weekday === 6) {
-    return { active: false, reason: "非工作日，不触发预警" };
+  const isTradingDay = calendar
+    ? calendar.isTradingDay(beijingDateKey(now))
+    : weekday >= 1 && weekday <= 5;
+  if (!isTradingDay) {
+    return { active: false, reason: "非交易日，不触发预警" };
   }
 
   const inStockSession = STOCK_SESSIONS.some(
@@ -70,13 +81,9 @@ export function isTradingSession(target: AlertTarget, now: Date): TradingSession
       : { active: false, reason: "非股票交易时段（09:30-11:30、13:00-15:00）" };
   }
 
-  if (inStockSession) {
-    return { active: true, reason: "交易时段（场内实时估算）" };
-  }
-  if (minutes >= FUND_SESSION_START && minutes <= FUND_SESSION_END) {
-    return { active: true, reason: "收盘后净值更新时段" };
-  }
-  return { active: false, reason: "非基金净值评估时段（工作日 15:00 后）" };
+  return inStockSession
+    ? { active: true, reason: "基金盘中估算时段" }
+    : { active: false, reason: "非盘中时段（09:30-11:30、13:00-15:00）" };
 }
 
 /** 判断冷却期是否已过；默认 12 小时。 */
@@ -141,6 +148,7 @@ export function evaluateAlertRule(
   rule: AlertRule,
   observations: AlertObservation[],
   now: Date = new Date(),
+  calendar?: TradingCalendarLike,
 ): AlertDecision {
   if (!rule.enabled) {
     return { triggered: false, reason: "规则已停用", matched: null, hits: [] };
@@ -149,7 +157,7 @@ export function evaluateAlertRule(
     return { triggered: false, reason: "规则未配置条件", matched: null, hits: [] };
   }
 
-  const session = isTradingSession(rule.target, now);
+  const session = isTradingSession(rule.target, now, calendar);
   if (!session.active) {
     return { triggered: false, reason: session.reason, matched: null, hits: [] };
   }
@@ -165,7 +173,9 @@ export function evaluateAlertRule(
     return { triggered: false, reason: `缺少指标观测值：${names}`, matched: null, hits: [] };
   }
 
-  if (observations.some((observation) => observation.source === FALLBACK_SOURCE)) {
+  // 只检查条件实际引用的指标：未引用的降级数据不应影响本次判定。
+  const usedObservations = rule.conditions.map((condition) => byMetric.get(condition.metric)!);
+  if (usedObservations.some((observation) => observation.source === FALLBACK_SOURCE)) {
     return { triggered: false, reason: "观测值来自确定性降级数据，已跳过", matched: null, hits: [] };
   }
 

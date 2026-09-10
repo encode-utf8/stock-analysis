@@ -4,65 +4,130 @@ import { sendAlertDigest } from "@/lib/alert-email";
 import { alertRepository } from "@/lib/alert-store";
 import { buildAlertEvent, evaluateAlertRule, isCooldownPassed, isTradingSession } from "@/lib/alerts";
 import { getFundNav } from "@/lib/fund-data";
+import { getFundIntraday } from "@/lib/fund-intraday";
 import { getFundMetrics } from "@/lib/fund-metrics";
 import { getMarketQuote } from "@/lib/market-data";
+import { getTradingCalendar } from "@/lib/trading-calendar";
 import type {
   AlertEmailStatus,
   AlertEvent,
+  AlertMetric,
   AlertObservation,
   AlertRule,
   AlertScanResult,
 } from "@/lib/shared/types";
 
-/** 采集单个标的的观测值：股票取行情快照，基金取净值与风险指标。 */
+/**
+ * 采集单个标的的观测值。
+ * 只采集规则真正引用的指标，避免为了一个条件去拉整段净值历史。
+ */
 export async function collectAlertObservations(
   rule: AlertRule,
   now: Date = new Date(),
 ): Promise<AlertObservation[]> {
+  const needed = new Set<AlertMetric>(rule.conditions.map((condition) => condition.metric));
+
   if (rule.target === "stock") {
     const quote = await getMarketQuote(rule.code, false);
     const observedAt = quote.fetched_at || quote.ts || now.toISOString();
-    return [
-      { metric: "change_pct", value: quote.change_pct, source: quote.source, observed_at: observedAt },
-      { metric: "price", value: quote.price, source: quote.source, observed_at: observedAt },
-    ];
+    const observations: AlertObservation[] = [];
+    if (needed.has("change_pct")) {
+      observations.push({
+        metric: "change_pct",
+        value: quote.change_pct,
+        source: quote.source,
+        observed_at: observedAt,
+      });
+    }
+    if (needed.has("price")) {
+      observations.push({
+        metric: "price",
+        value: quote.price,
+        source: quote.source,
+        observed_at: observedAt,
+      });
+    }
+    return observations;
   }
 
   const observations: AlertObservation[] = [];
-  const nav = await getFundNav(rule.code, "1y", "unit");
-  const latest = nav.at(-1);
-  if (latest) {
-    observations.push({
-      metric: "unit_nav",
-      value: latest.unit_nav,
-      source: latest.source,
-      observed_at: latest.fetched_at || now.toISOString(),
-    });
-    if (typeof latest.daily_change_pct === "number") {
+
+  // 盘中估算：场内取实时价与 IOPV，场外取盘中估算净值，这是盘中监控的主要口径。
+  if (needed.has("estimate_nav") || needed.has("estimate_change_pct")) {
+    const intraday = await getFundIntraday(rule.code, false);
+    const observedAt = intraday.fetched_at || intraday.ts || now.toISOString();
+    if (needed.has("estimate_nav") && typeof intraday.estimated_nav === "number") {
       observations.push({
-        metric: "nav_change_pct",
-        value: latest.daily_change_pct,
-        source: latest.source,
-        observed_at: latest.fetched_at || now.toISOString(),
+        metric: "estimate_nav",
+        value: intraday.estimated_nav,
+        source: intraday.source,
+        observed_at: observedAt,
+      });
+    }
+    if (needed.has("estimate_change_pct") && typeof intraday.change_pct === "number") {
+      observations.push({
+        metric: "estimate_change_pct",
+        value: intraday.change_pct,
+        source: intraday.source,
+        observed_at: observedAt,
       });
     }
   }
 
-  const metrics = await getFundMetrics(rule.code, "1y");
-  if (metrics) {
-    const source = latest?.source ?? "本地计算";
-    observations.push({
-      metric: "drawdown_pct",
-      value: metrics.max_drawdown_pct,
-      source,
-      observed_at: metrics.updated_at,
-    });
-    observations.push({
-      metric: "current_drawdown_pct",
-      value: metrics.current_drawdown_pct,
-      source,
-      observed_at: metrics.updated_at,
-    });
+  // 公布净值：既服务于净值类条件，也用于判断回撤数据的来源健康度。
+  const needsNav =
+    needed.has("unit_nav") ||
+    needed.has("nav_change_pct") ||
+    needed.has("drawdown_pct") ||
+    needed.has("current_drawdown_pct");
+  let navSource: string | null = null;
+  if (needsNav) {
+    const nav = await getFundNav(rule.code, "1m", "unit");
+    const latest = nav.at(-1);
+    if (latest) {
+      navSource = latest.source;
+      const observedAt = latest.fetched_at || now.toISOString();
+      if (needed.has("unit_nav")) {
+        observations.push({
+          metric: "unit_nav",
+          value: latest.unit_nav,
+          source: latest.source,
+          observed_at: observedAt,
+        });
+      }
+      if (needed.has("nav_change_pct") && typeof latest.daily_change_pct === "number") {
+        observations.push({
+          metric: "nav_change_pct",
+          value: latest.daily_change_pct,
+          source: latest.source,
+          observed_at: observedAt,
+        });
+      }
+    }
+  }
+
+  if (needed.has("drawdown_pct") || needed.has("current_drawdown_pct")) {
+    const metrics = await getFundMetrics(rule.code, "1y");
+    if (metrics) {
+      // 回撤由本地净值历史算出，来源沿用净值来源，降级数据会被判定引擎过滤。
+      const source = navSource ?? "本地计算";
+      if (needed.has("drawdown_pct")) {
+        observations.push({
+          metric: "drawdown_pct",
+          value: metrics.max_drawdown_pct,
+          source,
+          observed_at: metrics.updated_at,
+        });
+      }
+      if (needed.has("current_drawdown_pct")) {
+        observations.push({
+          metric: "current_drawdown_pct",
+          value: metrics.current_drawdown_pct,
+          source,
+          observed_at: metrics.updated_at,
+        });
+      }
+    }
   }
 
   return observations;
@@ -89,6 +154,9 @@ export async function runAlertScan(options: AlertScanOptions = {}): Promise<Aler
   const targets = new Set<string>();
   let scannedRules = 0;
 
+  // 交易日历只取一次，本次扫描内所有规则共用同一份判断依据。
+  const calendar = await getTradingCalendar();
+
   const rules = await alertRepository.listRules();
   for (const rule of rules) {
     if (!rule.enabled) {
@@ -96,8 +164,8 @@ export async function runAlertScan(options: AlertScanOptions = {}): Promise<Aler
     }
     scannedRules += 1;
 
-    // 先做时段与冷却的轻量判断，避免无谓的外部数据请求。
-    const session = isTradingSession(rule.target, now);
+    // 先做交易日/时段与冷却的轻量判断，避免无谓的外部数据请求。
+    const session = isTradingSession(rule.target, now, calendar);
     if (!session.active) {
       pushReason(skippedReasons, session.reason);
       continue;
@@ -111,7 +179,7 @@ export async function runAlertScan(options: AlertScanOptions = {}): Promise<Aler
 
     try {
       const observations = await collectAlertObservations(rule, now);
-      const decision = evaluateAlertRule(rule, observations, now);
+      const decision = evaluateAlertRule(rule, observations, now, calendar);
       if (decision.triggered) {
         events.push(buildAlertEvent(rule, decision, observations, now));
         triggeredRuleIds.push(rule.id);
@@ -157,6 +225,7 @@ export async function runAlertScan(options: AlertScanOptions = {}): Promise<Aler
     skipped_reasons: skippedReasons.slice(0, 5),
     email_status: emailStatus,
     email_reason: emailReason,
+    trading_day_source: calendar.source,
     duration_ms: Date.now() - startedAt,
   };
 }
