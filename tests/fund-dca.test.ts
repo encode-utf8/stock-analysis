@@ -117,6 +117,7 @@ describe("getFundDcaBacktest", () => {
     expect(snapshot.max_drawdown_pct).toBe(-42.12);
     expect(snapshot.current_drawdown_pct).toBe(-42.12);
     expect(snapshot.lump_sum_return_pct).toBe(-40);
+    expect(snapshot.annualized_return_pct).toBe(-68.2);
     expect(snapshot.start_date).toBe("2024-01-01");
     expect(snapshot.end_date).toBe("2024-08-01");
     expect(snapshot.max_drawdown_start_date).toBe("2024-06-01");
@@ -160,10 +161,10 @@ describe("getFundDcaBacktest", () => {
     const snapshot = await getFundDcaBacktest("510300", "1y", "monthly", 1000, NOW);
 
     expect(snapshot.payday_comparison.map((item) => item.day)).toEqual([1, 5, 10, 15, 20, 25, 28]);
-    // 注：亏损路径下牛顿迭代会发散，年化收益当前返回 null，已记入 checklist.md 遗留项。
     expect(snapshot.payday_comparison[0].day).toBe(1);
     expect(snapshot.payday_comparison[0].total_return_pct).toBe(-26.75);
-    expect(snapshot.payday_comparison[1].total_return_pct).not.toBeNull();
+    expect(snapshot.payday_comparison[0].annualized_return_pct).toBe(-68.2);
+    expect(snapshot.payday_comparison[1].annualized_return_pct).not.toBeNull();
   });
 
   it("每日定投不返回逐期明细，也不计算扣款日对比", async () => {
@@ -176,6 +177,29 @@ describe("getFundDcaBacktest", () => {
     expect(snapshot.total_periods).toBe(8);
     expect(snapshot.contributions).toEqual([]);
     expect(snapshot.payday_comparison).toEqual([]);
+  });
+
+  it("盈利区间年化收益为正，且与区间收益同号", async () => {
+    mockNavByCode({
+      "510300": [
+        ["2024-01-01", 1],
+        ["2024-02-01", 1.05],
+        ["2024-03-01", 1.1],
+        ["2024-04-01", 1.15],
+        ["2024-05-01", 1.2],
+        ["2024-06-01", 1.25],
+        ["2024-07-01", 1.3],
+        ["2024-08-01", 1.35],
+      ],
+    });
+
+    const snapshot = await getFundDcaBacktest("510300", "1y", "monthly", 1000, NOW);
+
+    expect(snapshot.available).toBe(true);
+    expect(snapshot.profit_loss_pct).toBeGreaterThan(0);
+    expect(snapshot.annualized_return_pct).not.toBeNull();
+    expect(snapshot.annualized_return_pct as number).toBeGreaterThan(0);
+    expect(snapshot.payday_comparison.every((item) => item.annualized_return_pct !== null)).toBe(true);
   });
 
   it("净值为确定性降级时不生成回测结果", async () => {
@@ -221,6 +245,7 @@ describe("getFundDcaPortfolioBacktest", () => {
     expect(snapshot.profit_loss).toBe(-4280);
     expect(snapshot.profit_loss_pct).toBe(-26.75);
     expect(snapshot.max_drawdown_pct).toBe(-42.12);
+    expect(snapshot.annualized_return_pct).toBe(-68.2);
     expect(snapshot.equity_curve).toHaveLength(8);
   });
 

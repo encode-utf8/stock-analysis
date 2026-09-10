@@ -15,6 +15,10 @@ import type {
 const VALID_RANGES: FundNavRange[] = ["1m", "3m", "6m", "1y", "3y", "all"];
 const VALID_FREQUENCIES: FundDcaFrequency[] = ["daily", "weekly", "biweekly", "monthly"];
 const MAX_EQUITY_POINTS = 400;
+/** 二分法求解年化收益时 x = 1 + 年化收益率 的下限，对应年化 -99%。 */
+const MIN_XIRR_X = 0.01;
+/** 二分法上界保护，避免异常数据下无限扩展。 */
+const MAX_XIRR_X = 1e6;
 const RANGE_DAYS: Record<Exclude<FundNavRange, "all">, number> = {
   "1m": 30,
   "3m": 90,
@@ -158,7 +162,11 @@ function buildContributionDates(nav: FundNavPoint[], frequency: FundDcaFrequency
   return Array.from(selected).sort((left, right) => left.localeCompare(right));
 }
 
-/** 用牛顿法近似计算定投现金流内部收益率。 */
+/**
+ * 用二分法计算定投现金流年化内部收益率。
+ * 自变量取 x = 1 + 年化收益率：x 恒大于 0，避免牛顿迭代在亏损场景
+ * 把利率推到 -1 以下导致负底数分数次幂发散（历史上亏损时返回 null）。
+ */
 function calculateDcaXirr(
   contributions: FundDcaContribution[],
   finalDate: string,
@@ -168,8 +176,7 @@ function calculateDcaXirr(
     return null;
   }
 
-  const startDate = contributions[0].date;
-  const startMs = parseDate(startDate).getTime();
+  const startMs = parseDate(contributions[0].date).getTime();
   const finalMs = parseDate(finalDate).getTime();
   const yearsFromStart = (date: string) => (parseDate(date).getTime() - startMs) / (365 * 24 * 60 * 60_000);
   const finalYears = (finalMs - startMs) / (365 * 24 * 60 * 60_000);
@@ -177,31 +184,49 @@ function calculateDcaXirr(
     return null;
   }
 
-  let rate = 0.1;
-  for (let iteration = 0; iteration < 100; iteration += 1) {
-    let value = 0;
-    let derivative = 0;
+  // 现金流净现值符号函数：已乘 x^finalYears 的正系数，符号与原净现值一致。
+  const netPresentValue = (x: number) => {
+    let value = finalValue;
     for (const contribution of contributions) {
-      const years = yearsFromStart(contribution.date);
-      const discount = (1 + rate) ** years;
-      value += -contribution.amount / discount;
-      derivative += (years * contribution.amount) / ((1 + rate) ** (years + 1));
+      value -= contribution.amount * x ** (finalYears - yearsFromStart(contribution.date));
     }
-    value += finalValue / (1 + rate) ** finalYears;
-    derivative -= (finalYears * finalValue) / ((1 + rate) ** (finalYears + 1));
+    return value;
+  };
 
-    if (Math.abs(derivative) < 1e-10) {
-      break;
-    }
-    const nextRate = rate - value / derivative;
-    if (!Number.isFinite(nextRate) || Math.abs(nextRate - rate) < 1e-9) {
-      rate = nextRate;
-      break;
-    }
-    rate = nextRate;
+  if (netPresentValue(1) === 0) {
+    return 0;
   }
 
-  return Number.isFinite(rate) && rate > -0.99 ? round(rate * 100, 2) : null;
+  let positiveSide: number;
+  let negativeSide: number;
+  if (netPresentValue(1) > 0) {
+    // 整体盈利：年化收益为正，向上扩展上界直到净现值转负。
+    positiveSide = 1;
+    negativeSide = 2;
+    while (negativeSide <= MAX_XIRR_X && netPresentValue(negativeSide) > 0) {
+      negativeSide *= 2;
+    }
+  } else {
+    // 整体亏损：x = 1 处净现值为负，下界取年化 -99%。
+    positiveSide = MIN_XIRR_X;
+    negativeSide = 1;
+  }
+
+  if (netPresentValue(positiveSide) <= 0 || netPresentValue(negativeSide) > 0) {
+    return null;
+  }
+
+  for (let iteration = 0; iteration < 200 && negativeSide - positiveSide > 1e-10; iteration += 1) {
+    const middle = (positiveSide + negativeSide) / 2;
+    if (netPresentValue(middle) > 0) {
+      positiveSide = middle;
+    } else {
+      negativeSide = middle;
+    }
+  }
+
+  const rate = (positiveSide + negativeSide) / 2 - 1;
+  return Number.isFinite(rate) ? round(rate * 100, 2) : null;
 }
 
 /** 从定投市值曲线中提取最大回撤区间与修复区间。 */
