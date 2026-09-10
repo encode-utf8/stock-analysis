@@ -32,6 +32,9 @@ export function sourceLabel(source: string): string {
   if (source === "tencent") {
     return "腾讯实时行情";
   }
+  if (source === "sina") {
+    return "新浪财经盘中估值";
+  }
   if (source === "deterministic-fallback") {
     return "确定性降级数据";
   }

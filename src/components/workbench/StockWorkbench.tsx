@@ -735,7 +735,7 @@ export default function StockWorkbench() {
       return enabledModules.datasource ? <DataSourcePanel /> : null;
     }
     if (key === "alerts") {
-      return enabledModules.alerts ? <AlertPanel defaultTarget="stock" /> : null;
+      return enabledModules.alerts ? <AlertPanel target="stock" /> : null;
     }
     return null;
   };
