@@ -28,6 +28,7 @@ import {
   ALL_FUND_MODULE_VISIBILITY,
   FUND_MODULE_OPTIONS,
 } from "@/components/panels/fund/FundOptionsSidebar";
+import { Button } from "@/components/ui/button";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import type { FundMetricsRange } from "@/lib/fund-metrics";
 import { DEFAULT_FUND_CODE, normalizeFundCode } from "@/lib/fund-market";
@@ -44,6 +45,8 @@ import type {
 } from "@/lib/shared/types";
 
 const REQUEST_TIMEOUT_MS = 20_000;
+
+const MAX_DEFAULT_LOAD_RETRIES = 3;
 
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
@@ -67,6 +70,48 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+interface ModulePlaceholderProps {
+  /** 模块名称，作为占位卡片标题。 */
+  title: string;
+  /** 说明当前为什么没有内容，以及用户可以做什么。 */
+  message: string;
+  /** 可选补救操作文案（例如「重新查询」）。 */
+  actionLabel?: string;
+  onAction?: () => void;
+  busy?: boolean;
+}
+
+/**
+ * 模块已勾选但数据未就绪时的占位卡片。
+ * 之前这些模块直接返回 null，勾选后右侧没有任何反馈，用户无法判断是没生效还是加载失败。
+ */
+function ModulePlaceholder({
+  title,
+  message,
+  actionLabel,
+  onAction,
+  busy = false,
+}: ModulePlaceholderProps) {
+  return (
+    <section className="rounded-xl border border-dashed bg-white p-6 text-center shadow-sm">
+      <h2 className="text-base font-semibold">{title}</h2>
+      <p className="mt-2 text-sm text-muted-foreground">{message}</p>
+      {actionLabel && onAction ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="mt-3"
+          disabled={busy}
+          onClick={onAction}
+        >
+          {busy ? "加载中..." : actionLabel}
+        </Button>
+      ) : null}
+    </section>
+  );
 }
 
 /** 基金工作台容器：管理基金代码、档案与净值展示状态。 */
@@ -311,7 +356,7 @@ export default function FundWorkbench() {
       const nextCode = normalizeFundCode(nextInput);
       if (!nextCode) {
         setError("请输入 6 位基金代码。");
-        return;
+        return false;
       }
 
       activeProfileCodeRef.current = nextCode;
@@ -332,27 +377,54 @@ export default function FundWorkbench() {
         const profileData = await apiFetch<FundProfile>(
           `/api/funds/${encodeURIComponent(nextCode)}/profile`,
         );
-        if (activeProfileCodeRef.current === nextCode) {
-          setCode(nextCode);
-          setProfile(profileData);
-          setLoading(false);
-          setRange("1y");
-          setNavType("unit");
-          setQueryVersion((version) => version + 1);
+        if (activeProfileCodeRef.current !== nextCode) {
+          // 期间用户已切换到其他基金，本次结果作废。
+          return false;
         }
+        setCode(nextCode);
+        setProfile(profileData);
+        setLoading(false);
+        setRange("1y");
+        setNavType("unit");
+        setQueryVersion((version) => version + 1);
+        return true;
       } catch (nextError) {
-        if (activeProfileCodeRef.current === nextCode) {
-          setError(nextError instanceof Error ? nextError.message : "基金查询失败。");
-          setLoading(false);
+        if (activeProfileCodeRef.current !== nextCode) {
+          return false;
         }
+        setError(nextError instanceof Error ? nextError.message : "基金查询失败。");
+        setLoading(false);
+        return false;
       }
     },
     [],
   );
 
   useEffect(() => {
-    const timer = setTimeout(() => void loadFund(DEFAULT_FUND_CODE), 0);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    const run = async () => {
+      // 冷启动时侧车（AkShare 首访）可能尚未就绪，失败后退避重试，避免右侧模块长时间空白。
+      const delays = [0, 3_000, 8_000].slice(0, MAX_DEFAULT_LOAD_RETRIES);
+      for (const delay of delays) {
+        if (delay > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        if (cancelled) {
+          return;
+        }
+        if (await loadFund(DEFAULT_FUND_CODE)) {
+          return;
+        }
+        // 用户已主动查询了其他基金时不再重试默认基金，避免覆盖用户操作。
+        if (activeProfileCodeRef.current !== DEFAULT_FUND_CODE) {
+          return;
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [loadFund]);
 
   useEffect(() => {
@@ -647,14 +719,38 @@ export default function FundWorkbench() {
     setFundMessages([]);
   };
 
+  /** 依赖当前基金的模块在数据未就绪时给出可操作提示，避免勾选后右侧一片空白。 */
+  const renderPendingModule = (title: string) => (
+    <ModulePlaceholder
+      title={title}
+      message={
+        loading
+          ? `正在加载基金 ${input.trim() || DEFAULT_FUND_CODE} 的档案，加载完成后会自动显示「${title}」。`
+          : error ??
+            `尚未加载基金数据，请先在左侧输入基金代码（留空默认 ${DEFAULT_FUND_CODE}）并点击「查询基金」。`
+      }
+      actionLabel={loading ? undefined : "重新查询"}
+      onAction={() => void loadFund(input.trim() || DEFAULT_FUND_CODE)}
+      busy={loading}
+    />
+  );
+
   const renderFundModule = (key: FundModuleKey) => {
+    if (!enabledModules[key]) {
+      return null;
+    }
     if (key === "profile") {
-      return enabledModules.profile && profile ? (
+      return profile ? (
         <FundProfilePanel profile={profile} loading={loading} />
-      ) : null;
+      ) : (
+        renderPendingModule("基金档案")
+      );
     }
     if (key === "nav") {
-      return enabledModules.nav && code ? (
+      if (!code) {
+        return renderPendingModule("净值走势");
+      }
+      return (
         <FundNavChartPanel
           nav={nav}
           range={range}
@@ -670,29 +766,37 @@ export default function FundWorkbench() {
           onRangeChange={(value) => setRange(value)}
           onNavTypeChange={(value) => setNavType(value)}
         />
-      ) : null;
+      );
     }
     if (key === "intraday") {
-      return enabledModules.intraday && code ? (
-        <FundIntradayPanel intraday={intraday} loading={intradayLoading} />
-      ) : null;
+      if (!code) {
+        return renderPendingModule("当日行情");
+      }
+      return <FundIntradayPanel intraday={intraday} loading={intradayLoading} />;
     }
     if (key === "holdings") {
-      return enabledModules.holdings && code ? (
-        <FundHoldingsPanel holdings={holdings} loading={holdingsLoading} />
-      ) : null;
+      if (!code) {
+        return renderPendingModule("持仓分析");
+      }
+      return <FundHoldingsPanel holdings={holdings} loading={holdingsLoading} />;
     }
     if (key === "risk") {
-      return enabledModules.risk && code ? (
+      if (!code) {
+        return renderPendingModule("回撤与风险指标");
+      }
+      return (
         <FundRiskPanel
           allMetrics={allMetrics}
           oneYearMetrics={oneYearMetrics}
           loading={metricsLoading}
         />
-      ) : null;
+      );
     }
     if (key === "analysis") {
-      return enabledModules.analysis && code ? (
+      if (!code) {
+        return renderPendingModule("AI 分析");
+      }
+      return (
         <FundAnalysisPanel
           code={code}
           reports={fundReports}
@@ -712,10 +816,13 @@ export default function FundWorkbench() {
             }
           }}
         />
-      ) : null;
+      );
     }
     if (key === "chat") {
-      return enabledModules.chat && code ? (
+      if (!code) {
+        return renderPendingModule("对话助手");
+      }
+      return (
         <ChatPanel
           code={code}
           conversationId={fundConversationId}
@@ -726,35 +833,38 @@ export default function FundWorkbench() {
           onSubmit={(event) => void handleFundChatSubmit(event)}
           onStop={stopFundChat}
         />
-      ) : null;
+      );
     }
     if (key === "replay") {
-      return enabledModules.replay && code ? (
+      if (!code) {
+        return renderPendingModule("历史复盘");
+      }
+      return (
         <FundReplayPanel
           key={code}
           code={code}
           refreshToken={replayRefreshToken}
           deletedReportId={lastDeletedReportId}
         />
-      ) : null;
+      );
     }
     if (key === "comparison") {
-      return enabledModules.comparison ? <FundComparisonPanel /> : null;
+      return <FundComparisonPanel />;
     }
     if (key === "portfolio") {
-      return enabledModules.portfolio ? <FundPortfolioPanel /> : null;
+      return <FundPortfolioPanel />;
     }
     if (key === "dca") {
-      return enabledModules.dca ? <FundDcaPanel /> : null;
+      return <FundDcaPanel />;
     }
     if (key === "news") {
-      return enabledModules.news ? <FundNewsPanel /> : null;
+      return <FundNewsPanel />;
     }
     if (key === "style") {
-      return enabledModules.style ? <FundStylePanel /> : null;
+      return <FundStylePanel />;
     }
     if (key === "alerts") {
-      return enabledModules.alerts ? <AlertPanel target="fund" /> : null;
+      return <AlertPanel target="fund" />;
     }
     return null;
   };
