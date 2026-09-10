@@ -214,15 +214,18 @@ def _estimation_rows() -> list[dict]:
     if not HAS_AKSHARE:
         return []
 
-    try:
-        frame = ak.fund_value_estimation_em(symbol="全部")
-        if frame is None or frame.empty:
-            return []
-        _ESTIMATION_ROWS = frame.to_dict("records")
-        _ESTIMATION_LOADED_AT = now
-        return _ESTIMATION_ROWS
-    except Exception:
-        return []
+    # 东财估值排行页偶发 SSL 中断，重试数次以提高命中率；仍失败则返回空列表走降级。
+    for attempt in range(3):
+        try:
+            frame = ak.fund_value_estimation_em(symbol="全部")
+            if frame is None or frame.empty:
+                continue
+            _ESTIMATION_ROWS = frame.to_dict("records")
+            _ESTIMATION_LOADED_AT = now
+            return _ESTIMATION_ROWS
+        except Exception as exc:
+            logger.debug("获取场外估值排行失败（第 %s 次）：%s", attempt + 1, exc)
+    return []
 
 
 def _build_akshare_estimate(code: str) -> dict | None:

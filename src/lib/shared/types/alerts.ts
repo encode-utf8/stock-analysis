@@ -8,6 +8,8 @@ export type AlertTarget = "stock" | "fund";
 export type AlertMetric =
   | "change_pct"
   | "price"
+  | "estimate_nav"
+  | "estimate_change_pct"
   | "unit_nav"
   | "nav_change_pct"
   | "drawdown_pct"
@@ -104,6 +106,8 @@ export interface AlertScanResult {
   skipped_reasons: string[];
   email_status: AlertEmailStatus;
   email_reason: string | null;
+  /** 本次扫描使用的交易日历来源：akshare 或 weekday-fallback。 */
+  trading_day_source: string;
   duration_ms: number;
 }
 
@@ -111,8 +115,10 @@ export interface AlertScanResult {
 export const ALERT_METRIC_LABELS: Record<AlertMetric, string> = {
   change_pct: "当日涨跌幅",
   price: "最新价",
-  unit_nav: "单位净值",
-  nav_change_pct: "净值单日涨跌",
+  estimate_nav: "盘中估算净值",
+  estimate_change_pct: "盘中估算涨跌幅",
+  unit_nav: "公布单位净值",
+  nav_change_pct: "公布净值单日涨跌",
   drawdown_pct: "区间最大回撤",
   current_drawdown_pct: "当前回撤",
 };
@@ -121,6 +127,8 @@ export const ALERT_METRIC_LABELS: Record<AlertMetric, string> = {
 export const ALERT_METRIC_UNITS: Record<AlertMetric, string> = {
   change_pct: "%",
   price: "元",
+  estimate_nav: "",
+  estimate_change_pct: "%",
   unit_nav: "",
   nav_change_pct: "%",
   drawdown_pct: "%",
@@ -130,7 +138,15 @@ export const ALERT_METRIC_UNITS: Record<AlertMetric, string> = {
 /** 各标的类型可用的指标。 */
 export const ALERT_TARGET_METRICS: Record<AlertTarget, AlertMetric[]> = {
   stock: ["change_pct", "price"],
-  fund: ["unit_nav", "nav_change_pct", "drawdown_pct", "current_drawdown_pct"],
+  // 基金以盘中估算为主（盘中监控），公布净值与回撤作为辅助口径。
+  fund: [
+    "estimate_change_pct",
+    "estimate_nav",
+    "unit_nav",
+    "nav_change_pct",
+    "drawdown_pct",
+    "current_drawdown_pct",
+  ],
 };
 
 /** 比较方向中文文案。 */

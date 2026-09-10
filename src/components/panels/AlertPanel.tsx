@@ -84,6 +84,24 @@ function defaultCondition(metric: AlertMetric): AlertCondition {
   return { metric, operator: "lte", threshold: -3 };
 }
 
+/** 交易日历状态。 */
+interface AlertCalendarInfo {
+  source: string;
+  today: string;
+  is_trading_day: boolean;
+  first_day: string | null;
+  last_day: string | null;
+  fetched_at: string;
+}
+
+/** 交易日历来源文案。 */
+function calendarSourceLabel(source: string | undefined): string {
+  if (!source) {
+    return "未知";
+  }
+  return source === "weekday-fallback" ? "工作日近似（侧车不可用）" : "AkShare 交易日历";
+}
+
 const EMPTY_SETTINGS: AlertSettings = {
   email_to: null,
   email_enabled: true,
@@ -105,6 +123,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
   const [settings, setSettings] = useState<AlertSettings>(EMPTY_SETTINGS);
   const [stockOptions, setStockOptions] = useState<WatchlistItem[]>([]);
   const [fundOptions, setFundOptions] = useState<FundWatchlistItem[]>([]);
+  const [calendarInfo, setCalendarInfo] = useState<AlertCalendarInfo | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -128,12 +147,13 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
   // 注意：不要在同步路径内先 setState，否则会触发 react-hooks/set-state-in-effect。
   const loadAll = useCallback(async () => {
     try {
-      const [ruleData, eventData, settingData, stockData, fundData] = await Promise.all([
+      const [ruleData, eventData, settingData, stockData, fundData, calendarData] = await Promise.all([
         apiFetch<AlertRule[]>("/api/alerts/rules"),
         apiFetch<AlertEvent[]>("/api/alerts/events?limit=100"),
         apiFetch<AlertSettings>("/api/alerts/settings"),
         apiFetch<WatchlistItem[]>("/api/watchlist"),
         apiFetch<FundWatchlistItem[]>("/api/fund-watchlist"),
+        apiFetch<AlertCalendarInfo>("/api/alerts/calendar"),
       ]);
       setRules(ruleData);
       setEvents(eventData);
@@ -142,6 +162,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
       setEmailEnabledDraft(settingData.email_enabled);
       setStockOptions(stockData);
       setFundOptions(fundData);
+      setCalendarInfo(calendarData);
     } catch (nextError) {
       setError(errorText(nextError, "预警数据加载失败"));
     } finally {
@@ -219,9 +240,10 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
         triggered_count?: number;
         scanned_targets?: number;
         skipped_count?: number;
+        trading_day_source?: string;
       };
       setNotice(
-        `评估完成：检查 ${detail.scanned_targets ?? 0} 个标的，触发 ${detail.triggered_count ?? 0} 条，跳过 ${detail.skipped_count ?? 0} 类原因。`,
+        `评估完成：检查 ${detail.scanned_targets ?? 0} 个标的，触发 ${detail.triggered_count ?? 0} 条，跳过 ${detail.skipped_count ?? 0} 类原因；交易日历来源：${calendarSourceLabel(detail.trading_day_source)}。`,
       );
       await loadAll();
     } catch (nextError) {
@@ -363,7 +385,7 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
           <div>
             <h2 className="text-base font-semibold">预警中心</h2>
             <p className="text-xs text-muted-foreground">
-              基于最近一次数据快照，非实时行情；仅在有效时段触发，同一规则 12 小时内只提醒一次。
+              基金以盘中估算净值盯盘（场内实时价 / 场外估算），仅在交易日盘中触发；同一规则 12 小时内只提醒一次。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -400,6 +422,15 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
               : "未配置 SMTP，仅页面展示"}
           </span>
           <span>收件邮箱：{settings.email_to ?? "未设置"}</span>
+          <span>
+            今日（{calendarInfo?.today ?? "—"}）：
+            {calendarInfo
+              ? calendarInfo.is_trading_day
+                ? "交易日"
+                : "休市"
+              : "未知"}
+          </span>
+          <span>交易日历：{calendarSourceLabel(calendarInfo?.source)}</span>
         </div>
       </div>
 
@@ -711,7 +742,8 @@ export function AlertPanel({ defaultTarget }: AlertPanelProps) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        说明：预警基于最近一次数据快照，非实时行情；行情与净值存在延迟，仅用于学习与观察，不构成投资建议。
+        说明：股票预警基于最近一次行情快照；基金预警基于盘中估算净值（场内实时价 / 场外估算），均非交易所正式成交口径，
+        且存在延迟，仅用于学习与观察，不构成投资建议。
       </p>
     </section>
   );
