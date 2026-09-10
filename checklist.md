@@ -1409,7 +1409,7 @@ corepack pnpm build
 - [x] `POST /api/fund-watchlist` 对未知代码（如 `560713`）返回 400 `CODE_NOT_FOUND`，同上
 - [x] 合法代码（如 `600519`、`560710`、`110022`）仍可正常添加
 - [x] 新增单按钮提示弹窗组件 `NoticeDialog`，与红色删除确认弹窗区分
-- [x] 个股/基金自选面板收到 `CODE_NOT_FOUND` 时弹窗提示，其他错误仍走行内错误条
+- [x] 左侧自选边栏（`WatchlistSidebar`、`FundWatchlistPanel`）与自选面板均捕获 `CODE_NOT_FOUND` 并弹窗提示，其他错误仍走行内错误条
 - [x] 添加成功时用上游真实名称回填自选条目，避免显示「股票 xxxxxx / 基金 xxxxxx」
 - [x] 纯函数 `resolveVerifyVerdict` 等有单元测试覆盖
 - [x] `corepack pnpm test`、`typecheck`、`lint`、`build` 全部通过
@@ -1432,6 +1432,7 @@ corepack pnpm build
 - 防误拦：停掉侧车后 `POST /api/fund-watchlist {code:"560713"}` → 201（按上游不可用放行），恢复侧车后重新拦截
 - 重复校验前置：已在自选池中的 `560710` 直接返回 409，不会额外发起上游校验
 - 命令：`corepack pnpm test`（11 文件 / 137 用例）、`typecheck`、`lint`、`build` 全部通过
+- 弹窗入口覆盖：个股入口同时存在 `WatchlistSidebar`（实际使用）与遗留的 `WatchlistPanel`，两者与基金 `FundWatchlistPanel` 均已接入 `NoticeDialog`；排查确认没有其他写入自选池的入口。
 
 ### 风险与遗留
 
