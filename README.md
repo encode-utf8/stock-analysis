@@ -173,6 +173,8 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 ```bash
 corepack pnpm typecheck
 corepack pnpm lint
+corepack pnpm test
+corepack pnpm test:coverage
 corepack pnpm build
 corepack pnpm dev
 ```
