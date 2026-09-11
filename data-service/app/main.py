@@ -930,6 +930,66 @@ def kline(
     """返回标准化 K 线数据。"""
     return _build_tencent_kline(code, period, adjust, limit) or _build_akshare_kline(code, period, adjust, limit) or _build_fallback_kline(code, period, adjust, limit)
 
+# ===== 批量行情（供实时推送与自选池秒级刷新使用） =====
+
+QUOTES_MAX_CODES = 50
+
+
+@app.get("/quotes")
+def quotes(codes: str = Query(..., min_length=1, max_length=2000)) -> dict:
+    """批量返回行情快照。
+
+    - 一次最多 50 个代码，逐个校验为 6 位数字，非法输入返回 400；
+    - 复用腾讯多代码查询，单行解析失败只影响该代码，不影响整批；
+    - 返回 missing 列表，便于前端标注「无数据」而不是整批失败。
+    """
+    requested = [item.strip() for item in codes.split(",") if item.strip()]
+    if not requested:
+        raise HTTPException(status_code=400, detail="codes 不能为空。")
+    if len(requested) > QUOTES_MAX_CODES:
+        raise HTTPException(status_code=400, detail=f"一次最多查询 {QUOTES_MAX_CODES} 个代码。")
+
+    invalid = sorted({code for code in requested if len(code) != 6 or not code.isdigit()})
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"非法代码：{','.join(invalid)}")
+
+    unique = list(dict.fromkeys(requested))
+    now = _now_utc()
+    text = _curl_get_text(
+        f"https://qt.gtimg.cn/q={','.join(_tencent_symbol(code) for code in unique)}",
+        encoding="gbk",
+    )
+
+    quotes_by_code: dict[str, dict] = {}
+    if text:
+        for raw_line in text.split(";"):
+            line = raw_line.strip()
+            if "=" not in line:
+                continue
+            symbol = line.split("=", 1)[0].strip()
+            if symbol.startswith("v_"):
+                symbol = symbol[2:]
+            parts = _tencent_parts(line)
+            if parts is None:
+                continue
+            for code in unique:
+                if code in quotes_by_code:
+                    continue
+                if _tencent_symbol(code) == symbol or symbol[-6:] == code:
+                    quote = _parse_tencent_quote(code, parts)
+                    if quote is not None:
+                        quotes_by_code[code] = quote
+                    break
+
+    result = [quotes_by_code[code] for code in unique if code in quotes_by_code]
+    missing = [code for code in unique if code not in quotes_by_code]
+    return {
+        "quotes": result,
+        "missing": missing,
+        "source": SOURCE_AKSHARE if result else SOURCE_FALLBACK,
+        "fetched_at": now.isoformat(),
+    }
+
 
 # ===== 大盘指数 / 全市场涨跌家数 / 行业板块（供 AI 收盘日报使用） =====
 

@@ -10,6 +10,7 @@ import type {
   MarketBreadthSnapshot,
   MarketQuote,
   MarketSectorsSnapshot,
+  QuoteStreamItem,
 } from "@/lib/shared/types";
 
 const DEFAULT_DATA_SERVICE_URL = "http://127.0.0.1:8000";
@@ -275,6 +276,90 @@ export async function fetchMarketSectorsFromSidecar(
     );
     recordExternalCall(true);
     return isMarketSectors(data) ? data : null;
+  } catch {
+    recordExternalCall(false);
+    return null;
+  }
+}
+
+const QUOTES_TIMEOUT_MS = 5_000;
+
+/** 侧车批量行情返回结构。 */
+export interface SidecarQuoteBatch {
+  items: QuoteStreamItem[];
+  missing: string[];
+  source: string;
+  fetched_at: string;
+}
+
+/** 侧车批量行情单条结构（不含 target，由调用方按订阅类型补齐）。 */
+interface SidecarQuoteItem {
+  code: string;
+  price: number;
+  change_pct: number;
+  prev_close?: number;
+  source: string;
+  fetched_at: string;
+}
+
+/** 校验批量行情单条结构。 */
+function isSidecarQuoteItem(value: unknown): value is SidecarQuoteItem {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const item = value as Partial<SidecarQuoteItem>;
+  return (
+    typeof item.code === "string" &&
+    typeof item.price === "number" &&
+    typeof item.change_pct === "number" &&
+    typeof item.source === "string" &&
+    typeof item.fetched_at === "string"
+  );
+}
+
+/**
+ * 批量获取行情快照（实时推送专用）。
+ * 侧车不可达、超时或全部代码都查不到时返回 null，由调用方按「本轮失败」处理并退避。
+ */
+export async function fetchQuotesFromSidecar(codes: string[]): Promise<SidecarQuoteBatch | null> {
+  const unique = Array.from(new Set(codes.filter((code) => /^\d{6}$/.test(code))));
+  if (unique.length === 0) {
+    return null;
+  }
+
+  try {
+    const data = await fetchJson<{
+      quotes?: unknown;
+      missing?: unknown;
+      source?: unknown;
+      fetched_at?: unknown;
+    }>(`/quotes?codes=${encodeURIComponent(unique.join(","))}`, QUOTES_TIMEOUT_MS);
+    recordExternalCall(true);
+
+    const items: QuoteStreamItem[] = Array.isArray(data.quotes)
+      ? data.quotes.filter(isSidecarQuoteItem).map((item) => ({
+          code: item.code,
+          // 侧车 /quotes 只查股票与场内基金代码，统一按股票口径消费。
+          target: "stock",
+          price: item.price,
+          change_pct: item.change_pct,
+          prev_close: typeof item.prev_close === "number" ? item.prev_close : item.price,
+          source: item.source,
+          fetched_at: item.fetched_at,
+        }))
+      : [];
+    if (items.length === 0) {
+      return null;
+    }
+
+    return {
+      items,
+      missing: Array.isArray(data.missing)
+        ? data.missing.filter((code): code is string => typeof code === "string")
+        : [],
+      source: typeof data.source === "string" ? data.source : "unknown",
+      fetched_at: typeof data.fetched_at === "string" ? data.fetched_at : new Date().toISOString(),
+    };
   } catch {
     recordExternalCall(false);
     return null;

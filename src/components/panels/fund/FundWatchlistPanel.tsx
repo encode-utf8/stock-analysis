@@ -9,6 +9,7 @@ import { NoticeDialog } from "@/components/ui/notice-dialog";
 import { Toast } from "@/components/ui/toast";
 import { CodeNotFoundError } from "@/lib/code-verify";
 import { FUND_TYPE_LABELS, normalizeFundCode } from "@/lib/fund-market";
+import { useRealtimeQuotes } from "@/lib/realtime-quote-client";
 import { emitWatchlistChange } from "@/lib/watchlist-bus";
 import type { FundWatchlistItem } from "@/lib/shared/types";
 
@@ -67,6 +68,13 @@ export function FundWatchlistPanel({
   const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
   // 上游查不到代码时的提示弹窗文案。
   const [notice, setNotice] = useState<string | null>(null);
+  // 实时行情由全局单例统一建连，这里只读取基金快照用于列表展示。
+  const { items: realtimeItems } = useRealtimeQuotes();
+  const realtimeByCode = new Map(
+    realtimeItems
+      .filter((quote) => quote.target === "fund")
+      .map((quote) => [quote.code, quote] as const),
+  );
 
   const showToast = (message: string) => {
     setToast({ id: Date.now(), message });
@@ -209,8 +217,10 @@ export function FundWatchlistPanel({
         {!loading && items.length === 0 ? (
           <span className="text-sm text-muted-foreground">暂无自选基金。</span>
         ) : null}
-        {items.map((item) => (
-          <div
+        {items.map((item) => {
+          const quote = realtimeByCode.get(item.code);
+          return (
+            <div
             key={item.code}
             className={
               "rounded-lg border p-2.5 transition-colors " +
@@ -228,6 +238,9 @@ export function FundWatchlistPanel({
                 <div className="truncate text-sm font-medium">{item.name}</div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
                   {item.code} · {FUND_TYPE_LABELS[item.type] ?? item.type}
+                  {quote
+                    ? ` · 实时 ${quote.price.toFixed(4)} (${quote.change_pct > 0 ? "+" : ""}${quote.change_pct.toFixed(2)}%)`
+                    : ""}
                 </div>
                 {item.note ? (
                   <div className="mt-1 line-clamp-1 text-xs text-muted-foreground">
@@ -285,7 +298,8 @@ export function FundWatchlistPanel({
               </div>
             ) : null}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <ConfirmDialog

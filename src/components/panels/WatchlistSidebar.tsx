@@ -9,6 +9,7 @@ import { NoticeDialog } from "@/components/ui/notice-dialog";
 import { Toast } from "@/components/ui/toast";
 import { CodeNotFoundError } from "@/lib/code-verify";
 import { normalizeStockCode } from "@/lib/market";
+import { useRealtimeQuotes } from "@/lib/realtime-quote-client";
 import { emitWatchlistChange } from "@/lib/watchlist-bus";
 import type { WatchlistItem } from "@/lib/shared/types";
 
@@ -86,6 +87,13 @@ export function WatchlistSidebar({
   const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
   // 上游查不到代码时的提示弹窗文案。
   const [notice, setNotice] = useState<string | null>(null);
+  // 实时行情由全局单例统一建连，这里只读取快照用于列表展示。
+  const { items: realtimeItems } = useRealtimeQuotes();
+  const realtimeByCode = new Map(
+    realtimeItems
+      .filter((quote) => quote.target === "stock")
+      .map((quote) => [quote.code, quote] as const),
+  );
 
   const showToast = (message: string) => {
     setToast({ id: Date.now(), message });
@@ -352,6 +360,14 @@ export function WatchlistSidebar({
                     {groupItems.map((item) => {
                       const isActive = activeCode === item.code;
                       const isEditing = editingCode === item.code;
+                      const quote = realtimeByCode.get(item.code);
+                      const quoteClass = !quote
+                        ? ""
+                        : quote.change_pct > 0
+                          ? "text-red-600"
+                          : quote.change_pct < 0
+                            ? "text-green-600"
+                            : "text-muted-foreground";
                       const index = items.findIndex(
                         (candidate) => candidate.code === item.code,
                       );
@@ -382,6 +398,18 @@ export function WatchlistSidebar({
                                   {exchangeLabel(item.exchange)}
                                 </span>
                               </div>
+                              {quote ? (
+                                <p className="mt-0.5 flex items-center gap-1.5 text-xs">
+                                  <span className={quoteClass}>{quote.price.toFixed(2)}</span>
+                                  <span className={quoteClass}>
+                                    {quote.change_pct > 0 ? "+" : ""}
+                                    {quote.change_pct.toFixed(2)}%
+                                  </span>
+                                  <span className="rounded bg-green-50 px-1 text-[10px] text-green-700">
+                                    实时
+                                  </span>
+                                </p>
+                              ) : null}
                               {item.note ? (
                                 <p className="mt-1 truncate text-xs text-muted-foreground">
                                   {item.note}

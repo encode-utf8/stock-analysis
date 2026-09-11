@@ -55,10 +55,10 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/** 读取环境变量中的标的数量上限，默认 3。 */
+/** 读取环境变量中的标的数量上限，默认 10（实时推送阶段由 3 放宽）。 */
 function envMaxTargets(): number {
-  const parsed = Number(process.env.ALERT_MAX_TARGETS ?? 3);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 3;
+  const parsed = Number(process.env.ALERT_MAX_TARGETS ?? 10);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 10;
 }
 
 /** 默认设置：收件邮箱取自本地环境变量，可被本地文件覆盖。 */

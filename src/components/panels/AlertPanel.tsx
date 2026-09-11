@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Toast } from "@/components/ui/toast";
 import { formatDateTime } from "@/lib/format";
+import {
+  notificationPermission,
+  playAlertSound,
+  requestNotificationPermission,
+  showBrowserNotification,
+  subscribeRealtimeAlerts,
+  useRealtimeQuotes,
+} from "@/lib/realtime-quote-client";
 import {
   ALERT_MAX_CONDITIONS,
   ALERT_METRIC_LABELS,
@@ -107,7 +116,7 @@ const EMPTY_SETTINGS: AlertSettings = {
   email_to: null,
   email_enabled: true,
   email_configured: false,
-  max_targets: 3,
+  max_targets: 10,
   updated_at: "",
 };
 
@@ -143,6 +152,12 @@ export function AlertPanel({ target }: AlertPanelProps) {
   const [savingSettings, setSavingSettings] = useState(false);
   const [testingEmail, setTestingEmail] = useState(false);
   const [onlyUnread, setOnlyUnread] = useState(false);
+  // 实时推送命中时在面板内弹出的站内提示。
+  const [realtimeToast, setRealtimeToast] = useState<{ id: number; message: string } | null>(null);
+  const [notifyPermission, setNotifyPermission] = useState<
+    NotificationPermission | "unsupported"
+  >("default");
+  const { enabled: realtimeEnabled, soundEnabled } = useRealtimeQuotes();
 
   // 注意：不要在同步路径内先 setState，否则会触发 react-hooks/set-state-in-effect。
   const loadAll = useCallback(async () => {
@@ -174,6 +189,35 @@ export function AlertPanel({ target }: AlertPanelProps) {
     // 放进微任务回调，避免在 effect 同步路径里直接 setState。
     void Promise.resolve().then(() => loadAll());
   }, [loadAll]);
+
+  // 浏览器通知授权状态只能在客户端读取，放进微任务避免 effect 同步 setState。
+  useEffect(() => {
+    void Promise.resolve().then(() => setNotifyPermission(notificationPermission()));
+  }, []);
+
+  /**
+   * 订阅实时推送的预警事件：
+   * 命中即刻插入事件流顶部（按 id 去重），并弹站内提示；邮件与落库已由服务端完成。
+   */
+  useEffect(() => {
+    return subscribeRealtimeAlerts((incoming) => {
+      setEvents((current) => {
+        const known = new Set(current.map((event) => event.id));
+        const fresh = incoming.filter((event) => !known.has(event.id));
+        return fresh.length > 0 ? [...fresh, ...current] : current;
+      });
+      const first = incoming[0];
+      if (first) {
+        setRealtimeToast({ id: Date.now(), message: first.message });
+      }
+      if (soundEnabled) {
+        playAlertSound();
+      }
+      for (const event of incoming) {
+        showBrowserNotification(event);
+      }
+    });
+  }, [soundEnabled]);
 
   /** 自选池增删后只刷新可选标的，不必重拉规则与事件。 */
   const refreshOptions = useCallback(async (kind: WatchlistKind) => {
@@ -390,6 +434,17 @@ export function AlertPanel({ target }: AlertPanelProps) {
     } finally {
       setTestingEmail(false);
     }
+  };
+
+  /** 申请浏览器通知授权；被拒时降级为站内提示，不阻塞功能。 */
+  const handleRequestNotification = async () => {
+    const permission = await requestNotificationPermission();
+    setNotifyPermission(permission);
+    setNotice(
+      permission === "granted"
+        ? "浏览器通知已开启，预警命中时会同时弹出系统通知。"
+        : "未获得浏览器通知授权，命中时仍会显示站内提示。",
+    );
   };
 
   return (
@@ -688,6 +743,29 @@ export function AlertPanel({ target }: AlertPanelProps) {
               只看未读
             </label>
           </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>
+              {realtimeEnabled
+                ? "实时推送已开启：命中即刻插入下方列表并弹站内提示。"
+                : "实时推送未开启：在行情条打开「开启实时」后，命中即可即时提醒。"}
+            </span>
+            {notifyPermission === "granted" ? (
+              <span className="text-green-700">浏览器通知已授权</span>
+            ) : notifyPermission === "denied" ? (
+              <span className="text-amber-600">浏览器通知被拒绝，已降级为站内提示</span>
+            ) : notifyPermission === "unsupported" ? (
+              <span>当前浏览器不支持系统通知</span>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void handleRequestNotification()}
+              >
+                开启浏览器通知
+              </Button>
+            )}
+          </div>
           {loading ? (
             <p className="mt-2 text-sm text-muted-foreground">加载中...</p>
           ) : targetEvents.length === 0 ? (
@@ -747,6 +825,7 @@ export function AlertPanel({ target }: AlertPanelProps) {
         说明：股票预警基于最近一次行情快照；基金预警基于盘中估算净值（场内实时价 / 场外估算），均非交易所正式成交口径，
         且存在延迟，仅用于学习与观察，不构成投资建议。
       </p>
+      {realtimeToast ? <Toast key={realtimeToast.id} message={realtimeToast.message} /> : null}
     </section>
   );
 }
