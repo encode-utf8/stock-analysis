@@ -20,6 +20,7 @@ import { FundNavChartPanel } from "@/components/panels/fund/FundNavChartPanel";
 import { FundProfilePanel } from "@/components/panels/fund/FundProfilePanel";
 import { FundPortfolioPanel } from "@/components/panels/fund/FundPortfolioPanel";
 import { FundReplayPanel } from "@/components/panels/fund/FundReplayPanel";
+import { RealtimeQuoteBar } from "@/components/panels/RealtimeQuoteBar";
 import { FundRiskPanel } from "@/components/panels/fund/FundRiskPanel";
 import { FundStylePanel } from "@/components/panels/fund/FundStylePanel";
 import {
@@ -932,6 +933,8 @@ export default function FundWorkbench() {
                 </div>
               </div>
             </header>
+
+            <RealtimeQuoteBar target="fund" />
 
             {error ? (
               <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

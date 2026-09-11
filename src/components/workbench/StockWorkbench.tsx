@@ -28,6 +28,7 @@ import {
   type ObservabilityData,
 } from "@/components/panels/ObservabilityPanel";
 import { QuotePanel } from "@/components/panels/QuotePanel";
+import { RealtimeQuoteBar } from "@/components/panels/RealtimeQuoteBar";
 import { ReplayPanel } from "@/components/panels/ReplayPanel";
 import { StockBacktestPanel } from "@/components/panels/stock/StockBacktestPanel";
 import { StockPortfolioPanel } from "@/components/panels/stock/StockPortfolioPanel";
@@ -816,6 +817,8 @@ export default function StockWorkbench() {
                 </div>
               </div>
             </header>
+
+            <RealtimeQuoteBar target="stock" />
 
             {error ? (
               <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

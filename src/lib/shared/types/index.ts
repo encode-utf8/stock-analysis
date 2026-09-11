@@ -8,3 +8,4 @@ export * from "./alerts";
 export * from "./daily-report";
 export * from "./stock-portfolio";
 export * from "./stock-backtest";
+export * from "./realtime";

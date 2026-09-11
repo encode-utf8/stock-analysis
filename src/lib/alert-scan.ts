@@ -144,6 +144,57 @@ function pushReason(reasons: string[], reason: string): void {
   }
 }
 
+/** 事件落库与提醒结果，供扫描摘要与实时推送复用。 */
+export interface AlertNotifyResult {
+  email_status: AlertEmailStatus;
+  email_reason: string | null;
+}
+
+/**
+ * 落库并提醒一批触发事件：写事件流、更新规则冷却时间、按需发送摘要邮件。
+ * 定时扫描与实时推送共用本函数，保证两条路径的入库与邮件口径一致。
+ * dryRun 时不入库、不发邮件，只解析出会发生的邮件结果。
+ */
+export async function persistAndNotifyAlertEvents(
+  events: AlertEvent[],
+  triggeredRuleIds: string[],
+  now: Date = new Date(),
+  options: { dryRun?: boolean } = {},
+): Promise<AlertNotifyResult> {
+  if (events.length === 0) {
+    return { email_status: "skipped", email_reason: "本次没有触发预警" };
+  }
+
+  let emailStatus: AlertEmailStatus = "skipped";
+  let emailReason: string | null = null;
+  if (options.dryRun) {
+    emailReason = "演练模式未发送邮件";
+  } else {
+    const settings = await alertRepository.getSettings();
+    if (!settings.email_enabled) {
+      emailReason = "邮件推送已关闭";
+    } else {
+      const result = await sendAlertDigest(events, settings.email_to);
+      emailStatus = result.status;
+      emailReason = result.reason;
+    }
+  }
+
+  for (const event of events) {
+    event.email_status = emailStatus;
+    event.email_reason = emailReason;
+  }
+
+  if (!options.dryRun) {
+    await alertRepository.insertEvents(events);
+    for (const id of triggeredRuleIds) {
+      await alertRepository.markRuleTriggered(id, now.toISOString());
+    }
+  }
+
+  return { email_status: emailStatus, email_reason: emailReason };
+}
+
 /** 执行一次预警扫描；dryRun 时只计算不入库、不发邮件。 */
 export async function runAlertScan(options: AlertScanOptions = {}): Promise<AlertScanResult> {
   const now = options.now ?? new Date();
@@ -191,31 +242,10 @@ export async function runAlertScan(options: AlertScanOptions = {}): Promise<Aler
     }
   }
 
-  let emailStatus: AlertEmailStatus = "skipped";
-  let emailReason: string | null = "本次没有触发预警";
-  if (events.length > 0 && options.dryRun) {
-    emailReason = "演练模式未发送邮件";
-  } else if (events.length > 0) {
-    const settings = await alertRepository.getSettings();
-    if (!settings.email_enabled) {
-      emailReason = "邮件推送已关闭";
-    } else {
-      const result = await sendAlertDigest(events, settings.email_to);
-      emailStatus = result.status;
-      emailReason = result.reason;
-    }
-  }
-  for (const event of events) {
-    event.email_status = emailStatus;
-    event.email_reason = emailReason;
-  }
-
-  if (!options.dryRun && events.length > 0) {
-    await alertRepository.insertEvents(events);
-    for (const id of triggeredRuleIds) {
-      await alertRepository.markRuleTriggered(id, now.toISOString());
-    }
-  }
+  const { email_status: emailStatus, email_reason: emailReason } =
+    await persistAndNotifyAlertEvents(events, triggeredRuleIds, now, {
+      dryRun: options.dryRun,
+    });
 
   return {
     scanned_targets: targets.size,
