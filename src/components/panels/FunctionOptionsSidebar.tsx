@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 
@@ -15,6 +15,8 @@ export const MODULE_OPTIONS = [
   { key: "timeline", label: "历史会话时间线" },
   { key: "observability", label: "系统可观测性" },
   { key: "replay", label: "历史复盘" },
+  { key: "portfolio", label: "我的持仓组合" },
+  { key: "backtest", label: "策略回测" },
   { key: "datasource", label: "数据源与调度" },
   { key: "alerts", label: "预警中心" },
   { key: "daily-report", label: "AI 股市日报" },
