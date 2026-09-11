@@ -8,10 +8,12 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import type { AlertCondition, AlertConditionHit, AlertMetric, FundHoldingItem } from "@/lib/shared/types";
@@ -413,4 +415,21 @@ export const alertEvents = pgTable(
     index("alert_events_created_at_idx").on(table.createdAt),
     index("alert_events_status_idx").on(table.status),
   ],
+);
+
+/** 个股持仓组合：金额为投入成本额，收益为用户记录的当前浮动盈亏。 */
+// 与基金侧 fund_watchlist 一致，数据库不可用时回退 .data/stock-portfolio.json。
+export const stockHoldings = pgTable(
+  "stock_holdings",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    profit: numeric("profit", { precision: 18, scale: 2 }).notNull().default("0"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [uniqueIndex("stock_holdings_code_idx").on(table.code)],
 );

@@ -64,6 +64,13 @@
       "when": 1789018987047,
       "tag": "0008_married_lethal_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789105875704,
+      "tag": "0009_square_galactus",
+      "breakpoints": true
     }
   ]
 }

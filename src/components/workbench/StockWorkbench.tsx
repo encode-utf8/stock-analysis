@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -29,6 +29,8 @@ import {
 } from "@/components/panels/ObservabilityPanel";
 import { QuotePanel } from "@/components/panels/QuotePanel";
 import { ReplayPanel } from "@/components/panels/ReplayPanel";
+import { StockBacktestPanel } from "@/components/panels/stock/StockBacktestPanel";
+import { StockPortfolioPanel } from "@/components/panels/stock/StockPortfolioPanel";
 import { TimelinePanel } from "@/components/panels/TimelinePanel";
 
 import type {
@@ -731,6 +733,12 @@ export default function StockWorkbench() {
           deletedReportId={lastDeletedReportId}
         />
       ) : null;
+    }
+    if (key === "portfolio") {
+      return enabledModules.portfolio ? <StockPortfolioPanel /> : null;
+    }
+    if (key === "backtest") {
+      return enabledModules.backtest ? <StockBacktestPanel /> : null;
     }
     if (key === "datasource") {
       return enabledModules.datasource ? <DataSourcePanel /> : null;

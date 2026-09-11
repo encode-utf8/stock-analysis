@@ -158,5 +158,7 @@
 ## 6. 下一步
 
 - P0–P6 / M1–M5 已完成并合并到 `main`；P7 的 M6-M8 已完成并合并到 `main`，工作区干净。
-- 下一阶段候选：多市场/多语言、情绪指标与回测、实时行情推送与预警，均需先做可行性分析。
+- 已完成：个股投资组合与策略回测学习台（2026-09-11，`feature/stock-portfolio-backtest`，见根 `checklist.md`、`docs/stock-portfolio-backtest-plan.md`）。
+- 进行中/待开发：实时行情推送与站内预警（规划见 `docs/realtime-quote-push-plan.md`）。
+- 后续候选：多市场/多语言、情绪指标与策略回测扩展，均需先做可行性分析。
 - 开发编排、Agent 提示词与 worktree 命令见 `docs/next-phase-dev-plan.md`。

@@ -1,4 +1,4 @@
-"""行情数据侧车入口。
+﻿"""行情数据侧车入口。
 
 优先接入 AkShare 真实行情；当 AkShare 或上游源不可用时，按
 “Tencent 行情 -> 确定性数据”顺序降级，并统一在响应中标记
@@ -924,7 +924,8 @@ def kline(
     code: str = Query(..., min_length=6, max_length=6),
     period: KlinePeriod = Query("day"),
     adjust: AdjustType = Query("qfq"),
-    limit: int = Query(30, ge=10, le=240),
+    # 上限放宽到 1500 根，供个股策略回测拉取足够长的历史样本（默认 30 根不变）。
+    limit: int = Query(30, ge=10, le=1500),
 ) -> list[dict]:
     """返回标准化 K 线数据。"""
     return _build_tencent_kline(code, period, adjust, limit) or _build_akshare_kline(code, period, adjust, limit) or _build_fallback_kline(code, period, adjust, limit)
