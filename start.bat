@@ -97,12 +97,16 @@ if not defined DATA_HEALTHY (
 echo [启动] 行情/基金数据侧车已就绪：http://127.0.0.1:8000/health
 set "DATA_SERVICE_URL=http://127.0.0.1:8000"
 
+echo [启动] 启动定时任务守护进程...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-scheduler.ps1"
+
 echo [启动] 启动 Web 前端：http://127.0.0.1:3000
 if not defined NO_BROWSER start "" "http://127.0.0.1:3000"
 
 echo.
 echo   Web 前端：http://127.0.0.1:3000
 echo   行情/基金数据侧车：http://127.0.0.1:8000
+echo   定时任务守护：后台运行（设置 SKIP_SCHEDULER_WORKER=1 可关闭）
 echo   停止服务：在终端按 Ctrl+C
 echo.
 
@@ -112,6 +116,9 @@ if "%PNPM_RUNNER%"=="pnpm" (
   call corepack pnpm dev
 )
 set "FRONTEND_EXIT=%errorlevel%"
+
+echo [启动] 正在停止定时任务守护进程...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-scheduler.ps1" -Stop
 
 echo [启动] 正在停止行情/基金数据侧车...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-data.ps1" -Stop

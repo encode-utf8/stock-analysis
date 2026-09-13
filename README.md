@@ -174,6 +174,11 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 | `DAILY_FUND_REPORT_CRON` | 可选 | 基金日报探测表达式，默认 `*/20 20-23 * * 1-5`（交易日晚间每 20 分钟探测净值是否公布） |
 | `DAILY_REPORT_TIMEOUT_MS` | 可选 | 单篇日报的模型生成超时（毫秒），默认 `60000` |
 | `DAILY_REPORT_EMAIL_TO` | 可选 | 日报摘要邮件收件人；留空时回退 `ALERT_EMAIL_TO`，两者都没配置则跳过推送 |
+| `SCHEDULER_TOKEN` | 可选 | 调度补跑写接口令牌（请求头 `x-scheduler-token`）；留空时只允许本机来源触发 |
+| `SCHEDULER_BASE_URL` | 可选 | 独立守护进程目标地址，默认 `http://127.0.0.1:3000` |
+| `SCHEDULER_WORKER_INTERVAL_S` | 可选 | 守护进程轮询间隔（秒），默认 `300` |
+| `SCHEDULER_WORKER_MAX_FAILURES` | 可选 | 守护进程连续失败上限，达到后退出，默认 `5` |
+| `SKIP_INPROCESS_SCHEDULER` | 可选 | 设为 `1` 时不再注册进程内 cron，只依赖独立守护进程补跑 |
 | `SMTP_HOST` | 可选 | SMTP 服务器地址，QQ 邮箱为 `smtp.qq.com`；未配置时预警仅页面展示，不发送邮件 |
 | `SMTP_PORT` | 可选 | SMTP 端口，默认 `465`（465 使用 SSL，其它端口使用 STARTTLS） |
 | `SMTP_USER` | 可选 | SMTP 账号，QQ 邮箱填 `你的QQ号@qq.com` |
@@ -183,6 +188,16 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 > `DATABASE_URL` 未携带端口时会自动补默认端口 `5432`；本地 Docker 配置默认使用 `postgresql://postgres:postgres@localhost:5432/stock_analysis`。
 >
 > 预警邮件：SMTP 账号与授权码只写入本地 `.env`，仓库仅保留 `.env.example` 占位；未配置 SMTP 时预警事件照常记录，只是不发送邮件。
+
+## 定时任务守护
+
+- 服务端进程启动时会自动注册定时任务（`src/instrumentation.ts`），不再依赖「先访问管理接口」；调度表达式统一来自 `src/lib/scheduler-guard.ts` 的 `SCHEDULE_TABLE`。
+- `GET /api/admin/scheduler/status` 返回每个任务的最近运行时间、过期状态与跳过原因；`POST /api/admin/scheduler/tick` 只补跑过期任务，单项失败不影响其它任务。
+- 独立守护进程：`corepack pnpm scheduler:worker`（等价于 `node scripts/scheduler-worker.mjs`）定期探测 `/api/health` 与调度状态，发现停摆就触发补跑。
+  - `--once` 只检查一轮后退出（应用未启动时安全退出并打印原因），`--interval` 调整轮询间隔，`--max-failures` 控制连续失败上限。
+  - Windows 可用 `scripts/start-scheduler.ps1` 管理进程（pid 文件 `.logs/scheduler-worker.pid`），加 `-Stop` 停止。
+  - `start.bat` / `start.sh` 会随应用一起拉起守护进程，设置 `SKIP_SCHEDULER_WORKER=1` 可关闭。
+- 定位：守护进程做「发现停摆 + 补齐过期任务」，不负责拉起已退出的 Web 进程（进程级守护需要 supervisor / 计划任务）。
 
 ## 数据与降级
 
