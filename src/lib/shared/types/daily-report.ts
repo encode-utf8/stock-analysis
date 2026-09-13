@@ -77,6 +77,8 @@ export interface MarketSectorItem {
   companies: number | null;
   amount: number;
   leader: string | null;
+  /** 前一交易日涨跌幅（%）；仅同花顺历史口径提供，用于板块轮动对比。 */
+  prev_change_pct?: number | null;
 }
 
 /** 行业板块涨跌榜。 */
@@ -84,6 +86,8 @@ export interface MarketSectorsSnapshot {
   top: MarketSectorItem[];
   bottom: MarketSectorItem[];
   total: number;
+  /** 前一交易日板块对比（仅同花顺历史口径提供）；其他口径为 null。 */
+  comparison?: DailyReportSectorComparison | null;
   source: string;
   fetched_at: string;
 }
@@ -108,12 +112,52 @@ export interface DailyReportNewsRef {
   published_at: string;
 }
 
+/** 相邻交易日对比中的指数项。 */
+export interface DailyReportIndexComparison {
+  code: string;
+  name: string;
+  price: number;
+  change_pct: number;
+  /** 前一交易日涨跌幅（%）；日线不足时为 null。 */
+  prev_change_pct: number | null;
+  amount: number;
+  /** 前一交易日成交额（元）；缺失时为 null。 */
+  prev_amount: number | null;
+  /** 成交额环比（%）；前一日缺失或为 0 时为 null。 */
+  amount_change_pct: number | null;
+}
+
+/** 相邻交易日对比中的板块轮动（仅同花顺历史口径可得）。 */
+export interface DailyReportSectorComparison {
+  prev_date: string;
+  /** 前一交易日上涨板块数（板块口径，不是个股家数）。 */
+  prev_rise_count: number;
+  /** 前一交易日下跌板块数。 */
+  prev_fall_count: number;
+  /** 当日新进涨幅前五的板块。 */
+  newcomers: string[];
+  /** 前一交易日涨幅前五、当日已掉出的板块。 */
+  dropped: string[];
+}
+
+/** 与前一交易日的对比；上游不提供该口径时为 null。 */
+export interface DailyReportComparison {
+  prev_date: string;
+  indices: DailyReportIndexComparison[];
+  sectors: DailyReportSectorComparison | null;
+}
+
+/** 日报摘要邮件状态。 */
+export type DailyReportEmailStatus = "sent" | "skipped" | "failed";
+
 /** 日报依赖的数据快照；缺失项在 missing 中列明原因。 */
 export interface DailyReportData {
   trade_date: string;
   indices: IndexQuoteSnapshot[];
   breadth: MarketBreadthSnapshot | null;
   sectors: MarketSectorsSnapshot | null;
+  /** 与前一交易日的对比；上游无该口径时为 null。 */
+  comparison: DailyReportComparison | null;
   holdings: DailyReportHolding[];
   news: DailyReportNewsRef[];
   missing: string[];
@@ -146,6 +190,9 @@ export interface DailyReportJobResult {
   reason: string;
   storage: DailyReportStorage | null;
   report_source: DailyReportSource | null;
+  /** 摘要邮件推送结果；未配置或未触发时为 null。 */
+  email_status?: DailyReportEmailStatus | null;
+  email_reason?: string | null;
 }
 
 /** 列表接口返回结构。 */
@@ -153,4 +200,18 @@ export interface DailyReportListResult {
   kind: DailyReportKind;
   storage: DailyReportStorage;
   reports: DailyReportSummary[];
+}
+
+/** 批量回补结果：逐日结果便于面板与 job_runs 展示。 */
+export interface DailyReportBackfillResult {
+  kind: DailyReportKind;
+  /** 本次回补的交易日数量（已规范化到 1-30）。 */
+  days: number;
+  /** 参与回补的交易日（日期倒序）。 */
+  dates: string[];
+  /** 实际新生成篇数。 */
+  generated: number;
+  /** 跳过篇数（已存在、非交易日或上游失败）。 */
+  skipped: number;
+  results: DailyReportJobResult[];
 }

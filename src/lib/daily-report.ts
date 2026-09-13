@@ -2,6 +2,7 @@
 // 触发采用探测式：数据源就绪后立即生成，当天每类日报只生成一次。
 
 import { deepSeekBaseUrl, deepSeekConfigured, deepSeekModel } from "@/lib/analysis";
+import { sendDailyReportDigest } from "@/lib/daily-report-email";
 import { recordExternalCall } from "@/lib/observability";
 import { dailyReportExists, saveDailyReport } from "@/lib/daily-report-store";
 import {
@@ -22,15 +23,20 @@ import { beijingDateKey, getTradingCalendar } from "@/lib/trading-calendar";
 import { watchlistRepository } from "@/lib/watchlist";
 import type {
   DailyReport,
+  DailyReportComparison,
   DailyReportData,
   DailyReportHolding,
+  DailyReportIndexComparison,
   DailyReportJobResult,
   DailyReportKind,
   DailyReportMetric,
   DailyReportNewsRef,
+  DailyReportSectorComparison,
   DailyReportTone,
+  IndexKlineSeries,
   IndexQuoteSnapshot,
   Kline,
+  MarketSectorsSnapshot,
   NewsItem,
 } from "@/lib/shared/types";
 
@@ -117,21 +123,97 @@ export function summarizeChanges(values: (number | null)[]): {
   };
 }
 
-/** 采集大盘指数：当天取实时快照，历史日期取指数日线收盘与前收。 */
+/**
+ * 由指数日线推导「较前一交易日」对比：前一日涨跌幅与成交额环比。
+ * 前收不足两根 K 线时对应字段为 null，避免编造对比数据。
+ */
+function indexComparisonFromSeries(
+  series: (IndexKlineSeries | null)[],
+  date: string,
+): { prevDate: string | null; items: DailyReportIndexComparison[] } {
+  const items: DailyReportIndexComparison[] = [];
+  let prevDate: string | null = null;
+
+  for (const item of series) {
+    if (!item) {
+      continue;
+    }
+    const position = item.days.findIndex((day) => day.date === date);
+    if (position < 0) {
+      continue;
+    }
+    const current = item.days[position];
+    const previous = position > 0 ? item.days[position - 1] : null;
+    const beforePrevious = position > 1 ? item.days[position - 2] : null;
+    if (previous) {
+      prevDate = prevDate ?? previous.date;
+    }
+
+    const amount = typeof current.amount === "number" ? current.amount : 0;
+    const prevAmount = previous && typeof previous.amount === "number" ? previous.amount : null;
+    items.push({
+      code: item.code,
+      name: item.name,
+      price: current.close,
+      change_pct:
+        previous && previous.close > 0
+          ? Number((((current.close - previous.close) / previous.close) * 100).toFixed(2))
+          : 0,
+      prev_change_pct:
+        previous && beforePrevious && beforePrevious.close > 0
+          ? Number(
+              (((previous.close - beforePrevious.close) / beforePrevious.close) * 100).toFixed(2),
+            )
+          : null,
+      amount,
+      prev_amount: prevAmount,
+      amount_change_pct:
+        prevAmount !== null && prevAmount > 0
+          ? Number((((amount - prevAmount) / prevAmount) * 100).toFixed(2))
+          : null,
+    });
+  }
+
+  return { prevDate, items };
+}
+
+/** 指数日线请求带一次重试：与板块回补并发时上游偶发超时，避免整段指数丢失。 */
+async function fetchIndexSeriesWithRetry(code: string): Promise<IndexKlineSeries | null> {
+  const first = await fetchIndexKlineFromSidecar(code, 60);
+  return first ?? fetchIndexKlineFromSidecar(code, 60);
+}
+
+/** 采集大盘指数：当天取实时快照，历史日期取指数日线收盘与前收；同时给出前一交易日对比。 */
 async function collectIndices(
   date: string,
   isToday: boolean,
-): Promise<{ indices: IndexQuoteSnapshot[]; missing: string[] }> {
+): Promise<{
+  indices: IndexQuoteSnapshot[];
+  comparison: { prevDate: string | null; items: DailyReportIndexComparison[] };
+  missing: string[];
+}> {
   if (isToday) {
-    const quotes = await fetchIndexQuotesFromSidecar([...DAILY_REPORT_INDEX_CODES]);
+    // 快照用于当日展示，日线用于「较前一交易日」对比（额外 3 次日线请求，成本很低）。
+    const [quotes, series] = await Promise.all([
+      fetchIndexQuotesFromSidecar([...DAILY_REPORT_INDEX_CODES]),
+      Promise.all(
+        DAILY_REPORT_INDEX_CODES.map((code) => fetchIndexSeriesWithRetry(code)),
+      ),
+    ]);
     return {
       indices: quotes,
-      missing: quotes.length > 0 ? [] : ["大盘指数（行情侧车暂不可用）"],
+      comparison: indexComparisonFromSeries(series, date),
+      missing: [
+        ...(quotes.length === 0 ? ["大盘指数（行情侧车暂不可用）"] : []),
+        ...(quotes.length > 0 && quotes.length < DAILY_REPORT_INDEX_CODES.length
+          ? [`大盘指数部分缺失（${quotes.length}/${DAILY_REPORT_INDEX_CODES.length}）`]
+          : []),
+      ],
     };
   }
 
   const series = await Promise.all(
-    DAILY_REPORT_INDEX_CODES.map((code) => fetchIndexKlineFromSidecar(code, 60)),
+    DAILY_REPORT_INDEX_CODES.map((code) => fetchIndexSeriesWithRetry(code)),
   );
   const indices: IndexQuoteSnapshot[] = [];
   for (const item of series) {
@@ -163,7 +245,13 @@ async function collectIndices(
 
   return {
     indices,
-    missing: indices.length > 0 ? [] : [`大盘指数（${date} 超出指数日线覆盖范围）`],
+    comparison: indexComparisonFromSeries(series, date),
+    missing: [
+      ...(indices.length === 0 ? [`大盘指数（${date} 超出指数日线覆盖范围）`] : []),
+      ...(indices.length > 0 && indices.length < DAILY_REPORT_INDEX_CODES.length
+        ? [`大盘指数部分缺失（${indices.length}/${DAILY_REPORT_INDEX_CODES.length}）`]
+        : []),
+    ],
   };
 }
 
@@ -306,6 +394,31 @@ async function collectFundHoldings(
   return holdings;
 }
 
+/**
+ * 采集行业板块：当日走新浪（含成分公司与领涨股），历史日期走同花顺板块指数回补。
+ * 前一交易日对比只有同花顺历史口径提供，因此当日会额外取一次历史口径，取不到则为 null。
+ */
+async function collectSectors(
+  date: string,
+  isToday: boolean,
+): Promise<{
+  sectors: MarketSectorsSnapshot | null;
+  comparison: DailyReportSectorComparison | null;
+  missing: string[];
+}> {
+  const snapshot = await fetchMarketSectorsFromSidecar(5, date);
+  const history = isToday
+    ? await fetchMarketSectorsFromSidecar(5, date, { history: true })
+    : snapshot;
+  // 当日新浪口径失败时用同花顺历史口径兜底，避免整块板块数据缺失。
+  const resolved = snapshot ?? history;
+  return {
+    sectors: resolved,
+    comparison: history?.comparison ?? null,
+    missing: resolved ? [] : [`行业板块涨跌（${date} 上游无可用数据）`],
+  };
+}
+
 /** 把资讯条目裁剪为日报引用的精简结构。 */
 function toNewsRefs(items: NewsItem[], date: string): DailyReportNewsRef[] {
   return items
@@ -370,29 +483,35 @@ export async function collectDailyReportData(
   const isToday = beijingDateKey(now) === date;
   const missing: string[] = [];
 
-  const [{ indices, missing: indexMissing }, breadthPart, sectorPart, holdings] =
-    await Promise.all([
-      collectIndices(date, isToday),
-      (async () => {
-        // 历史日期同样采集：乐咕统计日期一致时为真实家数，否则侧车退回板块口径近似。
-        const breadth = await fetchMarketBreadthFromSidecar(date);
-        return {
-          breadth,
-          missing: breadth ? [] : [`全市场涨跌家数（${date} 上游与板块口径均不可用）`],
-        };
-      })(),
-      (async () => {
-        // 历史日期走同花顺板块指数回补，当日走新浪行业板块。
-        const sectors = await fetchMarketSectorsFromSidecar(5, date);
-        return {
-          sectors,
-          missing: sectors ? [] : [`行业板块涨跌（${date} 上游无可用数据）`],
-        };
-      })(),
-      kind === "stock" ? collectStockHoldings(date, isToday) : collectFundHoldings(date, isToday),
-    ]);
+  // 指数先单独取完再并发其余数据：历史板块回补会长时间占用上游连接，
+  // 与指数日线并发时曾出现超时导致指数缺失。
+  const indexPart = await collectIndices(date, isToday);
+  // 板块回补会拉 90 个板块指数并写入侧车缓存；历史涨跌家数复用同一份缓存，
+  // 因此先取板块再取其余数据，避免两路请求同时打满上游。
+  const sectorPart = await collectSectors(date, isToday);
+  const [breadthPart, holdings] = await Promise.all([
+    (async () => {
+      // 历史日期同样采集：乐咕统计日期一致时为真实家数，否则侧车退回板块口径近似。
+      const breadth = await fetchMarketBreadthFromSidecar(date);
+      return {
+        breadth,
+        missing: breadth ? [] : [`全市场涨跌家数（${date} 上游与板块口径均不可用）`],
+      };
+    })(),
+    kind === "stock" ? collectStockHoldings(date, isToday) : collectFundHoldings(date, isToday),
+  ]);
 
+  const { indices, missing: indexMissing } = indexPart;
   missing.push(...indexMissing, ...breadthPart.missing, ...sectorPart.missing);
+
+  const comparison: DailyReportComparison | null =
+    indexPart.comparison.items.length > 0 && indexPart.comparison.prevDate
+      ? {
+          prev_date: indexPart.comparison.prevDate,
+          indices: indexPart.comparison.items,
+          sectors: sectorPart.comparison,
+        }
+      : null;
 
   // 剔除确定性降级数据，避免把演示数值写进正式日报。
   const usableHoldings = holdings.filter((item) => item.source !== "deterministic-fallback");
@@ -412,6 +531,7 @@ export async function collectDailyReportData(
     indices,
     breadth: breadthPart.breadth,
     sectors: sectorPart.sectors,
+    comparison,
     holdings: usableHoldings,
     news,
     missing,
@@ -481,6 +601,19 @@ export function buildDailyReportMetrics(
       value: `${breadth.up} / ${breadth.down}`,
       change_pct: null,
       tone: breadth.up > breadth.down ? "up" : breadth.up < breadth.down ? "down" : "flat",
+    });
+  }
+
+  // 指数成交额环比：取首个有前一日成交额的指数，缺失时不展示该卡片。
+  const amountComparison = data.comparison?.indices.find(
+    (item) => item.amount_change_pct !== null,
+  );
+  if (amountComparison) {
+    metrics.push({
+      label: "成交额环比",
+      value: `${amountComparison.name.replace("指数", "")} ${formatChangePct(amountComparison.amount_change_pct)}`,
+      change_pct: amountComparison.amount_change_pct,
+      tone: toneOf(amountComparison.amount_change_pct),
     });
   }
 
@@ -607,7 +740,7 @@ export const REPORT_SECTIONS: Record<DailyReportKind, string[]> = {
 const REPORT_SYSTEM_HEADER = [
   "你是职业投资研究者，负责为初学者撰写当日收盘日报。",
   "硬性要求：",
-  "1. 必须引用给定数据中的具体数字（指数点位与涨跌幅、成交额、涨跌家数或板块涨跌分布、板块涨跌幅、自选标的涨跌幅），禁止只写空泛套话。",
+  "1. 必须引用给定数据中的具体数字（指数点位与涨跌幅、成交额、与前一交易日对比、涨跌家数或板块涨跌分布、板块涨跌幅、自选标的涨跌幅），禁止只写空泛套话。",
   "2. 只使用给定数据分析，禁止编造未提供的数据。只有「缺失数据项」中列出的内容，才允许在对应章节写「本日该数据不可用」；未列入的指标（如基金份额变化、折溢价率、跟踪误差、北向资金、两融余额、板块成分公司数等）一律不得提及，也不得写成缺失。",
   "3. 涨跌家数的 stat_scope 为 sector 时表示该数据是行业板块口径近似，必须写明口径，不得当作全市场个股家数。",
   "4. 禁止出现「必涨、必跌、稳赚、包赚」等确定性收益承诺，必须给出风险提示。",
@@ -643,6 +776,11 @@ export function buildDailyReportMessages(
       "涨跌家数、涨停/跌停家数与市场活跃度是上游三个独立口径，活跃度不得用来推算涨跌家数占比。",
     );
   }
+  if (data.comparison) {
+    scopeNotes.push(
+      `对比数据是「${data.comparison.prev_date}」环比：指数涨跌幅与成交额环比可直接引用；板块轮动是板块口径，不得与个股涨跌家数混用；涨跌家数没有跨日口径，正文不要做涨跌家数的环比。`,
+    );
+  }
 
   const user = [
     `日报日期：${date}`,
@@ -664,7 +802,7 @@ function indexBlockLines(data: DailyReportData): string[] {
   if (data.indices.length === 0) {
     return ["- 本日大盘指数数据不可用。"];
   }
-  return [
+  const lines = [
     "| 指数 | 收盘 | 涨跌幅 | 成交额 |",
     "| --- | --- | --- | --- |",
     ...data.indices.map(
@@ -672,6 +810,22 @@ function indexBlockLines(data: DailyReportData): string[] {
         `| ${index.name} | ${index.price.toFixed(2)} | ${formatChangePct(index.change_pct)} | ${formatAmountInYi(index.amount)} |`,
     ),
   ];
+  const comparison = data.comparison;
+  if (comparison && comparison.indices.length > 0) {
+    lines.push(
+      "",
+      `- 较前一交易日（${comparison.prev_date}）涨跌幅：${comparison.indices
+        .map((item) => `${item.name} ${formatChangePct(item.change_pct)}（前一日 ${formatChangePct(item.prev_change_pct)}）`)
+        .join("、")}`,
+    );
+    const amountParts = comparison.indices
+      .filter((item) => item.amount_change_pct !== null)
+      .map((item) => `${item.name} ${formatChangePct(item.amount_change_pct)}`);
+    if (amountParts.length > 0) {
+      lines.push(`- 成交额环比：${amountParts.join("、")}`);
+    }
+  }
+  return lines;
 }
 
 function holdingBlockLines(kind: DailyReportKind, data: DailyReportData): string[] {
@@ -703,11 +857,21 @@ function sectorBlockLines(data: DailyReportData): string[] {
     data.sectors.source === "ths"
       ? "（同花顺行业板块指数，按目标日与前一日收盘价计算）"
       : "";
-  return [
+  const lines = [
     `- 领涨板块：${data.sectors.top.map((item) => `${item.name} ${formatChangePct(item.change_pct)}`).join("、")}`,
     `- 领跌板块：${data.sectors.bottom.map((item) => `${item.name} ${formatChangePct(item.change_pct)}`).join("、")}`,
     `- 统计口径：共 ${data.sectors.total} 个行业板块${scopeText}。`,
   ];
+  const comparison = data.comparison?.sectors ?? null;
+  if (comparison) {
+    lines.push(
+      `- 板块轮动（对比 ${comparison.prev_date}）：涨幅榜新进 ${
+        comparison.newcomers.length > 0 ? comparison.newcomers.join("、") : "无"
+      }，掉出 ${comparison.dropped.length > 0 ? comparison.dropped.join("、") : "无"}。`,
+      `- 前一交易日（${comparison.prev_date}）板块涨跌分布：上涨 ${comparison.prev_rise_count} 个、下跌 ${comparison.prev_fall_count} 个（板块口径）。`,
+    );
+  }
+  return lines;
 }
 
 function breadthBlockLines(data: DailyReportData): string[] {
@@ -866,6 +1030,8 @@ export interface DailyReportJobOptions {
   date?: string;
   force?: boolean;
   source?: "manual" | "cron";
+  /** 是否推送摘要邮件；批量回补历史日报时置 false，避免一次性刷满收件箱。 */
+  notify?: boolean;
 }
 
 /** 日报任务结果，用于 job_runs 记录（契约定义在共享类型）。 */
@@ -905,6 +1071,11 @@ export async function runDailyReportJob(
 
   const report = await buildDailyReport(kind, date, data, now);
   const storage = await saveDailyReport(report);
+  // 邮件推送失败不影响日报落库：状态写入任务结果，面板与 job_runs 据此提示。
+  const email =
+    options.notify === false
+      ? { status: "skipped" as const, reason: "批量回补历史日报，已跳过邮件推送。" }
+      : await sendDailyReportDigest(report);
   return {
     kind,
     date,
@@ -912,5 +1083,7 @@ export async function runDailyReportJob(
     reason: readiness.ready ? readiness.reason : "手动强制生成",
     storage,
     report_source: report.source,
+    email_status: email.status,
+    email_reason: email.reason,
   };
 }

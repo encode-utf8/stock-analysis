@@ -1235,6 +1235,8 @@ def _today_text() -> str:
 # 历史行业板块缓存：按日期保存，避免同一天重复发起 90 次上游请求。
 _SECTOR_HISTORY_CACHE: dict[str, tuple[datetime, list[dict]]] = {}
 _SECTOR_HISTORY_TTL = timedelta(hours=6)
+# 板块轮动对比固定看涨幅前五名（与日报前端请求的 limit=5 一致）。
+SECTOR_ROTATION_TOP = 5
 
 
 def _limit_pool_count(func_name: str, date_text: str) -> int | None:
@@ -1306,6 +1308,14 @@ def _sector_history_rows(date_text: str) -> list[dict] | None:
         prev_close = _number(_series_value(previous, ["收盘价"]))
         if close is None or prev_close is None or prev_close <= 0:
             return None
+        # 前一日涨跌幅：供日报的板块轮动对比使用，需要前前一日收盘价。
+        prev_change_pct: float | None = None
+        if position >= 2:
+            prev_prev_close = _number(_series_value(rows[position - 2][1], ["收盘价"]))
+            if prev_prev_close is not None and prev_prev_close > 0:
+                prev_change_pct = _round((prev_close / prev_prev_close - 1) * 100)
+        # 前一日日期：日报用它标注板块轮动的对比基准日。
+        prev_date_text = str(_series_value(previous, ["日期"]) or "")[:10]
         return {
             "name": name,
             "change_pct": _round((close / prev_close - 1) * 100),
@@ -1314,6 +1324,8 @@ def _sector_history_rows(date_text: str) -> list[dict] | None:
             "amount": _number(_series_value(current, ["成交额"]), 0.0) or 0.0,
             "avg_price": _round(close, 4),
             "leader": None,
+            "prev_change_pct": prev_change_pct,
+            "prev_date": prev_date_text,
         }
 
     rows: list[dict] = []
@@ -1328,6 +1340,34 @@ def _sector_history_rows(date_text: str) -> list[dict] | None:
     rows.sort(key=lambda item: item["change_pct"], reverse=True)
     _SECTOR_HISTORY_CACHE[date_text] = (_now_utc(), rows)
     return rows
+
+
+def _sector_history_comparison(rows: list[dict]) -> dict | None:
+    """由历史口径板块行构造前一交易日对比：板块涨跌分布与涨幅榜新进/掉出。
+
+    只有拿到前一交易日涨跌幅的板块才纳入统计，避免把缺数据的板块算成平盘。
+    """
+    if not rows:
+        return None
+    prev_date = str(rows[0].get("prev_date") or "")
+    valid = [item for item in rows if item.get("prev_change_pct") is not None]
+    if not prev_date or not valid:
+        return None
+
+    current_top = [str(item["name"]) for item in rows[:SECTOR_ROTATION_TOP]]
+    previous_top = [
+        str(item["name"])
+        for item in sorted(valid, key=lambda item: item["prev_change_pct"], reverse=True)[
+            :SECTOR_ROTATION_TOP
+        ]
+    ]
+    return {
+        "prev_date": prev_date,
+        "prev_rise_count": len([item for item in valid if item["prev_change_pct"] > 0]),
+        "prev_fall_count": len([item for item in valid if item["prev_change_pct"] < 0]),
+        "newcomers": [name for name in current_top if name not in previous_top],
+        "dropped": [name for name in previous_top if name not in current_top],
+    }
 
 
 def _historical_breadth(date_text: str) -> dict | None:
@@ -1364,15 +1404,22 @@ def _historical_breadth(date_text: str) -> dict | None:
 def market_sectors(
     limit: int = Query(5, ge=1, le=20),
     date_text: str | None = Query(None, alias="date", pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    history: bool = Query(
+        False,
+        description="强制使用同花顺历史口径；当日生成日报时用它取前一日对比数据",
+    ),
 ) -> dict:
-    """返回行业板块涨幅榜与跌幅榜；传 date 时走同花顺历史回补。"""
+    """返回行业板块涨幅榜与跌幅榜；传 date 或 history=1 时走同花顺历史回补。"""
     now = _now_utc()
-    if date_text and date_text != _today_text():
-        rows = _sector_history_rows(date_text)
+    if history or (date_text and date_text != _today_text()):
+        rows = _sector_history_rows(date_text or _today_text())
         source = SOURCE_THS
+        comparison = _sector_history_comparison(rows) if rows else None
     else:
         rows = _sector_rows()
         source = SOURCE_AKSHARE
+        # 当日新浪口径没有前一日收盘价，前端会退回无对比展示。
+        comparison = None
     if not rows:
         raise HTTPException(status_code=502, detail="行业板块数据上游暂不可用。")
 
@@ -1381,6 +1428,7 @@ def market_sectors(
         "top": rows[:size],
         "bottom": list(reversed(rows[-size:])),
         "total": len(rows),
+        "comparison": comparison,
         "source": source,
         "fetched_at": now.isoformat(),
     }

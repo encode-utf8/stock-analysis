@@ -65,6 +65,7 @@ function baseData(overrides: Partial<DailyReportData> = {}): DailyReportData {
       source: "akshare",
       fetched_at: "2026-09-10T07:30:00Z",
     },
+    comparison: null,
     holdings: [
       {
         code: "600519",

@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/format";
 import type {
+  DailyReportBackfillResult,
   DailyReport,
   DailyReportJobResult,
   DailyReportKind,
@@ -36,6 +37,23 @@ const STORAGE_LABELS: Record<DailyReportSummary["storage"], string> = {
   r2: "云端存储",
   local: "本地存储",
 };
+
+/** 摘要邮件结果提示文案；未配置收件人时为「已跳过」而不是失败。 */
+function emailNotice(
+  status: DailyReportJobResult["email_status"],
+  reason?: string | null,
+): string {
+  if (status === "sent") {
+    return "摘要邮件已发送。";
+  }
+  if (status === "failed") {
+    return `摘要邮件发送失败：${reason ?? "未知原因"}`;
+  }
+  if (status === "skipped") {
+    return reason ?? "已跳过摘要邮件推送。";
+  }
+  return "";
+}
 
 /** A 股口径：红涨绿跌。 */
 const TONE_CLASS: Record<DailyReportMetric["tone"], string> = {
@@ -80,7 +98,7 @@ interface DailyReportPanelProps {
   kind: DailyReportKind;
 }
 
-/** AI 收盘日报面板：列表按日期倒序，支持查看详情与按指定日期补生成。 */
+/** AI 收盘日报面板：列表按日期倒序，支持查看详情、按指定日期补生成、批量回补与删除。 */
 export function DailyReportPanel({ kind }: DailyReportPanelProps) {
   const [reports, setReports] = useState<DailyReportSummary[]>([]);
   const [listStorage, setListStorage] = useState<DailyReportSummary["storage"]>("local");
@@ -89,6 +107,8 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [historyDate, setHistoryDate] = useState("");
+  const [backfillDays, setBackfillDays] = useState("5");
+  const [backfillForce, setBackfillForce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -142,10 +162,11 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
           body: JSON.stringify(date ? { kind, date } : { kind }),
         });
         if (result.status === "generated") {
+          const email = emailNotice(result.email_status, result.email_reason);
           setNotice(
             `已生成 ${result.date} 日报：${
               result.report_source === "deepseek" ? "AI 生成" : "模板降级"
-            }，${result.storage === "r2" ? "云端存储" : "本地存储"}。`,
+            }，${result.storage === "r2" ? "云端存储" : "本地存储"}。${email}`,
           );
           await loadList();
           await openDetail(result.date);
@@ -163,6 +184,73 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
 
   // 切换日报类型时派生可见详情，避免在 effect 里同步 setState（React 反模式）。
   const visibleDetail = detail && detail.kind === kind ? detail : null;
+
+  /** 回补最近 N 个交易日：默认只补缺失日期，可勾选强制重新生成。 */
+  const backfill = useCallback(async () => {
+    const days = Number(backfillDays);
+    if (!Number.isInteger(days) || days < 1 || days > 30) {
+      setNotice(null);
+      setError("回补天数需为 1-30 的整数。");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await apiFetch<DailyReportBackfillResult>(
+        "/api/admin/daily-reports/backfill",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind, days, force: backfillForce }),
+        },
+      );
+      const skippedDates = result.results
+        .filter((item) => item.status === "skipped")
+        .map((item) => `${item.date}（${item.reason}）`);
+      setNotice(
+        `回补完成：最近 ${result.days} 个交易日共 ${result.dates.length} 天，新生成 ${result.generated} 篇，跳过 ${result.skipped} 篇。` +
+          (skippedDates.length > 0 ? ` 跳过明细：${skippedDates.join("；")}` : ""),
+      );
+      await loadList();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "批量回补失败。");
+    } finally {
+      setBusy(false);
+    }
+  }, [backfillDays, backfillForce, kind, loadList]);
+
+  /** 删除某天日报；删除后刷新列表并清空正在查看的详情。 */
+  const removeReport = useCallback(
+    async (date: string) => {
+      if (!window.confirm(`确认删除 ${date} 的${KIND_LABELS[kind]}？该操作不可撤销。`)) {
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      setNotice(null);
+      try {
+        const result = await apiFetch<{ deleted: boolean; storage: string | null }>(
+          `/api/admin/daily-reports/${kind}/${date}`,
+          { method: "DELETE" },
+        );
+        setNotice(
+          result.deleted
+            ? `已删除 ${date} 日报${result.storage === "r2" ? "（云端）" : "（本地）"}。`
+            : `${date} 未找到日报，无需删除。`,
+        );
+        if (visibleDetail?.date === date) {
+          setDetail(null);
+        }
+        await loadList();
+      } catch (nextError) {
+        setError(nextError instanceof Error ? nextError.message : "日报删除失败。");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [kind, loadList, visibleDetail],
+  );
 
   const handleHistoryGenerate = () => {
     const value = historyDate.trim();
@@ -218,7 +306,38 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          仅支持交易日；全市场涨跌与板块数据上游只提供当日口径，历史日期会在正文中标注缺失。
+          仅支持交易日；历史日期会走板块指数回补口径，正文自动标注口径差异与缺失项。
+        </p>
+      </div>
+
+      <div className="mt-3 space-y-2 rounded-lg border border-dashed p-3">
+        <label className="text-xs font-medium" htmlFor={`daily-report-backfill-${kind}`}>
+          批量回补最近 N 个交易日
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            id={`daily-report-backfill-${kind}`}
+            type="number"
+            min={1}
+            max={30}
+            value={backfillDays}
+            onChange={(event) => setBackfillDays(event.target.value)}
+            className="w-20 rounded-md border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-primary"
+          />
+          <Button type="button" variant="outline" size="sm" onClick={() => void backfill()} disabled={busy}>
+            开始回补
+          </Button>
+          <label className="flex items-center gap-1 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={backfillForce}
+              onChange={(event) => setBackfillForce(event.target.checked)}
+            />
+            已存在的日报也重新生成
+          </label>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          按交易日历回溯，最多 30 天；回补历史日报不会重复推送摘要邮件。
         </p>
       </div>
 
@@ -246,26 +365,39 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
               </p>
             ) : null}
             {reports.map((item) => (
-              <button
+              <div
                 key={item.date}
-                type="button"
-                onClick={() => void openDetail(item.date)}
                 className={
-                  "block w-full border-b px-3 py-2 text-left transition-colors hover:bg-accent " +
+                  "flex items-center gap-1 border-b " +
                   (visibleDetail?.date === item.date ? "bg-accent" : "")
                 }
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium">{item.date}</span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {SOURCE_LABELS[item.source]}
-                  </span>
-                </div>
-                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.headline}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  {STORAGE_LABELS[item.storage]} · 生成于 {formatDateTime(item.generated_at)}
-                </p>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => void openDetail(item.date)}
+                  className="min-w-0 flex-1 px-3 py-2 text-left transition-colors hover:bg-accent"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{item.date}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {SOURCE_LABELS[item.source]}
+                    </span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.headline}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    {STORAGE_LABELS[item.storage]} · 生成于 {formatDateTime(item.generated_at)}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void removeReport(item.date)}
+                  disabled={busy}
+                  title={`删除 ${item.date} 日报`}
+                  className="shrink-0 px-2 py-2 text-xs text-muted-foreground transition-colors hover:text-red-600 disabled:opacity-50"
+                >
+                  删除
+                </button>
+              </div>
             ))}
           </div>
         </div>
