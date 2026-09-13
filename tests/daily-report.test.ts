@@ -10,6 +10,7 @@ import {
   buildTemplateDailyReport,
   changeFromKlines,
   evaluateDailyReportReadiness,
+  formatAmountInYi,
   formatChangePct,
   isAfterChinaClose,
   summarizeChanges,
@@ -296,6 +297,58 @@ describe("提示词与模板降级", () => {
     );
     expect(markdown).toContain("数据缺失说明");
     expect(markdown).toContain("本日全市场涨跌家数不可用");
+  });
+});
+
+describe("历史日期回补口径", () => {
+  it("成交额按亿元格式化，缺失与非正数显示占位符", () => {
+    expect(formatAmountInYi(958_186_337_000)).toBe("9582 亿元");
+    expect(formatAmountInYi(0)).toBe("—");
+    expect(formatAmountInYi(null)).toBe("—");
+    expect(formatAmountInYi(undefined)).toBe("—");
+  });
+
+  it("模板指数区块新增成交额列", () => {
+    const markdown = buildTemplateDailyReport("stock", "2026-09-10", baseData());
+    expect(markdown).toContain("| 指数 | 收盘 | 涨跌幅 | 成交额 |");
+    expect(markdown).toContain("7797 亿元");
+  });
+
+  it("板块口径涨跌家数标注口径并改写指标与摘要", () => {
+    const base = baseData();
+    const data = baseData({
+      breadth: {
+        up: 12,
+        down: 78,
+        flat: 0,
+        limit_up: 40,
+        limit_down: 21,
+        suspended: null,
+        activity_pct: null,
+        stat_date: "2026-09-10",
+        stat_scope: "sector",
+        source: "ths",
+        fetched_at: "2026-09-10T07:30:00Z",
+      },
+      sectors: base.sectors ? { ...base.sectors, source: "ths" } : null,
+    });
+
+    const labels = buildDailyReportMetrics("stock", data).map((item) => item.label);
+    expect(labels).toContain("板块涨跌（近似）");
+    expect(buildDailyReportHeadline("stock", data)).toContain("行业板块 12 个上涨");
+
+    const markdown = buildTemplateDailyReport("stock", "2026-09-10", data);
+    expect(markdown).toContain("行业板块涨跌分布近似");
+    expect(markdown).toContain("上涨板块 12 个，下跌板块 78 个，平盘 0 个。");
+    expect(markdown).toContain("涨停 40 家，跌停 21 家。");
+    expect(markdown).not.toContain("停牌");
+    expect(markdown).toContain("同花顺行业板块指数");
+  });
+
+  it("个股家数口径保持原有表述", () => {
+    const markdown = buildTemplateDailyReport("stock", "2026-09-10", baseData());
+    expect(markdown).toContain("上涨 931 家，下跌 4192 家，平盘 83 家。");
+    expect(markdown).toContain("涨停 39 家，跌停 14 家，停牌 12 家。");
   });
 });
 

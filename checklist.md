@@ -1573,3 +1573,49 @@ corepack pnpm build
 - 轮询器为进程内单例，多实例部署会重复拉取；本机单用户场景可接受，不适用多实例。
 - 基金实时值受 `getFundIntraday` 60 秒缓存限制，推送频率高于其更新频率，界面已标注「盘中估算、存在延迟」。
 - 实时预警只覆盖快照能提供的指标（股票最新价/涨跌幅、基金估算净值/涨跌幅）；单位净值、区间回撤等仍由 30 分钟定时扫描兜底。
+
+
+## 历史日期日报数据回补（成交额 / 涨跌家数 / 行业板块）
+
+- 关联文档：`docs/daily-report-history-backfill-plan.md`、`docs/daily-report-plan.md`
+- 分支：`fix/daily-report-history-data`
+- 背景：按 2026-09-11 补生成股市日报时，正文出现「成交额均为 0」「全市场涨跌家数缺失」「行业板块涨跌缺失」三处「本日该数据不可用」。
+
+### 验收项
+
+- [x] 侧车 `/index/kline` 出参新增 `amount`（腾讯日线第 9 位，单位元），实测 `sh000001` 2026-09-11 成交额 958,186,337,000 元（约 9581.86 亿元）
+- [x] 侧车 `/market/sectors?date=YYYY-MM-DD` 支持历史日期（同花顺 90 行业板块、并发 6、按日期缓存），未传 date 时行为与改造前一致（仍为新浪 49 板块、`source=akshare`）
+- [x] 侧车 `/market/breadth?date=YYYY-MM-DD`：乐咕 `stat_date` 与目标日期一致时返回真实家数（`stat_scope=market`）
+- [x] 侧车 `/market/breadth?date=YYYY-MM-DD`：乐咕对不上时给出板块口径近似（`stat_scope=sector`）并用涨停/跌停池补涨跌停家数
+- [x] `IndexKlineDay` 新增 `amount`；`MarketBreadthSnapshot` 新增 `stat_scope`，`limit_up/limit_down/suspended` 允许 null
+- [x] `collectDailyReportData` 历史日期也采集涨跌家数与行业板块，缺失原因区分「该日期上游无可用数据」与口径说明
+- [x] 模板日报：指数区块含成交额列；板块与涨跌家数标注统计口径；不再笼统写「不可用」
+- [x] 提示词：要求引用成交额、板块口径必须写明口径、不得泄漏 `stat_scope` 等字段名
+- [x] 端到端：`POST /api/admin/daily-reports {kind:"stock", date:"2026-09-11", force:true}` 重新生成后，三处均不再出现「本日该数据不可用」
+- [x] 回归：当日口径接口（`/market/breadth`、`/market/sectors` 不传 date）行为不变
+- [x] `corepack pnpm test`（16 文件 / 200 用例）、`typecheck`、`lint`、`build` 全部通过
+- [x] 代码注释与提交信息为中文，未提交临时探测脚本与真实密钥
+
+### 验证方式
+
+- 命令：`corepack pnpm test && corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 侧车：`curl "http://127.0.0.1:8000/index/kline?code=sh000001&limit=60"`、`curl "http://127.0.0.1:8000/market/sectors?date=2026-09-11"`、`curl "http://127.0.0.1:8000/market/breadth?date=2026-09-11"`、`curl "http://127.0.0.1:8000/market/breadth?date=2026-09-08"`
+- 端到端：强制重新生成 2026-09-11 股市日报，核对正文三项数据
+
+### 实测结果（2026-09-13）
+
+- 侧车 `/index/kline?code=sh000001&limit=60`：2026-09-11 记录新增 `amount=958186337000`（约 9581.86 亿元），与腾讯日线一致
+- 侧车 `/market/sectors?date=2026-09-11`：`total=90`、`source=ths`、耗时约 13 秒；领涨 元件 +3.11%、通信设备 +0.42%，领跌 多元金融 -4.47%、工业金属 -4.04%，与实测探测一致
+- 侧车 `/market/breadth?date=2026-09-11`：命中乐咕快照（`stat_date=2026-09-11 15:00:00`），`up=604 / down=4567 / flat=36 / limit_up=40 / limit_down=21 / suspended=12 / stat_scope=market`
+- 侧车 `/market/breadth?date=2026-09-08`：乐咕对不上 → 板块口径，`up=67 / down=23 / flat=0`、`limit_up=73 / limit_down=0`、`stat_scope=sector`、`activity_pct=null`，耗时约 13 秒
+- 当日口径回归：`/market/breadth` 不带 date 仍返回乐咕当日数据；`/market/sectors?limit=5` 不带 date 仍为新浪 49 板块 `source=akshare`
+- 端到端重新生成 2026-09-11 股市日报：`missing=[]`；`indices` 三个指数成交额分别为 9581.86 / 10137.12 / 4577.45 亿元；板块 90 个（`source=ths`）；指标卡片新增「涨跌家数 604 / 4567」与「领涨板块 元件 +3.11%」
+- 正文核对：`不可用` 出现 0 次；`成交额` 出现 8 次；正文含「沪深两市合计成交额约 1.97 万亿元」「上涨家数 604 家 / 下跌家数 4567 家」「行业板块统计样本共 90 个」；字段名 `stat_scope` 泄漏 0 次
+- 单测新增 4 例（成交额格式化、模板成交额列、板块口径标注与指标/摘要改写、个股口径不变），全套 200 例通过
+
+### 风险与遗留
+
+- 历史板块回补需 90 次上游请求（实测约 13-15 秒），已做并发 6 与按日期 6 小时缓存；上游限流时允许部分板块缺失，不会整批失败。
+- 更早历史日期的「个股涨跌家数」无公开历史接口，只能给出行业板块口径近似并显式标注，不能当作真实家数。
+- 侧车缓存为进程内缓存，重启后首次请求（含历史日期）需重新拉取。
+- 未额外生成 2026-09-08 日报做端到端验证，以免污染日报列表；该口径由侧车实测 + 单测覆盖。
