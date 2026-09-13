@@ -31,7 +31,8 @@ function formatSignedPercent(value: number): string {
 
 /**
  * 回测净值曲线：策略与买入持有基准同图对照。
- * 与基金侧一致使用手绘 SVG，不引入图表库依赖。
+ * 与基金侧一致使用手绘 SVG，不引入图表库依赖；svg 按 viewBox 的自然宽高比铺满卡片宽度，
+ * 窄屏由外层 overflow-x-auto 横向滚动，元素与 viewBox 等比因此悬停换算不受留白影响。
  */
 export function BacktestEquityChart({ points, initialCapital }: BacktestEquityChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -94,7 +95,7 @@ export function BacktestEquityChart({ points, initialCapital }: BacktestEquityCh
   };
 
   return (
-    <div className="rounded-lg border bg-white p-3">
+    <div className="relative overflow-x-auto rounded-lg border bg-white p-3">
       <div className="mb-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-5 bg-red-600" aria-hidden="true" />
@@ -109,7 +110,7 @@ export function BacktestEquityChart({ points, initialCapital }: BacktestEquityCh
 
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="h-72 w-full"
+        className="min-w-[720px]"
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="回测净值曲线"
