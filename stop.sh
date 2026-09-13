@@ -37,6 +37,9 @@ kill_matching() {
   fi
 }
 
+printf '[终止] 回收定时任务守护进程...\n'
+kill_matching "scheduler-worker.mjs"
+
 printf '[终止] 清理行情侧车 PID 文件...\n'
 rm -f "$ROOT/.logs/data-service.pid"
 
@@ -46,4 +49,4 @@ stop_port 3000 "Web 前端"
 kill_matching "$ROOT.*next dev"
 kill_matching "uvicorn app.main:app.*--port 8000"
 
-printf '\n[完成] 已终止 Web 前端与行情侧车。\n'
+printf '\n[完成] 已终止 Web 前端、行情侧车与定时任务守护进程。\n'

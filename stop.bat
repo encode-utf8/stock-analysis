@@ -9,7 +9,7 @@ call :stop_port 8000 "data-service"
 call :stop_port 3000 "web-frontend"
 
 echo.
-echo [done] web frontend and data service stopped.
+echo [done] web frontend, data service and scheduler worker stopped.
 exit /b 0
 
 :stop_port

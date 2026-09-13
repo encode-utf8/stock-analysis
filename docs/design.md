@@ -92,6 +92,13 @@
 - messages：id、conversation_id、role、content、tool_calls、created_at。
 - job_runs：id、job_name、status、started_at、finished_at、detail。
 
+> 上表是 F0 阶段的设计基线。当前实现共 23 张表，完整列定义以 `src/lib/db/schema.ts` 为准，迁移文件位于 `drizzle/`。F0 之后新增的表（按能力分组）：
+>
+> - 自选与持仓：`watchlist`（自选股）、`stock_holdings`（个股持仓：投入金额 + 当前持仓收益）、`fund_watchlist`（自选基金）、`fund_positions`（持有基金：代码 + 当前持有金额 + 当前累计收益）。
+> - 基金数据：`fund_profiles`、`fund_navs`、`fund_holdings`、`fund_risk_metrics`、`fund_news_items`。
+> - 基金 AI：`fund_conversations`、`fund_messages`、`fund_analysis_reports`。
+> - 预警与运维：`alert_rules`、`alert_events`、`observability_metrics`。
+
 ---
 
 ## 7. 接口设计
