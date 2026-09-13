@@ -1,8 +1,9 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 
+import { resolveHoverIndex } from "@/lib/chart-hover";
 import type { BacktestPoint } from "@/lib/shared/types";
 
 interface BacktestEquityChartProps {
@@ -35,7 +36,36 @@ function formatSignedPercent(value: number): string {
 export function BacktestEquityChart({ points, initialCapital }: BacktestEquityChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
-  if (points.length < 2) {
+  // 净值曲线的几何计算只依赖数据本身，缓存起来避免鼠标移动时反复重建整条路径。
+  const geometry = useMemo(() => {
+    if (points.length < 2) {
+      return null;
+    }
+
+    const values = points.flatMap((point) => [point.strategy, point.benchmark]);
+    const rawMin = Math.min(...values);
+    const rawMax = Math.max(...values);
+    const padding = Math.max((rawMax - rawMin) * 0.08, initialCapital * 0.01, 1);
+    const min = rawMin - padding;
+    const max = rawMax + padding;
+
+    const xOf = (index: number) => PADDING_LEFT + (index / (points.length - 1)) * PLOT_WIDTH;
+    const yOf = (value: number) => PADDING_TOP + (1 - (value - min) / (max - min)) * PLOT_HEIGHT;
+
+    const strategyPath = points
+      .map((point, index) => `${index === 0 ? "M" : "L"}${xOf(index).toFixed(2)},${yOf(point.strategy).toFixed(2)}`)
+      .join(" ");
+    const benchmarkPath = points
+      .map((point, index) => `${index === 0 ? "M" : "L"}${xOf(index).toFixed(2)},${yOf(point.benchmark).toFixed(2)}`)
+      .join(" ");
+
+    const gridValues = [0, 0.25, 0.5, 0.75, 1].map((ratio) => min + (max - min) * ratio);
+    const labelIndices = [0, Math.floor((points.length - 1) / 2), points.length - 1];
+
+    return { xOf, yOf, strategyPath, benchmarkPath, gridValues, labelIndices };
+  }, [points, initialCapital]);
+
+  if (!geometry) {
     return (
       <div className="flex h-40 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
         暂无可绘制的净值数据。
@@ -43,35 +73,24 @@ export function BacktestEquityChart({ points, initialCapital }: BacktestEquityCh
     );
   }
 
-  const values = points.flatMap((point) => [point.strategy, point.benchmark]);
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
-  const padding = Math.max((rawMax - rawMin) * 0.08, initialCapital * 0.01, 1);
-  const min = rawMin - padding;
-  const max = rawMax + padding;
-
-  const xOf = (index: number) => PADDING_LEFT + (index / (points.length - 1)) * PLOT_WIDTH;
-  const yOf = (value: number) => PADDING_TOP + (1 - (value - min) / (max - min)) * PLOT_HEIGHT;
-
-  const strategyPath = points
-    .map((point, index) => `${index === 0 ? "M" : "L"}${xOf(index).toFixed(2)},${yOf(point.strategy).toFixed(2)}`)
-    .join(" ");
-  const benchmarkPath = points
-    .map((point, index) => `${index === 0 ? "M" : "L"}${xOf(index).toFixed(2)},${yOf(point.benchmark).toFixed(2)}`)
-    .join(" ");
-
-  const gridValues = [0, 0.25, 0.5, 0.75, 1].map((ratio) => min + (max - min) * ratio);
-  const labelIndices = [0, Math.floor((points.length - 1) / 2), points.length - 1];
+  const { xOf, yOf, strategyPath, benchmarkPath, gridValues, labelIndices } = geometry;
   const hovered = hoverIndex === null ? null : points[hoverIndex];
-  const hoveredRatio =
-    hovered === null ? null : (hovered.strategy / initialCapital - 1) * 100;
+  const hoveredRatio = hovered === null ? null : (hovered.strategy / initialCapital - 1) * 100;
 
   const handleMove = (event: MouseEvent<SVGSVGElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const ratio = ((event.clientX - rect.left) / rect.width) * WIDTH;
-    const relative = (ratio - PADDING_LEFT) / PLOT_WIDTH;
-    const index = Math.round(Math.min(Math.max(relative, 0), 1) * (points.length - 1));
-    setHoverIndex(index);
+    // 按 SVG 实际渲染的内容换算（扣掉 xMidYMid meet 的居中留白），避免宽屏下悬停错位。
+    const index = resolveHoverIndex({
+      clientX: event.clientX,
+      box: event.currentTarget.getBoundingClientRect(),
+      viewBoxWidth: WIDTH,
+      viewBoxHeight: HEIGHT,
+      paddingLeft: PADDING_LEFT,
+      paddingRight: PADDING_RIGHT,
+      count: points.length,
+    });
+    if (index !== null) {
+      setHoverIndex(index);
+    }
   };
 
   return (
@@ -91,6 +110,7 @@ export function BacktestEquityChart({ points, initialCapital }: BacktestEquityCh
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="h-72 w-full"
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="回测净值曲线"
         onMouseMove={handleMove}

@@ -154,3 +154,14 @@
 
 - 无新增环境变量、无新增密钥。
 - 可选：`DATABASE_URL` 已配置则落库，否则自动使用 `.data/stock-portfolio.json`。
+
+
+## 9. 修复记录
+
+### 9.1 净值曲线悬停错位（2026-09-13，分支 `fix/backtest-chart-hover`）
+
+- 现象：宽屏下鼠标悬停的十字线与提示日期跟光标所在位置不对应，快速来回移动后错位更明显。
+- 根因：A6 的净值曲线用 `h-72 w-full` 固定高度，元素宽高比与 `viewBox`（900×320）不一致；SVG 默认 `preserveAspectRatio="xMidYMid meet"` 会等比缩放后在左右居中留白，而 `handleMove` 按整幅元素宽度线性映射，把留白也算进了绘图区。
+- 修复：新增 `src/lib/chart-hover.ts`（`resolveMeetTransform` / `resolveHoverIndex`）统一按「等比缩放 + 居中留白」换算并钳制到首尾数据点；组件改用该函数、显式声明 `preserveAspectRatio`，路径与刻度计算移入 `useMemo`。
+- 覆盖：`tests/chart-hover.test.ts`（12 个用例，含宽屏留白、窄屏留白、等比一致、越界钳制与尺寸异常）。
+- 影响范围：仅个股回测净值曲线；基金侧 `FundLineChart` / `DcaReturnChart` 使用 `min-w-[720px]` 的自然宽高比，元素与 viewBox 等比，不受该缺陷影响。

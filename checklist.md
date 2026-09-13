@@ -1740,3 +1740,32 @@ corepack pnpm build
 
 - 守护进程只做「发现停摆 + 补齐过期任务」，不负责拉起已退出的 Web 进程。
 - 补跑阈值按经验设定（日报/清理 26 小时、预警 2 小时），如需更细粒度可在 `SCHEDULE_TABLE` 调整。
+
+
+## 修复：策略回测净值曲线悬停错位（2026-09-13）
+
+- 关联文档：`docs/stock-portfolio-backtest-plan.md`（§9 修复记录）、`docs/design.md`
+- 分支：`fix/backtest-chart-hover`
+- 现象：个股「策略回测」的净值曲线在宽屏下，鼠标悬停的十字线与提示日期和光标位置不对应，快速移动后错位明显。
+
+### 验收项
+
+- [x] 根因定位：`<svg>` 使用 `h-72 w-full` 固定高度，元素宽高比与 `viewBox`（900×320）不一致，默认 `preserveAspectRatio="xMidYMid meet"` 会等比缩放后左右居中留白；原实现按整幅元素宽度线性映射，未扣除留白
+- [x] 新增纯函数 `src/lib/chart-hover.ts`：`resolveMeetTransform` 计算缩放比与居中留白，`resolveHoverIndex` 换算悬停索引并钳制到首尾
+- [x] `BacktestEquityChart` 改用 `resolveHoverIndex` 并显式声明 `preserveAspectRatio="xMidYMid meet"`；净值路径与刻度计算移入 `useMemo`，避免每次移动重算
+- [x] 新增 `tests/chart-hover.test.ts`（12 个用例）：左右留白、上下留白、等比一致、元素偏移、越界钳制、尺寸非法与数据点不足
+- [x] 既有模块无回归：`corepack pnpm test` 35 文件 / 372 用例全绿
+- [x] `typecheck`、`lint`、`build` 全部通过
+
+### 实测结果（2026-09-13）
+
+- 修复前换算（元素 1096×288、viewBox 900×320）：受高度限制按 288/320=0.9 缩放，内容宽 810px、两侧各留白 (1096−810)/2=143px；光标停在绘图区左边缘时仍被算成第 12 个数据点（应为第 1 个）。
+- 修复后：同一位置返回索引 0；绘图区右边缘返回最后一个索引；中点与四分位点与数据点索引成比例。
+- 面板宽度取自布局换算（内容列 `max-w-6xl` 1152px − `px-4` 32px − 卡片 `p-3` 24px ≈ 1096px），如需现场核对可在 DevTools 中量取 svg 元素宽度。
+- 覆盖率：新增 `src/lib/chart-hover.ts` 行覆盖率 **95.23%**；`src/lib/**` 合计行覆盖率 48.42%（新增文件仅第 62 行未覆盖，合计较 E 组的 48.25% 略升）。
+- 命令：`corepack pnpm test`（35 文件 / 372 用例）、`typecheck`、`lint`、`build` 全部通过。
+
+### 风险与遗留
+
+- 仅修正了悬停取值映射；净值曲线仍按固定高度渲染，宽屏下左右留白依旧存在（属视觉留白，不影响取值准确）。如需让曲线铺满卡片，可改用基金侧 `min-w-[720px]` + `overflow-x-auto` 的自然宽高比方案。
+- 无浏览器端到端测试设施（仓库未引入 jsdom/Playwright），本次以纯函数单测覆盖换算逻辑，交互表现建议在页面上复核。
