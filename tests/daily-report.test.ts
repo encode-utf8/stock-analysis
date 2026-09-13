@@ -279,6 +279,39 @@ describe("提示词与模板降级", () => {
     expect(messages.user).toContain("2026-09-10 15:00:00");
   });
 
+  it("缺失项为空时明确禁止自造「不可用」表述", () => {
+    const messages = buildDailyReportMessages("fund", "2026-09-10", baseData());
+    expect(messages.user).toContain("本次没有任何缺失项");
+    expect(messages.user).toContain("不得出现「不可用」");
+    expect(messages.system).toContain("未列入的指标");
+  });
+
+  it("历史口径在提示词中标注板块与涨跌家数口径", () => {
+    const base = baseData();
+    const messages = buildDailyReportMessages(
+      "fund",
+      "2026-09-10",
+      baseData({
+        sectors: base.sectors ? { ...base.sectors, source: "ths" } : null,
+        breadth: {
+          up: 67,
+          down: 23,
+          flat: 0,
+          limit_up: 73,
+          limit_down: 0,
+          suspended: null,
+          activity_pct: null,
+          stat_date: "2026-09-10",
+          stat_scope: "sector",
+          source: "ths",
+          fetched_at: "2026-09-10T07:30:00Z",
+        },
+      }),
+    );
+    expect(messages.user).toContain("不提供成分公司数与领涨股");
+    expect(messages.user).toContain("涨跌家数为行业板块口径近似");
+  });
+
   it("模板日报包含全部章节与关键数字", () => {
     const markdown = buildTemplateDailyReport("stock", "2026-09-10", baseData());
     for (const heading of REPORT_SECTIONS.stock) {

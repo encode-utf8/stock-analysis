@@ -73,7 +73,8 @@ export interface MarketBreadthSnapshot {
 export interface MarketSectorItem {
   name: string;
   change_pct: number;
-  companies: number;
+  /** 成分公司数；历史回补口径（板块指数）不提供该字段，为 null。 */
+  companies: number | null;
   amount: number;
   leader: string | null;
 }
