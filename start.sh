@@ -8,6 +8,8 @@ LOGS_DIR="$ROOT/.logs"
 mkdir -p "$LOGS_DIR"
 DATA_LOG="$LOGS_DIR/data-service.out.log"
 DATA_ERR="$LOGS_DIR/data-service.err.log"
+WORKER_LOG="$LOGS_DIR/scheduler-worker.out.log"
+WORKER_ERR="$LOGS_DIR/scheduler-worker.err.log"
 
 step() {
   printf '\033[36m[启动] %s\033[0m\n' "$1"
@@ -147,7 +149,12 @@ step "启动 FastAPI 行情/基金数据侧车..."
   >"$DATA_LOG" 2>"$DATA_ERR" &
 DATA_PID=$!
 
+WORKER_PID=""
+
 cleanup() {
+  if [[ -n "$WORKER_PID" ]] && kill -0 "$WORKER_PID" >/dev/null 2>&1; then
+    kill "$WORKER_PID" >/dev/null 2>&1 || true
+  fi
   if kill -0 "$DATA_PID" >/dev/null 2>&1; then
     kill "$DATA_PID" >/dev/null 2>&1 || true
   fi
@@ -174,6 +181,12 @@ fi
 
 step "行情/基金数据侧车已就绪：http://127.0.0.1:8000/health"
 export DATA_SERVICE_URL="http://127.0.0.1:8000"
+
+if [[ "${SKIP_SCHEDULER_WORKER:-0}" != "1" ]]; then
+  step "启动定时任务守护进程..."
+  node "$ROOT/scripts/scheduler-worker.mjs" >"$WORKER_LOG" 2>"$WORKER_ERR" &
+  WORKER_PID=$!
+fi
 
 step "启动 Web 前端：http://127.0.0.1:3000"
 if [[ "$NO_BROWSER" != "1" ]]; then

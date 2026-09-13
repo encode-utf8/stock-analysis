@@ -27,6 +27,7 @@ export type ApiErrorCode =
   | "CODE_NOT_FOUND"
   | "UPSTREAM_ERROR"
   | "RATE_LIMITED"
+  | "FORBIDDEN"
   | "INTERNAL_ERROR";
 
 /** 统一错误响应。 */

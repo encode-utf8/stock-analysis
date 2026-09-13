@@ -1695,3 +1695,48 @@ corepack pnpm build
 - 涨跌家数没有跨日历史接口，因此不做环比，已在提示词与口径说明中明确。
 - 邮件推送无重试队列；失败原因写入 `job_runs` 与面板提示。
 - 板块轮动固定取涨幅前五（与前端 `limit=5` 一致），若后续调整榜单长度需同步 `SECTOR_ROTATION_TOP`。
+
+## E 组工程质量（编排层测试补强 / 定时任务守护）
+
+- 关联文档：`docs/engineering-quality-plan.md`、`checklist.md`（T1 测试基建、A 组日报收尾）
+- 分支：`feature/engineering-quality`
+- 目标：E1 给 data-service 客户端、日报采集、scheduler 等编排层补测试；E2 让定时任务在服务端启动时确定性注册，并具备独立 worker 与断点补跑能力。
+
+### 验收项
+
+- [x] E1：新增 `tests/data-service-client.test.ts`，覆盖侧车客户端成功/非法结构/HTTP 失败/网络异常分支
+- [x] E1：新增 `tests/daily-report-collect.test.ts`，覆盖当日与历史采集、对比组装、缺数据回退、降级自选池剔除
+- [x] E1：新增 `tests/scheduler-jobs.test.ts`，覆盖各任务编排、`job_runs` 落库与失败记录
+- [x] E1：新增 `tests/observability.test.ts` 与 `tests/alert-email.test.ts`
+- [x] E1：`src/lib/**` 行覆盖率由 33.05% 提升到 45% 以上；`data-service.ts` ≥ 80%、`scheduler.ts` ≥ 60%
+- [x] E2：`src/instrumentation.ts` 在服务端启动时注册定时任务，构建阶段跳过
+- [x] E2：`src/lib/scheduler-guard.ts` 提供调度表、过期判定、状态汇总与补跑编排（纯逻辑可单测）
+- [x] E2：`GET /api/admin/scheduler/status` 返回各任务最近运行时间与是否过期
+- [x] E2：`POST /api/admin/scheduler/tick` 仅补跑过期任务，单项失败不影响其它项，写接口有令牌鉴权
+- [x] E2：`scripts/scheduler-worker.mjs` 独立进程支持 `--once`/`--interval`/`--max-failures` 与优雅退出
+- [x] E2：`.env.example`、README、`start.bat`/`start.sh` 提供守护配置与开关
+- [x] `corepack pnpm test`、`typecheck`、`lint`、`build` 全部通过
+- [x] 代码注释与提交信息为中文，未提交临时脚本与真实密钥
+
+### 验证方式
+
+- 覆盖率：`corepack pnpm test:coverage`（对比基线 `src/lib/**` 33.05%）
+- 守护：`corepack pnpm build` 后 `node scripts/scheduler-worker.mjs --once`；`curl -H "x-scheduler-token: ..." -X POST http://127.0.0.1:3000/api/admin/scheduler/tick`
+- 回归：`corepack pnpm test && corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+
+### 实测结果（2026-09-13）
+
+- 覆盖率（`corepack pnpm test:coverage`，33 个文件 / 356 用例全绿）：`src/lib/**` 行覆盖率 **47.80%**（基线 33.05%），行级汇总 47.17%；`data-service.ts` **83.33%**（基线 8.33%）、`scheduler.ts` **82.87%**（基线 9.79%）、`scheduler-guard.ts` **100%**
+- 其它关键模块：`news.ts` 2.42% → **85.02%**、`store/index.ts` 14.01% → **91.58%**、`market-data.ts` 12.76% → **100%（语句）**、`daily-report.ts` 50.3% → **80%**、`alert-email.ts` 35.13% → **81.08%**、`deterministic.ts` 1.11% → **100%**、`trading-calendar.ts` 45.31% → **98.43%**、`cache.ts`/`api-response.ts`/`mock/index.ts` 100%
+- 测试纪律：新增用例不访问网络（`fetch` 全部 stub）、不依赖真实时钟（显式注入 `now`）、不依赖真实数据库（store / drizzle 替身）；`corepack pnpm test` 33 文件 / 356 用例全部通过
+- 启动注册：`corepack pnpm build` 后另起 `next start -p 3100`，**未访问任何 admin 接口**直接请求 `/api/admin/scheduler/status` 得到 `schedulerRegistered=true`，证明 `src/instrumentation.ts` 在服务端启动时完成注册；构建阶段与 Edge 运行时不注册
+- 状态接口：`GET /api/admin/scheduler/status` 返回 6 个任务的 `cron`/`lastRunAt`/`lastRunAgeMinutes`/`stale`/`skipReason`；实测周日（非交易日）`staleCount=3`（资讯清理、行情刷新、基金刷新过期），预警与日报任务 `skipReason=非交易日`
+- 补跑接口：`node scripts/scheduler-worker.mjs --once` 发现 3 个过期任务 → `POST /api/admin/scheduler/tick` 返回「执行 3 项，失败 0 项，跳过 0 项」，补跑后 `staleCount` 归 0 且各任务 `lastRunAt` 更新
+- 鉴权：未配置 `SCHEDULER_TOKEN` 时，带 `x-forwarded-for: 203.0.113.9` 的写请求返回 `403 FORBIDDEN`「未配置 SCHEDULER_TOKEN 时只允许本机触发」；`127.0.0.1`、`::1`、`::ffff:127.0.0.1` 等本机来源放行
+- 守护进程：`--once` 在应用未启动时打印「健康检查失败……应用可能未启动」并以 0 退出；非法参数打印帮助并以 2 退出；`scripts/start-scheduler.ps1` 写入 `.logs/scheduler-worker.pid` 并拉起 worker（日志「调度状态正常，无过期任务。」），`-Stop` 回收进程并删除 pid 文件；`SKIP_SCHEDULER_WORKER=1` 输出跳过提示
+- 命令：`corepack pnpm test`、`typecheck`、`lint`、`build` 全部通过
+
+### 风险与遗留
+
+- 守护进程只做「发现停摆 + 补齐过期任务」，不负责拉起已退出的 Web 进程。
+- 补跑阈值按经验设定（日报/清理 26 小时、预警 2 小时），如需更细粒度可在 `SCHEDULE_TABLE` 调整。

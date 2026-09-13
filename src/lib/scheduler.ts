@@ -19,6 +19,7 @@ import { dailyReportExists } from "@/lib/daily-report-store";
 import { beijingDateKey, getTradingCalendar, shiftDateKey } from "@/lib/trading-calendar";
 import type { TradingCalendar } from "@/lib/trading-calendar";
 import { recordTaskRun } from "@/lib/observability";
+import { resolveCron, SCHEDULE_TABLE } from "@/lib/scheduler-guard";
 import { store } from "@/lib/store";
 import type {
   DailyReportBackfillResult,
@@ -420,23 +421,34 @@ async function probeDailyReport(kind: DailyReportKind): Promise<JobRun | null> {
 }
 
 /** 定时股市日报：交易日 15:00 后每 10 分钟探测一次，数据就绪即生成。 */
-function runScheduledStockReport(): Promise<JobRun | null> {
+export function runScheduledStockReport(): Promise<JobRun | null> {
   return probeDailyReport("stock");
 }
 
 /** 定时基金日报：交易日晚间每 20 分钟探测一次，净值公布即生成。 */
-function runScheduledFundReport(): Promise<JobRun | null> {
+export function runScheduledFundReport(): Promise<JobRun | null> {
   return probeDailyReport("fund");
 }
+
 /** 每日资讯清理。 */
 export function runScheduledCleanup(): Promise<JobRun> {
   return runCleanupJob({ source: "cron" });
 }
 
+/** 任务键到执行器的映射：cron 注册与守护补跑共用，避免两处逻辑漂移。 */
+export const SCHEDULER_RUNNERS: Record<string, () => Promise<unknown>> = {
+  "news-cleanup": runScheduledCleanup,
+  "sample-quote-refresh": runScheduledRefresh,
+  "sample-fund-refresh": runScheduledFundRefresh,
+  "alert-scan": runAlertScanJob,
+  "daily-stock-report": runScheduledStockReport,
+  "daily-fund-report": runScheduledFundReport,
+};
+
 function safeSchedule(
   expression: string,
   name: string,
-  action: () => Promise<JobRun | null>,
+  action: () => Promise<unknown>,
 ): void {
   if (!validate(expression)) {
     console.error(`无效的定时表达式 ${expression}，已跳过任务 ${name}。`);
@@ -455,37 +467,35 @@ function safeSchedule(
   );
 }
 
+type SchedulerGlobalState = typeof globalThis & {
+  __stockAnalysisSchedulerStarted?: boolean;
+};
+
+/** 进程级启动标记：开发模式热更新或重复调用时避免重复注册。 */
+function schedulerGlobalState(): SchedulerGlobalState {
+  return globalThis as SchedulerGlobalState;
+}
+
+/** 查询进程内定时任务是否已注册，供调度状态接口与面板展示。 */
+export function isSchedulerStarted(): boolean {
+  return schedulerGlobalState().__stockAnalysisSchedulerStarted === true;
+}
+
 /** 启动单机定时任务；多次调用只启动一次，避免开发模式热更新重复注册。 */
 export function startScheduler(): void {
-  const globalForScheduler = globalThis as typeof globalThis & {
-    __stockAnalysisSchedulerStarted?: boolean;
-  };
-
+  const globalForScheduler = schedulerGlobalState();
   if (globalForScheduler.__stockAnalysisSchedulerStarted) {
     return;
   }
 
   globalForScheduler.__stockAnalysisSchedulerStarted = true;
-  safeSchedule(process.env.CLEANUP_CRON ?? "0 3 * * *", "news-cleanup", runScheduledCleanup);
-  safeSchedule(
-    process.env.REFRESH_CRON ?? "30 3 * * *",
-    "sample-quote-refresh",
-    runScheduledRefresh,
-  );
-  safeSchedule(
-    process.env.FUND_REFRESH_CRON ?? "45 3 * * *",
-    "sample-fund-refresh",
-    runScheduledFundRefresh,
-  );
-  safeSchedule(process.env.ALERT_CRON ?? "*/30 9-15 * * 1-5", "alert-scan", runAlertScanJob);
-  safeSchedule(
-    process.env.DAILY_STOCK_REPORT_CRON ?? "*/10 15-16 * * 1-5",
-    "daily-stock-report",
-    runScheduledStockReport,
-  );
-  safeSchedule(
-    process.env.DAILY_FUND_REPORT_CRON ?? "*/20 20-23 * * 1-5",
-    "daily-fund-report",
-    runScheduledFundReport,
-  );
+  // 调度表达式统一来自 SCHEDULE_TABLE，守护进程的过期判定使用同一份配置。
+  for (const entry of SCHEDULE_TABLE) {
+    const action = SCHEDULER_RUNNERS[entry.key];
+    if (!action) {
+      console.error(`定时任务 ${entry.key} 未注册执行器，已跳过。`);
+      continue;
+    }
+    safeSchedule(resolveCron(entry), entry.key, action);
+  }
 }
