@@ -151,6 +151,8 @@ export async function fetchKlinesFromSidecar(
 
 const INDEX_TIMEOUT_MS = 5_000;
 const MARKET_TIMEOUT_MS = 10_000;
+/** 历史板块与涨跌家数回补需要并发拉取 90 个板块，侧车耗时约 15 秒，超时放宽。 */
+const MARKET_HISTORY_TIMEOUT_MS = 60_000;
 
 /** 指数代码格式（sh/sz + 6 位数字）；侧车仍会做白名单二次校验。 */
 const INDEX_CODE_PATTERN = /^(sh|sz)\d{6}$/;
@@ -253,10 +255,19 @@ export async function fetchIndexKlineFromSidecar(
   }
 }
 
-/** 从行情侧车获取全市场涨跌家数；不可用时返回 null。 */
-export async function fetchMarketBreadthFromSidecar(): Promise<MarketBreadthSnapshot | null> {
+/**
+ * 从行情侧车获取全市场涨跌家数；不可用时返回 null。
+ * 传 date 时按历史日期回补：乐咕快照日期一致为真实家数，否则为行业板块口径近似。
+ */
+export async function fetchMarketBreadthFromSidecar(
+  date?: string,
+): Promise<MarketBreadthSnapshot | null> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
   try {
-    const data = await fetchJson<unknown>("/market/breadth", MARKET_TIMEOUT_MS);
+    const data = await fetchJson<unknown>(
+      `/market/breadth${query}`,
+      date ? MARKET_HISTORY_TIMEOUT_MS : MARKET_TIMEOUT_MS,
+    );
     recordExternalCall(true);
     return isMarketBreadth(data) ? data : null;
   } catch {
@@ -265,14 +276,16 @@ export async function fetchMarketBreadthFromSidecar(): Promise<MarketBreadthSnap
   }
 }
 
-/** 从行情侧车获取行业板块涨跌榜；不可用时返回 null。 */
+/** 从行情侧车获取行业板块涨跌榜；传 date 时走同花顺历史回补；不可用时返回 null。 */
 export async function fetchMarketSectorsFromSidecar(
   limit = 5,
+  date?: string,
 ): Promise<MarketSectorsSnapshot | null> {
+  const dateQuery = date ? `&date=${encodeURIComponent(date)}` : "";
   try {
     const data = await fetchJson<unknown>(
-      `/market/sectors?limit=${limit}`,
-      MARKET_TIMEOUT_MS,
+      `/market/sectors?limit=${limit}${dateQuery}`,
+      date ? MARKET_HISTORY_TIMEOUT_MS : MARKET_TIMEOUT_MS,
     );
     recordExternalCall(true);
     return isMarketSectors(data) ? data : null;

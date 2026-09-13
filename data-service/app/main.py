@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -995,6 +996,10 @@ def quotes(codes: str = Query(..., min_length=1, max_length=2000)) -> dict:
 
 SOURCE_TENCENT = "tencent"
 SOURCE_LEGU = "legulegu"
+SOURCE_THS = "ths"
+
+# 历史行业板块回补：同花顺板块指数只能逐板块请求，用线程池并发并限制并发上限。
+SECTOR_HISTORY_WORKERS = 6
 
 # 指数白名单：只允许查询下列代码，避免把任意输入拼进上游 URL。
 INDEX_WHITELIST: dict[str, str] = {
@@ -1142,6 +1147,7 @@ def _market_breadth() -> dict | None:
             "suspended": _integer(pick("停牌"), 0),
             "activity_pct": _number(pick("活跃度")),
             "stat_date": str(stat_raw).strip() if stat_raw is not None else None,
+            "stat_scope": "market",
             "source": SOURCE_LEGU,
             "fetched_at": now.isoformat(),
         }
@@ -1154,9 +1160,14 @@ def _market_breadth() -> dict | None:
 
 
 @app.get("/market/breadth")
-def market_breadth() -> dict:
-    """返回全市场上涨/下跌/涨跌停家数与活跃度，供日报的「全市场涨跌」使用。"""
-    breadth = _market_breadth()
+def market_breadth(
+    date_text: str | None = Query(None, alias="date", pattern=r"^\d{4}-\d{2}-\d{2}$"),
+) -> dict:
+    """返回全市场上涨/下跌/涨跌停家数与活跃度；传 date 时按历史日期回补。"""
+    if date_text and date_text != _today_text():
+        breadth = _historical_breadth(date_text)
+    else:
+        breadth = _market_breadth()
     if not breadth:
         raise HTTPException(status_code=502, detail="全市场涨跌家数上游暂不可用。")
     return breadth
@@ -1216,11 +1227,151 @@ def _sector_rows() -> list[dict] | None:
         return None
 
 
-@app.get("/market/sectors")
-def market_sectors(limit: int = Query(5, ge=1, le=20)) -> dict:
-    """返回行业板块涨幅榜与跌幅榜，供日报的「板块涨幅」使用。"""
+def _today_text() -> str:
+    """当前北京时间日期（YYYY-MM-DD）。"""
+    return _now_utc().astimezone(CHINA_TZ).date().isoformat()
+
+
+# 历史行业板块缓存：按日期保存，避免同一天重复发起 90 次上游请求。
+_SECTOR_HISTORY_CACHE: dict[str, tuple[datetime, list[dict]]] = {}
+_SECTOR_HISTORY_TTL = timedelta(hours=6)
+
+
+def _limit_pool_count(func_name: str, date_text: str) -> int | None:
+    """涨跌停家数（东财涨停池，支持历史日期）；上游不可用时返回 None。"""
+    if not HAS_AKSHARE:
+        return None
+    try:
+        frame = getattr(ak, func_name)(date=date_text.replace("-", ""))
+        return int(len(frame)) if frame is not None else 0
+    except Exception as exc:
+        logger.warning("获取涨跌停家数失败（%s %s）：%s", func_name, date_text, exc)
+        return None
+
+
+def _sector_history_rows(date_text: str) -> list[dict] | None:
+    """按历史日期回补行业板块涨跌幅（同花顺板块指数），按日期缓存。
+
+    同花顺没有「指定历史日期的板块涨跌榜」接口，只能逐个板块取板块指数日线，
+    用目标日收盘价与前一日收盘价算涨跌幅；并发上限由 SECTOR_HISTORY_WORKERS 控制。
+    """
+    cached = _SECTOR_HISTORY_CACHE.get(date_text)
+    if cached is not None and _now_utc() - cached[0] < _SECTOR_HISTORY_TTL:
+        return cached[1]
+
+    if not HAS_AKSHARE:
+        return None
+
+    try:
+        names_frame = ak.stock_board_industry_name_ths()
+    except Exception as exc:
+        logger.warning("获取同花顺行业板块清单失败：%s", exc)
+        return None
+    if names_frame is None or names_frame.empty:
+        return None
+
+    names = [
+        str(_series_value(row, ["name", "板块名称"]) or "").strip()
+        for _, row in names_frame.iterrows()
+    ]
+    names = [name for name in names if name]
+    if not names:
+        return None
+
+    end_date = date_text.replace("-", "")
+    start_date = (
+        datetime.strptime(date_text, "%Y-%m-%d").date() - timedelta(days=15)
+    ).strftime("%Y%m%d")
+
+    def load(name: str) -> dict | None:
+        """取单个板块在目标日期的收盘涨跌幅；任一环节缺失即跳过该板块。"""
+        try:
+            frame = ak.stock_board_industry_index_ths(
+                symbol=name, start_date=start_date, end_date=end_date
+            )
+        except Exception:
+            return None
+        if frame is None or frame.empty:
+            return None
+        rows = list(frame.iterrows())
+        position: int | None = None
+        for index, (_, row) in enumerate(rows):
+            if str(_series_value(row, ["日期"]) or "")[:10] == date_text:
+                position = index
+        if position is None or position == 0:
+            return None
+        current = rows[position][1]
+        previous = rows[position - 1][1]
+        close = _number(_series_value(current, ["收盘价"]))
+        prev_close = _number(_series_value(previous, ["收盘价"]))
+        if close is None or prev_close is None or prev_close <= 0:
+            return None
+        return {
+            "name": name,
+            "change_pct": _round((close / prev_close - 1) * 100),
+            "companies": 0,
+            "amount": _number(_series_value(current, ["成交额"]), 0.0) or 0.0,
+            "avg_price": _round(close, 4),
+            "leader": None,
+        }
+
+    rows: list[dict] = []
+    with ThreadPoolExecutor(max_workers=SECTOR_HISTORY_WORKERS) as pool:
+        for item in pool.map(load, names):
+            if item is not None:
+                rows.append(item)
+
+    if not rows:
+        return None
+
+    rows.sort(key=lambda item: item["change_pct"], reverse=True)
+    _SECTOR_HISTORY_CACHE[date_text] = (_now_utc(), rows)
+    return rows
+
+
+def _historical_breadth(date_text: str) -> dict | None:
+    """历史日期的涨跌家数：乐咕统计日期一致时直接用，否则退回行业板块口径近似。"""
     now = _now_utc()
-    rows = _sector_rows()
+    snapshot = _market_breadth()
+    stat_date = str(snapshot.get("stat_date") or "") if snapshot else ""
+    if snapshot and stat_date.startswith(date_text):
+        # 乐咕只保留最新交易日快照，统计日期与目标日期一致即为该日真实家数。
+        return {**snapshot, "fetched_at": now.isoformat()}
+
+    rows = _sector_history_rows(date_text)
+    if not rows:
+        return None
+
+    up = len([item for item in rows if item["change_pct"] > 0])
+    down = len([item for item in rows if item["change_pct"] < 0])
+    return {
+        "up": up,
+        "down": down,
+        "flat": len(rows) - up - down,
+        "limit_up": _limit_pool_count("stock_zt_pool_em", date_text),
+        "limit_down": _limit_pool_count("stock_zt_pool_dtgc_em", date_text),
+        "suspended": None,
+        "activity_pct": None,
+        "stat_date": date_text,
+        "stat_scope": "sector",
+        "source": SOURCE_THS,
+        "fetched_at": now.isoformat(),
+    }
+
+
+@app.get("/market/sectors")
+def market_sectors(
+    limit: int = Query(5, ge=1, le=20),
+    date_text: str | None = Query(None, alias="date", pattern=r"^\d{4}-\d{2}-\d{2}$"),
+) -> dict:
+    """返回行业板块涨幅榜与跌幅榜；传 date 时走同花顺历史回补。"""
+    now = _now_utc()
+    if date_text and date_text != _today_text():
+        rows = _sector_history_rows(date_text)
+        source = SOURCE_THS
+    else:
+        rows = _sector_rows()
+        source = SOURCE_AKSHARE
     if not rows:
         raise HTTPException(status_code=502, detail="行业板块数据上游暂不可用。")
 
@@ -1229,7 +1380,7 @@ def market_sectors(limit: int = Query(5, ge=1, le=20)) -> dict:
         "top": rows[:size],
         "bottom": list(reversed(rows[-size:])),
         "total": len(rows),
-        "source": SOURCE_AKSHARE,
+        "source": source,
         "fetched_at": now.isoformat(),
     }
 @app.get("/index/kline")
@@ -1264,6 +1415,8 @@ def index_kline(
                 "close": _round(close),
                 "high": _round(row["high"]) if row["high"] is not None else None,
                 "low": _round(row["low"]) if row["low"] is not None else None,
+                # 成交额（元）：腾讯日线第 9 位 ×10000；缺失记 0，供日报「成交额」使用。
+                "amount": _number(row.get("amount"), 0.0) or 0.0,
                 "ts": ts.isoformat(),
             }
         )

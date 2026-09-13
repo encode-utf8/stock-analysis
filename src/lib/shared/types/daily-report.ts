@@ -40,6 +40,8 @@ export interface IndexKlineDay {
   close: number;
   high: number | null;
   low: number | null;
+  /** 成交额（元）；历史日期由侧车从腾讯日线补齐，缺失为 undefined。 */
+  amount?: number | null;
 }
 
 /** 指数日线序列。 */
@@ -56,11 +58,13 @@ export interface MarketBreadthSnapshot {
   up: number;
   down: number;
   flat: number;
-  limit_up: number;
-  limit_down: number;
-  suspended: number;
+  limit_up: number | null;
+  limit_down: number | null;
+  suspended: number | null;
   activity_pct: number | null;
   stat_date: string | null;
+  /** 统计口径：market=全市场个股家数；sector=行业板块涨跌分布（历史日期近似口径）。 */
+  stat_scope?: "market" | "sector";
   source: string;
   fetched_at: string;
 }

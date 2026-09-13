@@ -89,6 +89,14 @@ export function formatChangePct(changePct: number | null): string {
   return `${sign}${changePct.toFixed(2)}%`;
 }
 
+/** 把成交额（元）格式化为亿元，便于阅读；缺失或非正数返回「—」。 */
+export function formatAmountInYi(amount: number | null | undefined): string {
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    return "—";
+  }
+  return `${(amount / 100_000_000).toFixed(0)} 亿元`;
+}
+
 /** 汇总涨跌：平均涨跌幅与上涨/下跌数量。 */
 export function summarizeChanges(values: (number | null)[]): {
   average: number | null;
@@ -146,7 +154,8 @@ async function collectIndices(
       price: current.close,
       change: Number(change.toFixed(2)),
       change_pct: Number(((change / previous.close) * 100).toFixed(2)),
-      amount: 0,
+      // 历史日期成交额由侧车从腾讯日线补齐（单位：元）；上游缺失时记 0。
+      amount: typeof current.amount === "number" ? current.amount : 0,
       source: item.source,
       fetched_at: item.fetched_at,
     });
@@ -365,29 +374,19 @@ export async function collectDailyReportData(
     await Promise.all([
       collectIndices(date, isToday),
       (async () => {
-        if (!isToday) {
-          return {
-            breadth: null,
-            missing: ["全市场涨跌家数（上游仅提供当日数据，历史日期不可回补）"],
-          };
-        }
-        const breadth = await fetchMarketBreadthFromSidecar();
+        // 历史日期同样采集：乐咕统计日期一致时为真实家数，否则侧车退回板块口径近似。
+        const breadth = await fetchMarketBreadthFromSidecar(date);
         return {
           breadth,
-          missing: breadth ? [] : ["全市场涨跌家数（行情侧车暂不可用）"],
+          missing: breadth ? [] : [`全市场涨跌家数（${date} 上游与板块口径均不可用）`],
         };
       })(),
       (async () => {
-        if (!isToday) {
-          return {
-            sectors: null,
-            missing: ["行业板块涨跌（上游仅提供当日数据，历史日期不可回补）"],
-          };
-        }
-        const sectors = await fetchMarketSectorsFromSidecar();
+        // 历史日期走同花顺板块指数回补，当日走新浪行业板块。
+        const sectors = await fetchMarketSectorsFromSidecar(5, date);
         return {
           sectors,
-          missing: sectors ? [] : ["行业板块涨跌（行情侧车暂不可用）"],
+          missing: sectors ? [] : [`行业板块涨跌（${date} 上游无可用数据）`],
         };
       })(),
       kind === "stock" ? collectStockHoldings(date, isToday) : collectFundHoldings(date, isToday),
@@ -478,7 +477,7 @@ export function buildDailyReportMetrics(
   if (kind === "stock" && data.breadth) {
     const breadth = data.breadth;
     metrics.push({
-      label: "涨跌家数",
+      label: breadth.stat_scope === "sector" ? "板块涨跌（近似）" : "涨跌家数",
       value: `${breadth.up} / ${breadth.down}`,
       change_pct: null,
       tone: breadth.up > breadth.down ? "up" : breadth.up < breadth.down ? "down" : "flat",
@@ -559,7 +558,12 @@ export function buildDailyReportHeadline(
     parts.push(`${index.name} ${index.price.toFixed(2)}（${formatChangePct(index.change_pct)}）`);
   }
   if (kind === "stock" && data.breadth) {
-    parts.push(`全市场 ${data.breadth.up} 家上涨 / ${data.breadth.down} 家下跌`);
+    const breadth = data.breadth;
+    parts.push(
+      breadth.stat_scope === "sector"
+        ? `行业板块 ${breadth.up} 个上涨 / ${breadth.down} 个下跌`
+        : `全市场 ${breadth.up} 家上涨 / ${breadth.down} 家下跌`,
+    );
   }
   if (data.holdings.length > 0) {
     const changes = summarizeChanges(data.holdings.map((item) => item.change_pct));
@@ -603,10 +607,12 @@ export const REPORT_SECTIONS: Record<DailyReportKind, string[]> = {
 const REPORT_SYSTEM_HEADER = [
   "你是职业投资研究者，负责为初学者撰写当日收盘日报。",
   "硬性要求：",
-  "1. 必须引用给定数据中的具体数字（指数点位与涨跌幅、涨跌家数、板块涨跌幅、自选标的涨跌幅），禁止只写空泛套话。",
+  "1. 必须引用给定数据中的具体数字（指数点位与涨跌幅、成交额、涨跌家数或板块涨跌分布、板块涨跌幅、自选标的涨跌幅），禁止只写空泛套话。",
   "2. 只使用给定数据分析，禁止编造未提供的数据；数据缺失时必须在对应章节明确写出「本日该数据不可用」。",
-  "3. 禁止出现「必涨、必跌、稳赚、包赚」等确定性收益承诺，必须给出风险提示。",
-  "4. 使用中文 Markdown 输出，不要输出 JSON，也不要用代码块包裹全文。",
+  "3. 涨跌家数的 stat_scope 为 sector 时表示该数据是行业板块口径近似，必须写明口径，不得当作全市场个股家数。",
+  "4. 禁止出现「必涨、必跌、稳赚、包赚」等确定性收益承诺，必须给出风险提示。",
+  "5. 使用中文 Markdown 输出，不要输出 JSON，也不要用代码块包裹全文。",
+  "6. 正文面向初学者，不要直接出现 stat_scope、fetched_at 之类的字段名，用中文口径描述代替。",
 ].join("\n");
 
 /** 构造日报提示词：股市与基金共用同一份「只依据给定数据」约束。 */
@@ -638,10 +644,11 @@ function indexBlockLines(data: DailyReportData): string[] {
     return ["- 本日大盘指数数据不可用。"];
   }
   return [
-    "| 指数 | 收盘 | 涨跌幅 |",
-    "| --- | --- | --- |",
+    "| 指数 | 收盘 | 涨跌幅 | 成交额 |",
+    "| --- | --- | --- | --- |",
     ...data.indices.map(
-      (index) => `| ${index.name} | ${index.price.toFixed(2)} | ${formatChangePct(index.change_pct)} |`,
+      (index) =>
+        `| ${index.name} | ${index.price.toFixed(2)} | ${formatChangePct(index.change_pct)} | ${formatAmountInYi(index.amount)} |`,
     ),
   ];
 }
@@ -671,10 +678,14 @@ function sectorBlockLines(data: DailyReportData): string[] {
   if (!data.sectors) {
     return ["- 本日行业板块数据不可用。"];
   }
+  const scopeText =
+    data.sectors.source === "ths"
+      ? "（同花顺行业板块指数，按目标日与前一日收盘价计算）"
+      : "";
   return [
     `- 领涨板块：${data.sectors.top.map((item) => `${item.name} ${formatChangePct(item.change_pct)}`).join("、")}`,
     `- 领跌板块：${data.sectors.bottom.map((item) => `${item.name} ${formatChangePct(item.change_pct)}`).join("、")}`,
-    `- 统计口径：共 ${data.sectors.total} 个行业板块。`,
+    `- 统计口径：共 ${data.sectors.total} 个行业板块${scopeText}。`,
   ];
 }
 
@@ -683,13 +694,30 @@ function breadthBlockLines(data: DailyReportData): string[] {
   if (!breadth) {
     return ["- 本日全市场涨跌家数不可用。"];
   }
-  return [
-    `- 上涨 ${breadth.up} 家，下跌 ${breadth.down} 家，平盘 ${breadth.flat} 家。`,
-    `- 涨停 ${breadth.limit_up} 家，跌停 ${breadth.limit_down} 家，停牌 ${breadth.suspended} 家。`,
+  const lines: string[] = [];
+  if (breadth.stat_scope === "sector") {
+    // 历史日期没有个股家数历史接口，侧车退回板块口径，必须显式标注口径避免误读。
+    lines.push("- 口径说明：该日期无个股涨跌家数历史接口，下列为行业板块涨跌分布近似。");
+    lines.push(
+      `- 上涨板块 ${breadth.up} 个，下跌板块 ${breadth.down} 个，平盘 ${breadth.flat} 个。`,
+    );
+  } else {
+    lines.push(`- 上涨 ${breadth.up} 家，下跌 ${breadth.down} 家，平盘 ${breadth.flat} 家。`);
+  }
+  const limitParts = [
+    breadth.limit_up === null ? null : `涨停 ${breadth.limit_up} 家`,
+    breadth.limit_down === null ? null : `跌停 ${breadth.limit_down} 家`,
+    breadth.suspended === null ? null : `停牌 ${breadth.suspended} 家`,
+  ].filter((item): item is string => item !== null);
+  if (limitParts.length > 0) {
+    lines.push(`- ${limitParts.join("，")}。`);
+  }
+  lines.push(
     breadth.activity_pct === null
       ? "- 市场活跃度数据不可用。"
       : `- 市场活跃度 ${breadth.activity_pct}%。`,
-  ];
+  );
+  return lines;
 }
 
 /** 未配置模型或调用失败时的确定性日报正文。 */
