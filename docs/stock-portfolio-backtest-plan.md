@@ -165,3 +165,4 @@
 - 修复：新增 `src/lib/chart-hover.ts`（`resolveMeetTransform` / `resolveHoverIndex`）统一按「等比缩放 + 居中留白」换算并钳制到首尾数据点；组件改用该函数、显式声明 `preserveAspectRatio`，路径与刻度计算移入 `useMemo`。
 - 覆盖：`tests/chart-hover.test.ts`（12 个用例，含宽屏留白、窄屏留白、等比一致、越界钳制与尺寸异常）。
 - 影响范围：仅个股回测净值曲线；基金侧 `FundLineChart` / `DcaReturnChart` 使用 `min-w-[720px]` 的自然宽高比，元素与 viewBox 等比，不受该缺陷影响。
+- 布局调整（同日，分支 `fix/backtest-chart-fit-card`）：个股净值曲线改用与基金侧一致的 `min-w-[720px]` + 外层 `overflow-x-auto` 自然宽高比，曲线铺满卡片宽度、消除左右留白，窄屏改为横向滚动。

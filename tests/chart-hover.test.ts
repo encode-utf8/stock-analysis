@@ -216,3 +216,55 @@ describe("resolveHoverIndex：其它尺寸与边界", () => {
     expect(resolveHoverIndex({ ...base, paddingLeft: 890, paddingRight: 20 })).toBeNull();
   });
 });
+
+describe("resolveHoverIndex：铺满卡片（自然宽高比）", () => {
+  /** 元素宽高比与 viewBox 一致时，元素宽度就是缩放基准，不存在居中留白。 */
+  function naturalBox(width: number, left = 0) {
+    return { left, top: 0, width, height: (width * VIEW_BOX_HEIGHT) / VIEW_BOX_WIDTH };
+  }
+
+  it("宽屏下曲线铺满卡片，取值与绘图区对齐", () => {
+    const box = naturalBox(1096, 24);
+    const base = {
+      box,
+      viewBoxWidth: VIEW_BOX_WIDTH,
+      viewBoxHeight: VIEW_BOX_HEIGHT,
+      paddingLeft: PADDING_LEFT,
+      paddingRight: PADDING_RIGHT,
+      count: POINT_COUNT,
+    };
+
+    expect(resolveHoverIndex({ ...base, clientX: clientXAtRatio(box, 0) })).toBe(0);
+    expect(resolveHoverIndex({ ...base, clientX: clientXAtRatio(box, 0.5) })).toBe(50);
+    expect(resolveHoverIndex({ ...base, clientX: clientXAtRatio(box, 1) })).toBe(POINT_COUNT - 1);
+    expect(resolveMeetTransform(box, VIEW_BOX_WIDTH, VIEW_BOX_HEIGHT)?.offsetX).toBeCloseTo(0, 6);
+  });
+
+  it("窄屏横向滚动时按元素实际宽度与 left 换算", () => {
+    // min-w-[720px] 下限：容器更窄时 svg 仍为 720px，滚动后 rect.left 可能为负。
+    const box = naturalBox(720, -80);
+
+    expect(
+      resolveHoverIndex({
+        clientX: clientXAtRatio(box, 0),
+        box,
+        viewBoxWidth: VIEW_BOX_WIDTH,
+        viewBoxHeight: VIEW_BOX_HEIGHT,
+        paddingLeft: PADDING_LEFT,
+        paddingRight: PADDING_RIGHT,
+        count: POINT_COUNT,
+      }),
+    ).toBe(0);
+    expect(
+      resolveHoverIndex({
+        clientX: clientXAtRatio(box, 1),
+        box,
+        viewBoxWidth: VIEW_BOX_WIDTH,
+        viewBoxHeight: VIEW_BOX_HEIGHT,
+        paddingLeft: PADDING_LEFT,
+        paddingRight: PADDING_RIGHT,
+        count: POINT_COUNT,
+      }),
+    ).toBe(POINT_COUNT - 1);
+  });
+});
