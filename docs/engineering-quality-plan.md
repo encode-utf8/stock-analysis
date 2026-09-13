@@ -14,7 +14,8 @@
 
 | 模块 | 行覆盖率 | 说明 |
 | --- | --- | --- |
-| `src/lib/**` 合计 | 33.05% | 多数编排模块为 0-13% |
+| `src/lib/**`（含 `lib/db`、`lib/store` 等子目录，即 `vitest.config.mts` 的 coverage include 口径） | 32.69% | 多数编排模块为 0-13% |
+| 顶层 `src/lib`（上表 `lib` 行，不含子目录） | 33.05% | 同上 |
 | `src/lib/data-service.ts` | 8.33% | 侧车客户端，全部走 `fetch`，可用 stub 覆盖 |
 | `src/lib/scheduler.ts` | 9.79% | 任务编排，依赖可被模块 mock 替换 |
 | `src/lib/daily-report.ts` | 50.3% | 采集链路（`collectIndices`/`collectSectors`）未覆盖 |
@@ -93,7 +94,7 @@
 
 ## 5. 验收标准
 
-- [x] `src/lib/**` 行覆盖率从 33.05% 提升到 45% 以上，且 `data-service.ts` ≥ 80%、`scheduler.ts` ≥ 60%、`observability.ts` ≥ 70%
+- [x] `src/lib/**` 行覆盖率从 32.69% 提升到 45% 以上（顶层 `src/lib` 33.05% → 47.17%），且 `data-service.ts` ≥ 80%、`scheduler.ts` ≥ 60%、`observability.ts` ≥ 70%
 - [x] 新增测试不访问网络、不依赖真实时钟与真实数据库；`corepack pnpm test` 全绿
 - [x] 服务端启动即注册定时任务（`instrumentation.ts`），无需先访问 admin 接口
 - [x] `GET /api/admin/scheduler/status` 返回每个任务最近运行时间与是否过期
@@ -109,6 +110,6 @@
 - 覆盖率目标按「编排层可测部分」设定，`chat.ts`/`analysis.ts` 等强依赖模型服务的模块仍不纳入单测。
 ## 7. 实测结论（2026-09-13）
 
-- E1：`src/lib/**` 行覆盖率 47.80%（基线 33.05%）；`data-service.ts` 83.33%、`scheduler.ts` 82.87%、`scheduler-guard.ts` 100%、`news.ts` 85.02%、`store/index.ts` 91.58%；`corepack pnpm test` 33 文件 / 356 用例全绿。
+- E1：`src/lib/**` 行覆盖率 47.80%（基线 32.69%，均为 coverage include 口径的 `All files` 行）；顶层 `src/lib` 33.05% → 47.17%；`data-service.ts` 83.33%、`scheduler.ts` 82.87%、`scheduler-guard.ts` 100%、`news.ts` 85.02%、`store/index.ts` 91.58%；`corepack pnpm test` 33 文件 / 356 用例全绿。
 - E2：`next build` 后另起 `next start` 未访问任何 admin 接口即得到 `schedulerRegistered=true`；`node scripts/scheduler-worker.mjs --once` 发现 3 个过期任务并补跑成功（执行 3、失败 0）；未配置令牌时公网来源写请求返回 403，本机来源放行。
 - 回归：`corepack pnpm test`、`typecheck`、`lint`、`build` 全部通过。详见 `checklist.md` 的「E 组工程质量 / 实测结果」。
