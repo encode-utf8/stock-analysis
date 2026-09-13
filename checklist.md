@@ -1707,8 +1707,8 @@ corepack pnpm build
 - [x] E1：新增 `tests/data-service-client.test.ts`，覆盖侧车客户端成功/非法结构/HTTP 失败/网络异常分支
 - [x] E1：新增 `tests/daily-report-collect.test.ts`，覆盖当日与历史采集、对比组装、缺数据回退、降级自选池剔除
 - [x] E1：新增 `tests/scheduler-jobs.test.ts`，覆盖各任务编排、`job_runs` 落库与失败记录
-- [x] E1：新增 `tests/observability.test.ts` 与 `tests/alert-email.test.ts`
-- [x] E1：`src/lib/**` 行覆盖率由 32.69% 提升到 45% 以上（顶层 `src/lib` 33.05% → 47.17%）；`data-service.ts` ≥ 80%、`scheduler.ts` ≥ 60%
+- [x] E1：新增 `tests/observability.test.ts`、`tests/observability-db.test.ts` 与 `tests/alert-email.test.ts`
+- [x] E1：`src/lib/**` 行覆盖率由 32.69% 提升到 45% 以上（顶层 `src/lib` 33.05% → 47.65%）；`data-service.ts` ≥ 80%、`scheduler.ts` ≥ 60%、`observability.ts` ≥ 70%
 - [x] E2：`src/instrumentation.ts` 在服务端启动时注册定时任务，构建阶段跳过
 - [x] E2：`src/lib/scheduler-guard.ts` 提供调度表、过期判定、状态汇总与补跑编排（纯逻辑可单测）
 - [x] E2：`GET /api/admin/scheduler/status` 返回各任务最近运行时间与是否过期
@@ -1726,9 +1726,9 @@ corepack pnpm build
 
 ### 实测结果（2026-09-13）
 
-- 覆盖率（`corepack pnpm test:coverage`，33 个文件 / 356 用例全绿）：`src/lib/**` 行覆盖率 **47.80%**（基线 **32.69%**，均为 coverage include 口径的 `All files` 行）；顶层 `src/lib`（表格 `lib` 行）33.05% → **47.17%**；`data-service.ts` **83.33%**（基线 8.33%）、`scheduler.ts` **82.87%**（基线 9.79%）、`scheduler-guard.ts` **100%**
-- 其它关键模块：`news.ts` 2.42% → **85.02%**、`store/index.ts` 14.01% → **91.58%**、`market-data.ts` 12.76% → **100%（语句）**、`daily-report.ts` 50.3% → **80%**、`alert-email.ts` 35.13% → **81.08%**、`deterministic.ts` 1.11% → **100%**、`trading-calendar.ts` 45.31% → **98.43%**、`cache.ts`/`api-response.ts`/`mock/index.ts` 100%
-- 测试纪律：新增用例不访问网络（`fetch` 全部 stub）、不依赖真实时钟（显式注入 `now`）、不依赖真实数据库（store / drizzle 替身）；`corepack pnpm test` 33 文件 / 356 用例全部通过
+- 覆盖率（`corepack pnpm test:coverage`，34 个文件 / 360 用例全绿）：`src/lib/**` 行覆盖率 **48.25%**（基线 **32.69%**，均为 coverage include 口径的 `All files` 行）；顶层 `src/lib`（表格 `lib` 行）33.05% → **47.65%**；`data-service.ts` **83.33%**（基线 8.33%）、`scheduler.ts` **82.87%**（基线 9.79%）、`scheduler-guard.ts` **100%**、`observability.ts` **96.61%**（基线 8.47%）
+- 其它关键模块：`news.ts` 2.42% → **85.02%**、`store/index.ts` 14.01% → **91.58%**、`market-data.ts` 12.76% → **100%（语句）**、`daily-report.ts` 50.3% → **80%**、`alert-email.ts` 35.13% → **81.08%**、`deterministic.ts` 1.11% → **100%**、`trading-calendar.ts` 45.31% → **98.43%**、`cache.ts`/`api-response.ts`/`mock/index.ts` 100%；`observability.ts` 8.47% → **96.61%**（补 `tests/observability-db.test.ts` 覆盖落库与水合分支）
+- 测试纪律：新增用例不访问网络（`fetch` 全部 stub）、不依赖真实时钟（显式注入 `now`）、不依赖真实数据库（store / drizzle 替身）；`corepack pnpm test` 34 文件 / 360 用例全部通过
 - 启动注册：`corepack pnpm build` 后另起 `next start -p 3100`，**未访问任何 admin 接口**直接请求 `/api/admin/scheduler/status` 得到 `schedulerRegistered=true`，证明 `src/instrumentation.ts` 在服务端启动时完成注册；构建阶段与 Edge 运行时不注册
 - 状态接口：`GET /api/admin/scheduler/status` 返回 6 个任务的 `cron`/`lastRunAt`/`lastRunAgeMinutes`/`stale`/`skipReason`；实测周日（非交易日）`staleCount=3`（资讯清理、行情刷新、基金刷新过期），预警与日报任务 `skipReason=非交易日`
 - 补跑接口：`node scripts/scheduler-worker.mjs --once` 发现 3 个过期任务 → `POST /api/admin/scheduler/tick` 返回「执行 3 项，失败 0 项，跳过 0 项」，补跑后 `staleCount` 归 0 且各任务 `lastRunAt` 更新
