@@ -1771,3 +1771,36 @@ corepack pnpm build
 
 - 净值曲线已改为自然宽高比铺满卡片，宽屏不再留白；代价是图表高度随宽度变化（约 1096px 宽时高约 390px，原固定 288px）。
 - 无浏览器端到端测试设施（仓库未引入 jsdom/Playwright），本次以纯函数单测覆盖换算逻辑，交互表现建议在页面上复核。
+
+
+## 基金持有面板（养基宝式，2026-09-13）
+
+- 关联文档：`docs/fund-positions-plan.md`
+- 分支：`feature/fund-positions`
+- 目标：基金工作台新增「持有基金」模块，手动录入基金代码、当前持有金额（市值）与当前累计收益，复用盘中行情（`/api/funds/{code}/intraday`）与历史净值（`/api/funds/{code}/nav`），逐只展示当日实时涨跌幅/收益、累计收益与持仓占比。
+
+### 验收项
+
+- [x] FP1 口径纯函数 `src/lib/fund-position-calc.ts`：当日实时收益、上一交易日累计收益、累计收益、累计收益率、持仓占比与降级回退
+- [x] FP1 单测覆盖恒等式「上一交易日累计收益 + 当日实时收益 = 累计收益」，以及取不到估值/涨跌幅时的降级
+- [x] FP2 存储 `src/lib/fund-position.ts`：新增 `fund_positions` 表 + `.data/fund-positions.json` 回退；校验持有金额/累计收益、代码去重与名称回填
+- [x] FP2 接口 `GET/POST /api/fund-positions`、`PATCH/DELETE /api/fund-positions/{id}`
+- [x] FP3 面板 `FundPositionsPanel`：录入、逐只指标、合计行、删除确认、口径与来源说明
+- [x] FP3 模块注册：`FUND_MODULE_OPTIONS` 新增「持有基金」并在 `FundWorkbench` 挂载
+- [x] FP4 `corepack pnpm test`、`typecheck`、`lint`、`build` 全部通过
+
+### 实测结果
+
+- 单测：`corepack pnpm test` 全量 37 个文件 / 404 个用例通过；本次 `tests/fund-position.test.ts`（19 例）与 `tests/fund-position-calc.test.ts`（11 例）覆盖新口径。
+- 覆盖率（`corepack pnpm test:coverage`）：`src/lib/fund-position-calc.ts` 行 100% / 分支 97.22%；`src/lib/fund-position.ts` 行 73.30% / 分支 73.13% / 函数 67.31%（未覆盖部分为 PostgreSQL 仓储与故障回退包装）；`src/lib` 整体行覆盖 49.38%。
+- 静态检查：`corepack pnpm typecheck`、`corepack pnpm lint` 均无报错。
+- 构建：`corepack pnpm build` 通过，路由表中已出现 `/api/fund-positions` 与 `/api/fund-positions/[id]`。
+- 端到端（dev 服务 3000 + 行情侧车 8000 实测，测试数据已清理）：
+  - `GET /api/fund-positions` 空组合返回 200，`holdings_count = 0`，`total_day_profit = null`。
+  - `POST` 场外 `110022`（持有金额 10000 / 累计收益 2000）：`cost_amount = 8000`、`total_profit_pct = 25%`、`nav_mode = "nav"`；非交易时段取不到当日涨跌幅，`day_profit` 与 `prev_total_profit` 为空，但持有金额与累计收益照常展示。
+  - `POST` 场内 `510300`（持有金额 8000 / 累计收益 -300）：`nav_mode = "realtime"`、`estimated_nav = 4.58`、`change_pct = -0.82%`、`day_profit = -66.14`（= 8000 − 8000 / 0.9918）、`prev_total_profit = -233.86`，且 -233.86 + (-66.14) = -300 满足恒等式。
+  - 组合口径：`total_market_value = 18000`、`total_cost = 16300`、`total_profit = 1700`、`total_profit_pct = 10.43%`、`total_day_profit = -66.14`；持仓占比 55.56% + 44.44% = 100%。
+  - `PATCH /api/fund-positions/{id}` 改为持有金额 9000 / 累计收益 -500 → `cost_amount = 9500`、`total_profit_pct = -5.26%`。
+  - 重复代码返回 409；`999999` 返回 400 `CODE_NOT_FOUND`；`DELETE` 两只后 `holdings_count` 回到 0。
+- 口径说明（2026-09-13 按用户确认调整）：录入仅三项（代码 / 当前持有金额 / 当前累计收益），与个股持仓面板一致；推算本金 = 持有金额 − 累计收益；当日收益 = 持有金额 − 持有金额 /（1 + 当日涨跌幅）；上一交易日累计收益 = 累计收益 − 当日收益。
+- 遗留：PostgreSQL 分支需配置 `DATABASE_URL` 并执行 `pnpm db:migrate`（迁移文件 `drizzle/0010_zippy_iron_man.sql`）后另行验证；仓库暂无浏览器端到端测试，建议在页面上复核录入、编辑与刷新交互。

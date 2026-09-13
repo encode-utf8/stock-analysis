@@ -71,6 +71,13 @@
       "when": 1789105875704,
       "tag": "0009_square_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789307706430,
+      "tag": "0010_zippy_iron_man",
+      "breakpoints": true
     }
   ]
 }

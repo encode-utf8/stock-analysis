@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FundWatchlistPanel } from "@/components/panels/fund/FundWatchlistPanel";
 
 export const FUND_MODULE_OPTIONS = [
+  { key: "positions", label: "持有基金" },
   { key: "profile", label: "基金档案" },
   { key: "nav", label: "净值走势" },
   { key: "intraday", label: "当日行情" },

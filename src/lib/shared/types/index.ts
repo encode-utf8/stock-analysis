@@ -4,6 +4,7 @@ export * from "./api";
 export * from "./next-phase";
 export * from "./p7";
 export * from "./funds";
+export * from "./fund-positions";
 export * from "./alerts";
 export * from "./daily-report";
 export * from "./stock-portfolio";
