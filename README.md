@@ -25,6 +25,7 @@
 - AI 收盘日报：分为股市日报（大盘指数、全市场涨跌家数、行业板块涨跌榜、自选股复盘）与基金日报（大盘背景、自选基金当日涨跌与净值口径），正文含与前一交易日的指数涨跌幅、成交额环比与板块轮动对比。交易日数据更新后自动探测生成（股市 15:10 起、基金 20:00 起），当天每类只生成一次，非交易日自动跳过；正文由 DeepSeek 生成，未配置或调用失败时降级为确定性模板；优先保存到 Cloudflare R2，未配置或失败时落本地 `.data/daily-reports/`；工作台内按日期倒序列表查看，支持按指定日期补生成、按最近 N 个交易日批量回补、删除单日日报，并在配置 SMTP 后推送摘要邮件。
 
 - 我的持仓组合：手动录入个股的投入金额与当前持仓收益，自动推导市值与收益率，并结合最新行情估算当日盈亏，展示持仓权重与行业分布；数据库不可用时回退本地 `.data/stock-portfolio.json`，重启不丢失。
+- 持有基金（养基宝式）：只录入基金代码、当前持有金额与当前累计收益，自动推导本金、累计收益率、当日实时收益（按盘中涨跌幅）与持仓占比，并结合盘中估值与最新官方净值展示当日涨跌幅、昨收净值与实时估值；数据库不可用时回退本地 `.data/fund-positions.json`，重启不丢失。
 - 策略回测：支持双均线、MACD、RSI、布林带四类单标的策略与组合权重再平衡回测，可调周期参数、初始资金、手续费/印花税/滑点，输出净值曲线、总收益、年化、最大回撤与修复、夏普/索提诺/卡玛、交易次数、胜率以及买入持有基准对比；固定使用前复权日/周线并标注仅供学习；取不到真实历史 K 线时直接拒绝，不会用降级数据出结果。
 ## 技术栈
 
@@ -118,7 +119,7 @@ chmod +x stop.sh
 ./stop.sh
 ```
 
-终止脚本会按端口 `3000`、`8000` 以及项目进程命令行特征停止完整进程树，包括 `next dev` 和 `uvicorn --reload` 的子进程。
+终止脚本会按端口 `3000`、`8000` 以及项目进程命令行特征停止完整进程树，包括 `next dev`、`uvicorn --reload` 的子进程，并回收定时任务守护进程（`.logs/scheduler-worker.pid`）。
 
 ## 手动开发启动
 
@@ -153,6 +154,7 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 | `DEEPSEEK_API_KEY` | 可选 | DeepSeek LLM 密钥；未配置时 AI 报告使用本地确定性报告 |
 | `DEEPSEEK_BASE_URL` | 可选 | OpenAI 兼容接口地址，默认 `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | 可选 | 默认 `deepseek-chat` |
+| `DEEPSEEK_ANALYSIS_TIMEOUT_MS` | 可选 | 单次 AI 分析/对话的模型调用超时（毫秒），默认 `45000` |
 | `TAVILY_API_KEY` | 可选 | 外部资讯搜索；未配置时使用确定性资讯 |
 | `DATABASE_URL` | 可选 | 本地 Docker PostgreSQL 连接串；未配置时使用内存，自选股使用本地文件回退 |
 | `R2_ACCOUNT_ID` | 可选 | Cloudflare R2 账户 ID |
@@ -179,6 +181,8 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 | `SCHEDULER_WORKER_INTERVAL_S` | 可选 | 守护进程轮询间隔（秒），默认 `300` |
 | `SCHEDULER_WORKER_MAX_FAILURES` | 可选 | 守护进程连续失败上限，达到后退出，默认 `5` |
 | `SKIP_INPROCESS_SCHEDULER` | 可选 | 设为 `1` 时不再注册进程内 cron，只依赖独立守护进程补跑 |
+| `SCHEDULER_TIMEZONE` | 可选 | 调度任务时区（IANA 名称），默认 `Asia/Shanghai` |
+| `SKIP_SCHEDULER_WORKER` | 可选 | 设为 `1` 时一键启动脚本不拉起独立守护进程 |
 | `SMTP_HOST` | 可选 | SMTP 服务器地址，QQ 邮箱为 `smtp.qq.com`；未配置时预警仅页面展示，不发送邮件 |
 | `SMTP_PORT` | 可选 | SMTP 端口，默认 `465`（465 使用 SSL，其它端口使用 STARTTLS） |
 | `SMTP_USER` | 可选 | SMTP 账号，QQ 邮箱填 `你的QQ号@qq.com` |
@@ -196,13 +200,14 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 - 独立守护进程：`corepack pnpm scheduler:worker`（等价于 `node scripts/scheduler-worker.mjs`）定期探测 `/api/health` 与调度状态，发现停摆就触发补跑。
   - `--once` 只检查一轮后退出（应用未启动时安全退出并打印原因），`--interval` 调整轮询间隔，`--max-failures` 控制连续失败上限。
   - Windows 可用 `scripts/start-scheduler.ps1` 管理进程（pid 文件 `.logs/scheduler-worker.pid`），加 `-Stop` 停止。
-  - `start.bat` / `start.sh` 会随应用一起拉起守护进程，设置 `SKIP_SCHEDULER_WORKER=1` 可关闭。
+  - `start.bat` / `start.ps1` / `start.sh` 会随应用一起拉起守护进程，设置 `SKIP_SCHEDULER_WORKER=1` 可关闭。
 - 定位：守护进程做「发现停摆 + 补齐过期任务」，不负责拉起已退出的 Web 进程（进程级守护需要 supervisor / 计划任务）。
 
 ## 数据与降级
 
 - 未配置 `DATABASE_URL` 时，分析报告、资讯、会话等使用进程内内存；自选股会写入 `.data/watchlist.json`，自选基金会写入 `.data/fund-watchlist.json`，重启后仍保留。
 - 预警规则与事件同样支持回退：数据库不可用时写入 `.data/alerts.json`，邮件收件人与开关写入 `.data/alert-settings.json`，重启后仍保留。
+- 持仓组合同样支持回退：个股写入 `.data/stock-portfolio.json`，基金写入 `.data/fund-positions.json`，重启后仍保留。
 - 交易日历优先取侧车 AkShare 数据；侧车未启动时退回「工作日」近似（无法识别法定节假日），面板会标注当前日历来源。
 - AI 收盘日报优先写入 Cloudflare R2（对象键 `daily-reports/{kind}/{date}.json`）；R2 未配置或写入失败时回退到 `.data/daily-reports/`，面板会标注「云端存储 / 本地存储」。全市场涨跌家数与行业板块数据来自侧车 AkShare 接口，上游不可用时日报正文与面板会显式标注缺失项。
 - 基金盘中估算：场内基金（ETF/LOF）用腾讯实时价与 IOPV，覆盖稳定；场外基金来自东财估值排行，覆盖有限，取不到估算时该次判定按「缺少指标观测值」跳过，不会用降级数据报假警。
@@ -247,6 +252,7 @@ corepack pnpm db:studio
 - `GET http://127.0.0.1:3000/api/health`
 - `GET http://127.0.0.1:8000/health`
 - `GET http://127.0.0.1:3000/api/funds/510300/metrics?range=all`
+- `GET http://127.0.0.1:3000/api/fund-positions`（持有基金估值与组合汇总）
 - `GET http://127.0.0.1:8000/index/quote?codes=sh000001,sz399001,sz399006`
 - `GET http://127.0.0.1:8000/market/breadth`
 - `GET http://127.0.0.1:8000/market/sectors?limit=5`

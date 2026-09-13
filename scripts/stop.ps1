@@ -13,7 +13,8 @@ $patterns = @(
     "*$root*data-service*",
     "*dev-data.ps1*",
     "*start-data.ps1*",
-    "*watch-data.ps1*"
+    "*watch-data.ps1*",
+    "*scheduler-worker.mjs*"
 )
 
 $targets = @()
@@ -38,6 +39,9 @@ foreach ($process in $targets) {
     Write-Host "[stop] $($process.Name) PID $($process.ProcessId)"
     & taskkill.exe /PID $process.ProcessId /T /F 2>$null | Out-Null
 }
+
+# 回收定时任务守护进程（同时清理 .logs/scheduler-worker.pid）
+& (Join-Path $PSScriptRoot "start-scheduler.ps1") -Stop
 
 $pidFile = Join-Path $root ".logs\data-service.pid"
 if (Test-Path -LiteralPath $pidFile) {

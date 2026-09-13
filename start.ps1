@@ -174,6 +174,9 @@ if (-not $dataHealthy) {
 Write-Step "行情/基金数据侧车已就绪：http://127.0.0.1:8000/health"
 $env:DATA_SERVICE_URL = "http://127.0.0.1:8000"
 
+Write-Step "启动定时任务守护进程..."
+& "$root\scripts\start-scheduler.ps1"
+
 Write-Step "启动 Web 前端：http://127.0.0.1:3000"
 if (-not $NoBrowser) {
     try {
@@ -186,12 +189,15 @@ if (-not $NoBrowser) {
 Write-Host ""
 Write-Host "  Web  前端：http://127.0.0.1:3000" -ForegroundColor Green
 Write-Host "  行情/基金数据侧车：http://127.0.0.1:8000" -ForegroundColor Green
+Write-Host "  定时任务守护：后台运行（设置 SKIP_SCHEDULER_WORKER=1 可关闭）" -ForegroundColor Green
 Write-Host "  停止服务：在终端按 Ctrl+C" -ForegroundColor Green
 Write-Host ""
 
 try {
     Invoke-Pnpm dev
 } finally {
+    Write-Step "正在停止定时任务守护进程..."
+    & "$root\scripts\start-scheduler.ps1" -Stop
     Write-Step "正在停止行情/基金数据侧车..."
     if ($dataProcess -and -not $dataProcess.HasExited) {
         Stop-Process -Id $dataProcess.Id -Force -ErrorAction SilentlyContinue

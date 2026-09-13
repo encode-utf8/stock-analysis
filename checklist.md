@@ -1804,3 +1804,31 @@ corepack pnpm build
   - 重复代码返回 409；`999999` 返回 400 `CODE_NOT_FOUND`；`DELETE` 两只后 `holdings_count` 回到 0。
 - 口径说明（2026-09-13 按用户确认调整）：录入仅三项（代码 / 当前持有金额 / 当前累计收益），与个股持仓面板一致；推算本金 = 持有金额 − 累计收益；当日收益 = 持有金额 − 持有金额 /（1 + 当日涨跌幅）；上一交易日累计收益 = 累计收益 − 当日收益。
 - 遗留：PostgreSQL 分支需配置 `DATABASE_URL` 并执行 `pnpm db:migrate`（迁移文件 `drizzle/0010_zippy_iron_man.sql`）后另行验证；仓库暂无浏览器端到端测试，建议在页面上复核录入、编辑与刷新交互。
+
+## 配置文件同步（2026-09-13）
+
+- 目标：排查仓库内配置类文件与当前开发版本的偏差，逐一补齐，避免文档/脚本落后于实现。
+- 关联分支：`chore/config-sync`（配置同步不新增功能，从 `main` 切出后合并）。
+
+### 排查与修正
+
+- [x] `.env.example`：补齐 `SCHEDULER_TIMEZONE`（调度时区，代码已在 `scheduler.ts` / `scheduler-guard.ts` 读取）与 `SKIP_SCHEDULER_WORKER`（一键脚本开关）。
+- [x] `README.md`：能力清单补「持有基金（养基宝式）」；环境变量表补 `SCHEDULER_TIMEZONE`、`SKIP_SCHEDULER_WORKER`、`DEEPSEEK_ANALYSIS_TIMEOUT_MS`；数据与降级补 `.data/stock-portfolio.json`、`.data/fund-positions.json`；健康检查补 `/api/fund-positions`；停止服务说明补守护进程回收；守护进程说明补 `start.ps1`。
+- [x] `start.ps1`：与 `start.bat` / `start.sh` 对齐，启动时拉起 `scripts/start-scheduler.ps1`，退出时 `-Stop` 回收，并打印守护进程提示。
+- [x] `scripts/stop.ps1`：进程特征补 `*scheduler-worker.mjs*`，并调用 `start-scheduler.ps1 -Stop` 回收守护进程与 pid 文件。
+- [x] `stop.sh`：新增 `kill_matching "scheduler-worker.mjs"` 回收守护进程，完成提示同步更新；`stop.bat` 提示语同步。
+- [x] `data-service/README.md`：从「仅 /health、/quote、/kline」更新为当前完整接口清单（行情/市场 10 个 + 基金 5 个），补充依赖与环境说明。
+- [x] `data-service/pyproject.toml`、`data-service/environment.yml`：补声明代码直接 `import` 的 `pandas>=2.2`，描述改为「个股与基金行情数据侧车」。
+- [x] `docs/design.md`：数据模型章节标注 F0 基线，补列 F0 之后新增的 15 张表并指向 `src/lib/db/schema.ts`。
+
+### 验证方式与结果
+
+- 环境变量覆盖核对（脚本比对 `.env.example` 与 `rg process.env.*`）：代码读取的变量已全部在 `.env.example` 中，无缺失。
+- PowerShell 语法校验：`start.ps1`、`scripts/stop.ps1` 经 `Parser::ParseFile` 解析均 0 错误。
+- 未改动的配置经复核确认与实现一致：`package.json`（脚本齐全）、`tsconfig.json`、`eslint.config.mjs`、`vitest.config.mts`、`next.config.ts`、`drizzle.config.ts`、`docker-compose.yml`、`components.json`、`postcss.config.mjs`、`.gitignore`（已忽略 `.data/`、`.logs/`、`coverage/`、`*.tsbuildinfo`）。
+- 回归：`corepack pnpm test`、`typecheck`、`lint` 全部通过。
+
+### 未处理（有意保留）
+
+- `docs/spec.md`、`docs/plan.md`、`docs/design.md` 的里程碑与接口章节属于历史阶段基线，本次只同步数据模型中的事实性清单，不做整体重写。
+- `start.ps1` 与 `scripts/start-data.ps1` 在侧车启动上仍有重复实现（前者内联、后者含 pid 文件与看护进程），行为一致但未合并，避免改动启动路径引入回归。

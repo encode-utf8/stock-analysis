@@ -1,13 +1,14 @@
 ﻿[project]
 name = "data-service"
 version = "0.1.0"
-description = "个股盘面分析行情数据侧车（FastAPI）"
+description = "个股与基金行情数据侧车（FastAPI）"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "pydantic-settings>=2.6",
     "akshare>=1.16",
+    "pandas>=2.2",
     "curl_cffi>=0.10",
     "py-mini-racer>=0.6",
 ]
