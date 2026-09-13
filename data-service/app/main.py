@@ -1309,7 +1309,8 @@ def _sector_history_rows(date_text: str) -> list[dict] | None:
         return {
             "name": name,
             "change_pct": _round((close / prev_close - 1) * 100),
-            "companies": 0,
+            # 历史口径来自板块指数，没有成分公司数与领涨股，返回 None 表示「该口径不提供」。
+            "companies": None,
             "amount": _number(_series_value(current, ["成交额"]), 0.0) or 0.0,
             "avg_price": _round(close, 4),
             "leader": None,

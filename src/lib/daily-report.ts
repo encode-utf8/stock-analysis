@@ -608,7 +608,7 @@ const REPORT_SYSTEM_HEADER = [
   "你是职业投资研究者，负责为初学者撰写当日收盘日报。",
   "硬性要求：",
   "1. 必须引用给定数据中的具体数字（指数点位与涨跌幅、成交额、涨跌家数或板块涨跌分布、板块涨跌幅、自选标的涨跌幅），禁止只写空泛套话。",
-  "2. 只使用给定数据分析，禁止编造未提供的数据；数据缺失时必须在对应章节明确写出「本日该数据不可用」。",
+  "2. 只使用给定数据分析，禁止编造未提供的数据。只有「缺失数据项」中列出的内容，才允许在对应章节写「本日该数据不可用」；未列入的指标（如基金份额变化、折溢价率、跟踪误差、北向资金、两融余额、板块成分公司数等）一律不得提及，也不得写成缺失。",
   "3. 涨跌家数的 stat_scope 为 sector 时表示该数据是行业板块口径近似，必须写明口径，不得当作全市场个股家数。",
   "4. 禁止出现「必涨、必跌、稳赚、包赚」等确定性收益承诺，必须给出风险提示。",
   "5. 使用中文 Markdown 输出，不要输出 JSON，也不要用代码块包裹全文。",
@@ -628,10 +628,31 @@ export function buildDailyReportMessages(
     REPORT_SECTIONS[kind].join("\n"),
   ].join("\n");
 
+  // 历史口径下侧车不提供的字段（如板块成分公司数）属于口径限制，需要在提示词里说明，避免模型写成「数据缺失」。
+  const scopeNotes: string[] = [];
+  if (data.sectors && data.sectors.source === "ths") {
+    scopeNotes.push(
+      "行业板块为历史回补口径（同花顺板块指数），不提供成分公司数与领涨股，对应字段为 null 属于口径限制，不是数据缺失。",
+    );
+  }
+  if (data.breadth?.stat_scope === "sector") {
+    scopeNotes.push("涨跌家数为行业板块口径近似，正文必须写明口径，不得当作全市场个股家数。");
+  }
+  if (data.breadth) {
+    scopeNotes.push(
+      "涨跌家数、涨停/跌停家数与市场活跃度是上游三个独立口径，活跃度不得用来推算涨跌家数占比。",
+    );
+  }
+
   const user = [
     `日报日期：${date}`,
     `日报类型：${label}`,
-    `缺失数据项：${data.missing.length > 0 ? data.missing.join("；") : "无"}`,
+    `缺失数据项：${
+      data.missing.length > 0
+        ? data.missing.join("；")
+        : "无（本次没有任何缺失项，正文中不得出现「不可用」「数据缺失」等表述）"
+    }`,
+    `数据口径说明：${scopeNotes.length > 0 ? scopeNotes.join("；") : "无"}`,
     `数据（JSON）：${JSON.stringify(data)}`,
     "请按上述结构与硬性要求生成日报正文。",
   ].join("\n");
