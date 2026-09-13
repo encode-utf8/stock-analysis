@@ -76,43 +76,29 @@ export async function sendAlertDigest(
   events: AlertEvent[],
   to: string | null,
 ): Promise<AlertEmailResult> {
-  const config = readSmtpConfig();
-  if (!config) {
-    return { status: "skipped", reason: "未配置 SMTP 环境变量，已跳过邮件推送。" };
-  }
-  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-    return { status: "skipped", reason: "未设置有效的收件邮箱，已跳过邮件推送。" };
-  }
   if (events.length === 0) {
     return { status: "skipped", reason: "本次没有需要发送的预警。" };
   }
 
-  try {
-    const { subject, text } = buildAlertDigest(events);
-    const transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.secure,
-      auth: { user: config.user, pass: config.pass },
-    });
-    await transporter.sendMail({ from: config.from, to, subject, text });
-    return { status: "sent", reason: null };
-  } catch (error) {
-    return {
-      status: "failed",
-      reason: error instanceof Error ? error.message : "邮件发送失败",
-    };
-  }
+  const { subject, text } = buildAlertDigest(events);
+  return sendPlainMail({ to, subject, text });
 }
 
-/** 发送测试邮件，用于验证通道配置。 */
-export async function sendTestEmail(to: string | null): Promise<AlertEmailResult> {
+/**
+ * 通用纯文本邮件发送：SMTP 未配置或收件人非法时返回 skipped，异常返回 failed。
+ * 供预警摘要与日报摘要共用，调用方无需重复处理 SMTP 细节。
+ */
+export async function sendPlainMail(input: {
+  to: string | null;
+  subject: string;
+  text: string;
+}): Promise<AlertEmailResult> {
   const config = readSmtpConfig();
   if (!config) {
-    return { status: "skipped", reason: "未配置 SMTP 环境变量，无法发送测试邮件。" };
+    return { status: "skipped", reason: "未配置 SMTP 环境变量，已跳过邮件推送。" };
   }
-  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-    return { status: "skipped", reason: "请先填写有效的收件邮箱。" };
+  if (!input.to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.to)) {
+    return { status: "skipped", reason: "未设置有效的收件邮箱，已跳过邮件推送。" };
   }
 
   try {
@@ -124,20 +110,29 @@ export async function sendTestEmail(to: string | null): Promise<AlertEmailResult
     });
     await transporter.sendMail({
       from: config.from,
-      to,
-      subject: "【预警中心】邮件通道测试",
-      text: [
-        "这是一封测试邮件，用于验证预警中心的 SMTP 配置。",
-        "",
-        "收到此邮件说明配置正确；后续触发预警时将发送同类摘要邮件。",
-        "说明：预警基于最近一次数据快照，非实时行情；仅用于学习与观察，不构成投资建议。",
-      ].join("\n"),
+      to: input.to,
+      subject: input.subject,
+      text: input.text,
     });
     return { status: "sent", reason: null };
   } catch (error) {
     return {
       status: "failed",
-      reason: error instanceof Error ? error.message : "测试邮件发送失败",
+      reason: error instanceof Error ? error.message : "邮件发送失败",
     };
   }
+}
+
+/** 发送测试邮件，用于验证通道配置。 */
+export async function sendTestEmail(to: string | null): Promise<AlertEmailResult> {
+  return sendPlainMail({
+    to,
+    subject: "【预警中心】邮件通道测试",
+    text: [
+      "这是一封测试邮件，用于验证预警中心的 SMTP 配置。",
+      "",
+      "收到此邮件说明配置正确；后续触发预警时将发送同类摘要邮件。",
+      "说明：预警基于最近一次数据快照，非实时行情；仅用于学习与观察，不构成投资建议。",
+    ].join("\n"),
+  });
 }

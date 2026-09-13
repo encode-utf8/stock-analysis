@@ -276,16 +276,21 @@ export async function fetchMarketBreadthFromSidecar(
   }
 }
 
-/** 从行情侧车获取行业板块涨跌榜；传 date 时走同花顺历史回补；不可用时返回 null。 */
+/**
+ * 从行情侧车获取行业板块涨跌榜；传 date 时走同花顺历史回补，history 可强制历史口径
+ * （当日生成日报时用它取前一交易日的板块对比）；不可用时返回 null。
+ */
 export async function fetchMarketSectorsFromSidecar(
   limit = 5,
   date?: string,
+  options: { history?: boolean } = {},
 ): Promise<MarketSectorsSnapshot | null> {
   const dateQuery = date ? `&date=${encodeURIComponent(date)}` : "";
+  const historyQuery = options.history ? "&history=1" : "";
   try {
     const data = await fetchJson<unknown>(
-      `/market/sectors?limit=${limit}${dateQuery}`,
-      date ? MARKET_HISTORY_TIMEOUT_MS : MARKET_TIMEOUT_MS,
+      `/market/sectors?limit=${limit}${dateQuery}${historyQuery}`,
+      date || options.history ? MARKET_HISTORY_TIMEOUT_MS : MARKET_TIMEOUT_MS,
     );
     recordExternalCall(true);
     return isMarketSectors(data) ? data : null;

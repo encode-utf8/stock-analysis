@@ -1647,3 +1647,51 @@ corepack pnpm build
 
 - 提示词约束依赖模型遵守，仍可能在个别日期出现措辞漂移；如需强约束可在生成后增加关键词校验（本次未做）。
 - 9-10 及更早日期的历史日报仍是旧提示词产物，如需同样效果需 `force` 重新生成。
+
+## A 组日报能力收尾（对比 / 批量回补 / 删除 / 推送）
+
+- 关联文档：`docs/daily-report-roundup-plan.md`、`docs/daily-report-plan.md`
+- 分支：`feature/daily-report-roundup`
+- 背景：日报只有单日快照、无法批量回补或删除、生成后无通知；历史日报口径与新版不一致。
+
+### 验收项
+
+- [x] 契约新增 `DailyReportComparison`（指数环比 + 板块轮动）并接入 `DailyReportData.comparison`
+- [x] 侧车历史板块返回 `prev_change_pct` / `prev_date` 与 `comparison` 块；`/market/sectors?history=1` 可强制同花顺口径
+- [x] `collectIndices` / `collectSectors` 返回对比数据；当日路径补日线请求，历史路径复用同一份数据
+- [x] 模板：指数区块含「较前一交易日」「成交额环比」，板块区块含「板块轮动」「前一交易日涨跌分布」
+- [x] 提示词：要求引用对比数据并写明口径；无对比数据时不得写「不可用」；涨跌家数不做环比
+- [x] `DELETE /api/admin/daily-reports/{kind}/{date}` 删除 R2 与本地对象并同步索引
+- [x] `POST /api/admin/daily-reports/backfill` 支持 `{ kind, days, force? }`，按交易日历取最近 N 个交易日（上限 30，单日失败不中断整批）
+- [x] `src/lib/daily-report-email.ts`：摘要构造（纯函数）+ 发送；未配置 SMTP/收件人时跳过不影响落库；回补历史日报不重复推送
+- [x] `DailyReportJobResult` 增加 `email_status` / `email_reason`，面板展示推送结果
+- [x] 面板新增「回补最近 N 个交易日」「删除该日日报」，并修正历史口径提示文案
+- [x] 稳健性：指数日线带一次重试，且指数先取完再并发板块/涨跌家数，避免历史回补时指数缺失
+- [x] A4：9-09、9-10、9-11 股市与基金日报用新口径重新生成，正文无「不可用」
+- [x] `corepack pnpm test`、`typecheck`、`lint`、`build` 全部通过
+- [x] 代码注释与提交信息为中文，未提交临时脚本与真实密钥
+
+### 验证方式
+
+- 命令：`corepack pnpm test && corepack pnpm typecheck && corepack pnpm lint && corepack pnpm build`
+- 侧车：`curl "http://127.0.0.1:8000/market/sectors?date=2026-09-11"`、`curl "http://127.0.0.1:8000/market/sectors?date=2026-09-11&history=1"`
+- 接口：`POST /api/admin/daily-reports/backfill`、`DELETE /api/admin/daily-reports/stock/2026-09-09`
+- 端到端：重新生成 9-11 股市/基金日报，核对环比数字与板块轮动；核对邮件状态字段
+
+### 实测结果（2026-09-13）
+
+- 侧车：`/market/sectors?date=2026-09-11&history=1` 返回 90 个板块、`source=ths`，单项含 `prev_change_pct`（元件 3.11% / 前一日 1.31%）；`comparison` 为 `{"prev_date":"2026-09-10","prev_rise_count":10,"prev_fall_count":80,"newcomers":["通信设备","影视院线","军工电子","军工装备"],"dropped":["银行","厨卫电器","多元金融","电力"]}`
+- `DELETE /api/admin/daily-reports/stock/2026-09-09`：`{"deleted":true,"storage":"r2"}`，列表从 3 篇降到 2 篇，本地无残留文件
+- `POST /api/admin/daily-reports/backfill {kind:"stock",days:3}`：返回 `days=3`、`dates=[09-11,09-10,09-09]`，`generated=1`（09-09 已删除故补生成）、`skipped=2`（已存在），耗时 35 秒；逐日结果 `email_status=skipped`（回补不推送）
+- `POST /api/admin/daily-reports/backfill {kind:"fund",days:3,force:true}`：`generated=3`、`skipped=0`，耗时 39 秒
+- 日报正文（股市 09-09/09-10/09-11、基金 09-09/09-10/09-11 共 6 篇）：`missing=[]`，「不可用」0 次、「数据缺失」0 次；每篇 `comparison.indices=3` 且含 `sectors` 轮动数据
+- 环比数字抽查（stock/2026-09-09）：三个指数成交额环比 -4.57% / -6.02% / -8.53%，与日线一致；板块轮动写明前五名全部换手
+- 邮件：收件人 `ALERT_EMAIL_TO` 仍为占位地址（`replace-me@example.com`），单日生成返回 `email_status=failed`、`email_reason="Message failed: 550 The recipient may contain a non-existent account"`；日报仍正常落 R2，符合「推送失败不影响落库」；换成真实收件邮箱即可发送
+- 命令：`corepack pnpm test`（17 文件 / 215 用例）、`typecheck`、`lint`、`build` 全部通过
+
+### 风险与遗留
+
+- 当日生成日报时会额外请求一次同花顺历史口径（约 13 秒，按日期缓存 6 小时）；交易日内若当日板块 K 线尚未生成，`comparison` 为 null，正文自动省略对比段落（不写「不可用」）。
+- 涨跌家数没有跨日历史接口，因此不做环比，已在提示词与口径说明中明确。
+- 邮件推送无重试队列；失败原因写入 `job_runs` 与面板提示。
+- 板块轮动固定取涨幅前五（与前端 `limit=5` 一致），若后续调整榜单长度需同步 `SECTOR_ROTATION_TOP`。

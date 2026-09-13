@@ -52,8 +52,8 @@ export function beijingDateKey(now: Date): string {
   return new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-/** 按天数平移日期键。 */
-function shiftDateKey(dateKey: string, days: number): string {
+/** 按天数平移日期键；供「最近 N 个交易日」等回溯计算复用。 */
+export function shiftDateKey(dateKey: string, days: number): string {
   const time = Date.parse(`${dateKey}T00:00:00Z`);
   return new Date(time + days * 86_400_000).toISOString().slice(0, 10);
 }

@@ -16,10 +16,17 @@ import { runAlertScan } from "@/lib/alert-scan";
 import { runDailyReportJob } from "@/lib/daily-report";
 import type { DailyReportJobOptions } from "@/lib/daily-report";
 import { dailyReportExists } from "@/lib/daily-report-store";
-import { beijingDateKey, getTradingCalendar } from "@/lib/trading-calendar";
+import { beijingDateKey, getTradingCalendar, shiftDateKey } from "@/lib/trading-calendar";
+import type { TradingCalendar } from "@/lib/trading-calendar";
 import { recordTaskRun } from "@/lib/observability";
 import { store } from "@/lib/store";
-import type { DailyReportJobResult, DailyReportKind, JobRun, NewsItem } from "@/lib/shared/types";
+import type {
+  DailyReportBackfillResult,
+  DailyReportJobResult,
+  DailyReportKind,
+  JobRun,
+  NewsItem,
+} from "@/lib/shared/types";
 
 type JobName = "cleanup" | "refresh" | "fund-refresh" | "alert-scan" | "daily-report";
 type JobSource = "manual" | "cron";
@@ -298,6 +305,102 @@ export async function runDailyReportManual(
       report_source: null,
     }
   );
+}
+
+/** 批量回补一次最多覆盖的交易日数量，避免单次请求打满上游与模型额度。 */
+export const DAILY_REPORT_BACKFILL_MAX_DAYS = 30;
+
+/** 批量回补选项：days 为最近交易日数量，force 为 true 时连已存在的日报一并重生成。 */
+export interface DailyReportBackfillOptions {
+  days?: number;
+  force?: boolean;
+  source?: JobSource;
+}
+
+/** 规范化回补天数：非法值回落默认值，越界收敛到 [1, 30]。 */
+export function normalizeBackfillDays(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 5;
+  }
+  return Math.min(DAILY_REPORT_BACKFILL_MAX_DAYS, Math.max(1, Math.trunc(parsed)));
+}
+
+/**
+ * 取从 endDate 起（含）向前的最近 count 个交易日，返回日期倒序。
+ * 回溯窗口设为 count * 3 + 31 天，覆盖春节等长假期，同时避免日历异常时死循环。
+ */
+export function recentTradingDays(
+  calendar: TradingCalendar,
+  endDate: string,
+  count: number,
+): string[] {
+  const dates: string[] = [];
+  const limit = count * 3 + 31;
+  let cursor = endDate;
+  for (let step = 0; step < limit && dates.length < count; step += 1) {
+    if (calendar.isTradingDay(cursor)) {
+      dates.push(cursor);
+    }
+    cursor = shiftDateKey(cursor, -1);
+  }
+  return dates;
+}
+
+/**
+ * 批量回补最近 N 个交易日的日报。
+ * 按时间正序逐日生成（早的在前），保证正文对比数据先就位；
+ * 单日失败只记入结果不中断整批，历史日报不重复推送邮件。
+ */
+export async function runDailyReportBackfill(
+  kind: DailyReportKind,
+  options: DailyReportBackfillOptions = {},
+): Promise<DailyReportBackfillResult> {
+  const days = normalizeBackfillDays(options.days ?? 5);
+  const force = options.force ?? false;
+  const source = options.source ?? "manual";
+  const endDate = beijingDateKey(new Date());
+  const calendar = await getTradingCalendar();
+  const dates = recentTradingDays(calendar, endDate, days);
+  const results: DailyReportJobResult[] = [];
+
+  await trackJob(
+    "daily-report",
+    { source, kind, backfill_days: days, dates, force },
+    async () => {
+      recordTaskRun("analysis");
+      for (const date of [...dates].reverse()) {
+        try {
+          results.push(await runDailyReportJob(kind, { date, force, source, notify: false }));
+        } catch (error) {
+          results.push({
+            kind,
+            date,
+            status: "skipped",
+            reason: `生成失败：${error instanceof Error ? error.message : String(error)}`,
+            storage: null,
+            report_source: null,
+            email_status: null,
+            email_reason: null,
+          });
+        }
+      }
+      return {
+        backfill_days: days,
+        generated_count: results.filter((item) => item.status === "generated").length,
+        skipped_count: results.filter((item) => item.status === "skipped").length,
+      };
+    },
+  );
+
+  return {
+    kind,
+    days,
+    dates,
+    generated: results.filter((item) => item.status === "generated").length,
+    skipped: results.filter((item) => item.status === "skipped").length,
+    results,
+  };
 }
 
 /**

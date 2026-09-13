@@ -1,10 +1,11 @@
 // AI 收盘日报持久化：R2 云端优先，未配置或写入失败时落本地 .data/daily-reports/。
 // 每类日报各维护一份 index.json 摘要索引，列表只需读取索引即可按日期倒序展示。
 
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  deleteObject,
   getJsonObject,
   isR2Configured,
   listJsonObjects,
@@ -340,4 +341,56 @@ export async function dailyReportExists(
 ): Promise<boolean> {
   const { reports } = await listDailyReports(kind);
   return reports.some((item) => item.date === date);
+}
+
+/** 从本地与 R2 索引中移除某天摘要；索引不存在时忽略。 */
+async function removeFromIndex(kind: DailyReportKind, date: string): Promise<void> {
+  const local = (await readLocalIndex(kind)).filter((item) => item.date !== date);
+  await writeLocalIndex(kind, local);
+
+  if (!isR2Configured()) {
+    return;
+  }
+  try {
+    const remote = (await readRemoteIndex(kind)).filter((item) => item.date !== date);
+    await withR2Timeout(
+      putJsonObject(dailyReportIndexKey(kind), {
+        updated_at: new Date().toISOString(),
+        reports: remote,
+      }),
+    );
+  } catch {
+    // 索引写入失败不阻塞删除结果，下次列举读取会自行恢复。
+  }
+}
+
+/**
+ * 删除某天日报：R2 对象与本地文件都尝试删除，并同步移除两侧索引。
+ * 返回实际删掉的存储位置；对象本来就不存在时 deleted 为 false。
+ */
+export async function deleteDailyReport(
+  kind: DailyReportKind,
+  date: string,
+): Promise<{ deleted: boolean; storage: DailyReportStorage | null }> {
+  const existed = await dailyReportExists(kind, date);
+  let storage: DailyReportStorage | null = null;
+
+  if (isR2Configured()) {
+    try {
+      await withR2Timeout(deleteObject(dailyReportObjectKey(kind, date)));
+      storage = "r2";
+    } catch {
+      // 远端删除失败时继续尝试本地，避免整体失败。
+    }
+  }
+
+  try {
+    await unlink(localFilePath(kind, date));
+    storage = storage ?? "local";
+  } catch {
+    // 本地文件不存在时忽略。
+  }
+
+  await removeFromIndex(kind, date);
+  return { deleted: existed || storage !== null, storage };
 }
