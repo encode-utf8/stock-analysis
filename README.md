@@ -234,6 +234,9 @@ corepack pnpm db:studio
 - `GET http://127.0.0.1:8000/index/quote?codes=sh000001,sz399001,sz399006`
 - `GET http://127.0.0.1:8000/market/breadth`
 - `GET http://127.0.0.1:8000/market/sectors?limit=5`
+- `GET http://127.0.0.1:8000/index/kline?code=sh000001&limit=60`（含成交额 `amount`）
+- `GET http://127.0.0.1:8000/market/breadth?date=2026-09-11`（历史日期回补：乐咕快照日期一致用真实家数，否则为行业板块口径近似）
+- `GET http://127.0.0.1:8000/market/sectors?date=2026-09-11`（历史日期走同花顺行业板块指数回补，90 个板块约 13 秒，按日期缓存）
 - `GET http://127.0.0.1:3000/api/daily-reports?kind=stock`
 
 ## 免责声明
