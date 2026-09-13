@@ -433,3 +433,21 @@ export const stockHoldings = pgTable(
   },
   (table) => [uniqueIndex("stock_holdings_code_idx").on(table.code)],
 );
+/** 基金持有组合：手动录入当前持有金额与累计收益，当日收益由盘中涨跌幅推导。 */
+// 与自选池/个股持仓一致，数据库不可用时回退 .data/fund-positions.json。
+export const fundPositions = pgTable(
+  "fund_positions",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    /** 当前持有金额（市值），单位元，必须大于 0。 */
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    /** 当前累计收益，单位元，可为负。 */
+    profit: numeric("profit", { precision: 18, scale: 2 }).notNull().default("0"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [uniqueIndex("fund_positions_code_idx").on(table.code)],
+);

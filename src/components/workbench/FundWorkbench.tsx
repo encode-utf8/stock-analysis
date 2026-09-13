@@ -19,6 +19,7 @@ import { FundIntradayPanel } from "@/components/panels/fund/FundIntradayPanel";
 import { FundNavChartPanel } from "@/components/panels/fund/FundNavChartPanel";
 import { FundProfilePanel } from "@/components/panels/fund/FundProfilePanel";
 import { FundPortfolioPanel } from "@/components/panels/fund/FundPortfolioPanel";
+import { FundPositionsPanel } from "@/components/panels/fund/FundPositionsPanel";
 import { FundReplayPanel } from "@/components/panels/fund/FundReplayPanel";
 import { RealtimeQuoteBar } from "@/components/panels/RealtimeQuoteBar";
 import { FundRiskPanel } from "@/components/panels/fund/FundRiskPanel";
@@ -740,6 +741,9 @@ export default function FundWorkbench() {
   const renderFundModule = (key: FundModuleKey) => {
     if (!enabledModules[key]) {
       return null;
+    }
+    if (key === "positions") {
+      return <FundPositionsPanel />;
     }
     if (key === "profile") {
       return profile ? (
