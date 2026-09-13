@@ -56,7 +56,7 @@
 | `tests/observability.test.ts` | 计数器、快照比率、内存回退路径 |
 | `tests/alert-email.test.ts` | `buildAlertDigest` 文案、`isEmailConfigured`、未配置 SMTP/非法收件人时的 `skipped` |
 
-补充测试（同样集中在 `tests/`）：`store-memory`、`store-fallback`、`market-data`、`trading-calendar`、`deterministic`、`cache`、`api-response`、`mock-data`、`utils`、`news-client` 共 10 个文件，用于把纯计算与内存回退路径一并纳入统计。
+补充测试（同样集中在 `tests/`）：`store-memory`、`store-fallback`、`market-data`、`trading-calendar`、`deterministic`、`cache`、`api-response`、`mock-data`、`utils`、`news-client`、`observability-db` 共 11 个文件，用于把纯计算与内存回退路径一并纳入统计。
 
 约束：不引入新的测试依赖；不访问网络（`fetch` 必须 stub）；不写真实密钥。
 
@@ -88,7 +88,7 @@
 
 ## 4. 改动范围
 
-- 新增：`src/instrumentation.ts`、`src/lib/scheduler-guard.ts`、`src/app/api/admin/scheduler/{status,tick}/route.ts`、`scripts/scheduler-worker.mjs`、`scripts/start-scheduler.ps1`、16 个测试文件、本方案文档。
+- 新增：`src/instrumentation.ts`、`src/lib/scheduler-guard.ts`、`src/app/api/admin/scheduler/{status,tick}/route.ts`、`scripts/scheduler-worker.mjs`、`scripts/start-scheduler.ps1`、17 个测试文件、本方案文档。
 - 修改：`src/lib/scheduler.ts`（导出调度表所需的运行函数）、`.env.example`、`README.md`、`package.json`（`scheduler:worker`）、`start.bat`、`start.sh`、`checklist.md`。
 - 不改动：数据库表结构、既有 cron 默认表达式、日报与预警的业务逻辑。
 
@@ -110,6 +110,6 @@
 - 覆盖率目标按「编排层可测部分」设定，`chat.ts`/`analysis.ts` 等强依赖模型服务的模块仍不纳入单测。
 ## 7. 实测结论（2026-09-13）
 
-- E1：`src/lib/**` 行覆盖率 47.80%（基线 32.69%，均为 coverage include 口径的 `All files` 行）；顶层 `src/lib` 33.05% → 47.17%；`data-service.ts` 83.33%、`scheduler.ts` 82.87%、`scheduler-guard.ts` 100%、`news.ts` 85.02%、`store/index.ts` 91.58%；`corepack pnpm test` 33 文件 / 356 用例全绿。
+- E1：`src/lib/**` 行覆盖率 48.25%（基线 32.69%，均为 coverage include 口径的 `All files` 行）；顶层 `src/lib` 33.05% → 47.65%；`data-service.ts` 83.33%、`scheduler.ts` 82.87%、`scheduler-guard.ts` 100%、`observability.ts` 96.61%、`news.ts` 85.02%、`store/index.ts` 91.58%；`corepack pnpm test` 34 文件 / 360 用例全绿。
 - E2：`next build` 后另起 `next start` 未访问任何 admin 接口即得到 `schedulerRegistered=true`；`node scripts/scheduler-worker.mjs --once` 发现 3 个过期任务并补跑成功（执行 3、失败 0）；未配置令牌时公网来源写请求返回 403，本机来源放行。
 - 回归：`corepack pnpm test`、`typecheck`、`lint`、`build` 全部通过。详见 `checklist.md` 的「E 组工程质量 / 实测结果」。
