@@ -11,6 +11,7 @@ import { CodeNotFoundError } from "@/lib/code-verify";
 import { normalizeStockCode } from "@/lib/market";
 import { useRealtimeQuotes } from "@/lib/realtime-quote-client";
 import { emitWatchlistChange } from "@/lib/watchlist-bus";
+import { matchesWatchlistKeyword } from "@/lib/watchlist-filter";
 import type { WatchlistItem } from "@/lib/shared/types";
 
 const DEFAULT_GROUP = "默认";
@@ -80,6 +81,9 @@ export function WatchlistSidebar({
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [editingNote, setEditingNote] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  // 自选股可能很多：添加表单默认收起，列表支持关键字过滤与内部滚动，避免侧栏被撑长。
+  const [filterInput, setFilterInput] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -262,8 +266,18 @@ export function WatchlistSidebar({
     onSelect(code);
   };
 
+  // 自选为空时（首次使用或删空）添加表单保持展开，避免还要多点一次。
+  const addFormOpen = showAddForm || items.length === 0;
+  // 关键字同时匹配代码、名称、备注与分组，便于自选很多时快速定位。
+  const visibleItems = items.filter((item) =>
+    matchesWatchlistKeyword(
+      [item.code, item.name, item.note, normalizeGroup(item.group)],
+      filterInput,
+    ),
+  );
+
   const groups = Array.from(
-    new Set(items.map((item) => normalizeGroup(item.group))),
+    new Set(visibleItems.map((item) => normalizeGroup(item.group))),
   ).sort((a, b) => {
     if (a === DEFAULT_GROUP) return -1;
     if (b === DEFAULT_GROUP) return 1;
@@ -279,9 +293,24 @@ export function WatchlistSidebar({
 
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">自选股</h3>
-        <span className="text-xs text-muted-foreground">共 {items.length} 只</span>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="flex items-baseline gap-1.5 text-sm font-semibold">
+          自选股
+          <span className="text-xs font-normal text-muted-foreground">
+            共 {items.length} 只
+          </span>
+        </h3>
+        {/* 自选为空时添加表单保持常开，此时无需收起按钮。 */}
+        {items.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => setShowAddForm((previous) => !previous)}
+            aria-expanded={addFormOpen}
+            className="rounded-md border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            {addFormOpen ? "收起" : "＋ 添加"}
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -298,6 +327,7 @@ export function WatchlistSidebar({
         </div>
       ) : null}
 
+      {addFormOpen ? (
       <form onSubmit={handleAdd} className="space-y-2">
         <input
           value={codeInput}
@@ -324,6 +354,7 @@ export function WatchlistSidebar({
           {saving ? "保存中..." : "添加自选股"}
         </Button>
       </form>
+      ) : null}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">自选股加载中...</p>
@@ -331,8 +362,20 @@ export function WatchlistSidebar({
         <p className="text-sm text-muted-foreground">暂无自选股，先添加一只试试。</p>
       ) : (
         <div className="space-y-2">
+          <input
+            value={filterInput}
+            onChange={(event) => setFilterInput(event.target.value)}
+            placeholder="搜索代码 / 名称 / 备注 / 分组"
+            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+            aria-label="筛选自选股"
+          />
+          {visibleItems.length === 0 ? (
+            <p className="text-sm text-muted-foreground">没有匹配的自选股。</p>
+          ) : null}
+          {/* 列表内部滚动：自选再多也不会把侧栏撑长。 */}
+          <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
           {groups.map((group) => {
-            const groupItems = items.filter(
+            const groupItems = visibleItems.filter(
               (item) => normalizeGroup(item.group) === group,
             );
             const collapsed = collapsedGroups[group] ?? false;
@@ -485,6 +528,7 @@ export function WatchlistSidebar({
               </div>
             );
           })}
+          </div>
         </div>
       )}
       <ConfirmDialog

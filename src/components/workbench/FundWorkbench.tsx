@@ -31,6 +31,7 @@ import {
   ALL_FUND_MODULE_VISIBILITY,
   FUND_MODULE_OPTIONS,
 } from "@/components/panels/fund/FundOptionsSidebar";
+import { ModuleMenuBar } from "@/components/panels/ModuleMenuBar";
 import { Button } from "@/components/ui/button";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import type { FundMetricsRange } from "@/lib/fund-metrics";
@@ -730,7 +731,7 @@ export default function FundWorkbench() {
         loading
           ? `正在加载基金 ${input.trim() || DEFAULT_FUND_CODE} 的档案，加载完成后会自动显示「${title}」。`
           : error ??
-            `尚未加载基金数据，请先在左侧输入基金代码（留空默认 ${DEFAULT_FUND_CODE}）并点击「查询基金」。`
+            `尚未加载基金数据，请先在左侧输入基金代码（留空默认 ${DEFAULT_FUND_CODE}）并点击「查询」。`
       }
       actionLabel={loading ? undefined : "重新查询"}
       onAction={() => void loadFund(input.trim() || DEFAULT_FUND_CODE)}
@@ -888,7 +889,7 @@ export default function FundWorkbench() {
         >
           <div
             className={
-              "sticky top-0 h-screen overflow-hidden border-r border-border bg-white transition-[width] duration-300 ease-out " +
+              "sticky top-[var(--app-header-h)] h-[calc(100vh_-_var(--app-header-h))] overflow-hidden border-r border-border bg-white transition-[width] duration-300 ease-out " +
               (sidebarOpen || sidebarPeek ? "w-80" : "w-10")
             }
           >
@@ -897,14 +898,8 @@ export default function FundWorkbench() {
                 input={input}
                 loading={loading}
                 code={code}
-                enabledModules={enabledModules}
-                moduleOrder={moduleOrder}
                 onInputChange={setInput}
                 onSearch={handleSearch}
-                onToggleModule={toggleModule}
-                onReorderModule={reorderModule}
-                onSelectAll={selectAllModules}
-                onClearAll={clearAllModules}
                 onWatchlistSelect={handleWatchlistSelect}
                 onWatchlistClearActive={handleWatchlistClearActive}
                 pinned={sidebarOpen}
@@ -914,29 +909,36 @@ export default function FundWorkbench() {
               <button
                 type="button"
                 onClick={() => setSidebarOpen(true)}
-                aria-label="展开功能侧栏"
+                aria-label="展开自选侧栏"
                 className="flex h-full w-full flex-col items-center pt-3 text-muted-foreground transition-colors hover:bg-accent"
               >
                 <span className="text-xs font-medium tracking-[0.35em] [writing-mode:vertical-rl]">
-                  功能选项
+                  自选
                 </span>
               </button>
             )}
           </div>
         </div>
 
-        <section className="min-w-0 flex-1 px-4 py-8">
-          <div className="mx-auto flex max-w-6xl flex-col gap-6">
-            <header className="rounded-xl border bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h1 className="text-2xl font-semibold tracking-tight">基金分析与 AI 学习台</h1>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    在左侧功能选项页勾选模块，按需查看档案、净值、风险、AI 分析与对话。
-                  </p>
-                </div>
-              </div>
-            </header>
+        <section className="min-w-0 flex-1 px-4 py-6">
+          <div className="mx-auto flex max-w-6xl flex-col gap-4">
+            {/* 标题改为紧凑单行，把纵向空间让给模块内容。 */}
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">基金分析与 AI 学习台</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                在顶部功能模块菜单中勾选模块，按需查看档案、净值、风险、AI 分析与对话。
+              </p>
+            </div>
+
+            <ModuleMenuBar
+              options={FUND_MODULE_OPTIONS}
+              enabledModules={enabledModules}
+              moduleOrder={moduleOrder}
+              onToggleModule={toggleModule}
+              onReorderModule={reorderModule}
+              onSelectAll={selectAllModules}
+              onClearAll={clearAllModules}
+            />
 
             <RealtimeQuoteBar target="fund" />
 
@@ -957,7 +959,7 @@ export default function FundWorkbench() {
                 <div>
                   <h2 className="text-lg font-semibold">请选择功能模块</h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    在左侧“功能选项”中勾选需要展示的信息区；留空基金代码时默认展示 510300。
+                    在顶部“功能模块”菜单中勾选需要展示的信息区；留空基金代码时默认展示 510300。
                   </p>
                 </div>
               </div>
