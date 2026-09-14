@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-/** PATCH /api/fund-positions/:id：修改当前持有金额、当前累计收益或备注。 */
+/** PATCH /api/fund-positions/:id：修改当前持有金额、累计收益、累计收益口径或备注。 */
 export async function PATCH(request: NextRequest, context: RouteContext): Promise<Response> {
   try {
     const id = (await context.params).id;

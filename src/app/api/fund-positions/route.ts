@@ -31,7 +31,7 @@ export async function GET(): Promise<Response> {
   }
 }
 
-/** POST /api/fund-positions：新增持有基金（代码 + 当前持有金额 + 当前累计收益）。 */
+/** POST /api/fund-positions：新增持有基金（代码 + 当前持有金额 + 累计收益 + 累计收益口径）。 */
 export async function POST(request: NextRequest): Promise<Response> {
   try {
     const body = await readJson(request);
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       return apiFail("VALIDATION_ERROR", result.error, 400);
     }
 
-    const { code, amount, profit, note } = result.value;
+    const { code, amount, profit, profit_caliber, note } = result.value;
     if (await fundPositionRepository.getByCode(code)) {
       return apiFail("VALIDATION_ERROR", "该基金已在持有列表中，请直接修改持有金额与累计收益。", 409);
     }
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       return apiFail("CODE_NOT_FOUND", verdict.message, 400);
     }
 
-    const position = buildFundPosition({ code, amount, profit, note }, verdict.name);
+    const position = buildFundPosition({ code, amount, profit, profit_caliber, note }, verdict.name);
     await fundPositionRepository.add(position);
 
     const [valuation] = await valueFundPositions([position]);
