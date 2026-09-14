@@ -11,6 +11,7 @@ import { CodeNotFoundError } from "@/lib/code-verify";
 import { FUND_TYPE_LABELS, normalizeFundCode } from "@/lib/fund-market";
 import { useRealtimeQuotes } from "@/lib/realtime-quote-client";
 import { emitWatchlistChange } from "@/lib/watchlist-bus";
+import { matchesWatchlistKeyword } from "@/lib/watchlist-filter";
 import type { FundWatchlistItem } from "@/lib/shared/types";
 
 interface ApiEnvelope<T> {
@@ -64,6 +65,9 @@ export function FundWatchlistPanel({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 自选基金可能很多：添加表单默认收起，列表支持关键字过滤与内部滚动，避免侧栏被撑长。
+  const [filterInput, setFilterInput] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
   const [pendingDeleteCode, setPendingDeleteCode] = useState<string | null>(null);
   const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
   // 上游查不到代码时的提示弹窗文案。
@@ -177,13 +181,36 @@ export function FundWatchlistPanel({
     }
   };
 
+  // 自选为空时（首次使用或删空）添加表单保持展开，避免还要多点一次。
+  const addFormOpen = showAddForm || items.length === 0;
+  // 关键字同时匹配代码、名称与备注，便于自选很多时快速定位。
+  const visibleItems = items.filter((item) =>
+    matchesWatchlistKeyword([item.code, item.name, item.note], filterInput),
+  );
+
   return (
     <section className="space-y-3">
-      <div>
-        <h2 className="text-sm font-semibold">自选基金</h2>
-        <p className="mt-1 text-xs text-muted-foreground">点击基金可切换上下文。</p>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="flex items-baseline gap-1.5 text-sm font-semibold">
+          自选基金
+          <span className="text-xs font-normal text-muted-foreground">
+            共 {items.length} 只
+          </span>
+        </h3>
+        {/* 自选为空时添加表单保持常开，此时无需收起按钮。 */}
+        {items.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => setShowAddForm((previous) => !previous)}
+            aria-expanded={addFormOpen}
+            className="rounded-md border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            {addFormOpen ? "收起" : "＋ 添加"}
+          </button>
+        ) : null}
       </div>
 
+      {addFormOpen ? (
       <form onSubmit={handleAdd} className="space-y-2">
         <input
           value={codeInput}
@@ -203,6 +230,7 @@ export function FundWatchlistPanel({
           {saving ? "保存中" : "添加"}
         </Button>
       </form>
+      ) : null}
 
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -217,8 +245,30 @@ export function FundWatchlistPanel({
         {!loading && items.length === 0 ? (
           <span className="text-sm text-muted-foreground">暂无自选基金。</span>
         ) : null}
-        {items.map((item) => {
+        {items.length > 0 ? (
+          <input
+            value={filterInput}
+            onChange={(event) => setFilterInput(event.target.value)}
+            placeholder="搜索代码 / 名称 / 备注"
+            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            aria-label="筛选自选基金"
+          />
+        ) : null}
+        {!loading && items.length > 0 && visibleItems.length === 0 ? (
+          <span className="text-sm text-muted-foreground">没有匹配的自选基金。</span>
+        ) : null}
+        {/* 列表内部滚动：自选再多也不会把侧栏撑长。 */}
+        <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
+        {visibleItems.map((item) => {
           const quote = realtimeByCode.get(item.code);
+          // 涨跌按 A 股口径红涨绿跌，与个股自选保持一致。
+          const quoteClass = !quote
+            ? ""
+            : quote.change_pct > 0
+              ? "text-red-600"
+              : quote.change_pct < 0
+                ? "text-green-600"
+                : "text-muted-foreground";
           return (
             <div
             key={item.code}
@@ -229,26 +279,29 @@ export function FundWatchlistPanel({
                 : "border-slate-200 bg-slate-50")
             }
           >
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => onSelect(item.code)}
-                className="min-w-0 text-left"
+                className="min-w-0 flex-1 rounded px-1 py-1 text-left hover:bg-accent"
               >
-                <div className="truncate text-sm font-medium">{item.name}</div>
-                <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {item.code} · {FUND_TYPE_LABELS[item.type] ?? item.type}
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-medium">{item.name}</span>
+                  <span className="text-xs text-muted-foreground">{item.code}</span>
+                </div>
+                <div className={"mt-0.5 truncate text-xs " + (quoteClass || "text-muted-foreground")}>
+                  {FUND_TYPE_LABELS[item.type] ?? item.type}
                   {quote
                     ? ` · 实时 ${quote.price.toFixed(4)} (${quote.change_pct > 0 ? "+" : ""}${quote.change_pct.toFixed(2)}%)`
                     : ""}
                 </div>
                 {item.note ? (
-                  <div className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+                  <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
                     备注：{item.note}
                   </div>
                 ) : null}
               </button>
-              <div className="flex shrink-0 flex-col items-end gap-1">
+              <div className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
                   onClick={() => startEdit(item)}
@@ -300,6 +353,7 @@ export function FundWatchlistPanel({
           </div>
           );
         })}
+        </div>
       </div>
 
       <ConfirmDialog

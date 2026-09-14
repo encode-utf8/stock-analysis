@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { useRealtimeQuotes } from "@/lib/realtime-quote-client";
 import { formatDateTime } from "@/lib/format";
 
@@ -9,6 +11,9 @@ interface RealtimeQuoteBarProps {
   /** 当前工作台的标的类型：个股工作台传 stock，基金工作台传 fund。 */
   target: AlertTarget;
 }
+
+/** 自选池较多时默认只展示的前几只数量。 */
+const COLLAPSED_LIMIT = 6;
 
 const CONNECTION_LABELS: Record<string, string> = {
   off: "未开启",
@@ -57,6 +62,8 @@ export function RealtimeQuoteBar({ target }: RealtimeQuoteBarProps) {
     setSoundEnabled,
     reconnect,
   } = useRealtimeQuotes();
+  // 自选池可能很多：默认只展示前几只，其余按需展开，避免行情条被撑高。
+  const [expanded, setExpanded] = useState(false);
 
   const byKey = new Map<string, QuoteStreamItem>();
   for (const item of items) {
@@ -129,7 +136,7 @@ export function RealtimeQuoteBar({ target }: RealtimeQuoteBarProps) {
         </p>
       ) : (
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {options.map((option) => {
+          {(expanded ? options : options.slice(0, COLLAPSED_LIMIT)).map((option) => {
             const item = byKey.get(`${target}:${option.code}`);
             const isMissing = missing.includes(option.code);
             return (
@@ -157,6 +164,16 @@ export function RealtimeQuoteBar({ target }: RealtimeQuoteBarProps) {
           })}
         </div>
       )}
+
+      {enabled && options.length > COLLAPSED_LIMIT ? (
+        <button
+          type="button"
+          className="mt-3 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={() => setExpanded((previous) => !previous)}
+        >
+          {expanded ? "收起" : "展开全部（共 " + options.length + " 只）"}
+        </button>
+      ) : null}
 
       <p className="mt-3 text-xs text-muted-foreground">
         口径：{unitLabel}来自行情侧车快照（基金为盘中估算），非交易所正式成交价，存在延迟，仅用于学习与观察。

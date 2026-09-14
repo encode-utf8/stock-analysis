@@ -15,7 +15,8 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-muted/40 text-foreground">
-      <div className="sticky top-0 z-20 flex justify-center border-b border-border bg-white/95 px-4 py-3 backdrop-blur">
+      {/* 顶部条固定 68px 高（对应 CSS 变量 --app-header-h），工作台吸顶元素据此对齐。 */}
+      <div className="sticky top-0 z-30 flex h-[68px] items-center justify-center border-b border-border bg-white/95 px-4 backdrop-blur">
         <WorkbenchSwitcher value={workbench} onChange={setWorkbench} />
       </div>
 

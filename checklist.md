@@ -1832,3 +1832,46 @@ corepack pnpm build
 
 - `docs/spec.md`、`docs/plan.md`、`docs/design.md` 的里程碑与接口章节属于历史阶段基线，本次只同步数据模型中的事实性清单，不做整体重写。
 - `start.ps1` 与 `scripts/start-data.ps1` 在侧车启动上仍有重复实现（前者内联、后者含 pid 文件与看护进程），行为一致但未合并，避免改动启动路径引入回归。
+
+## 侧栏瘦身与横向模块菜单（2026-09-14）
+
+- 关联文档：`docs/sidebar-ux-plan.md`
+- 分支：`feature/sidebar-ux`
+- 目标：解决「自选（基金/股票）很多时左侧功能栏被撑长」与「侧栏自上而下堆叠查询 + 自选 + 模块勾选 + 全选清空，高频的模块切换被挤到折叠线以下」两处臃肿；模块切换改为内容区顶部横向菜单，并顺带修正侧栏被顶部切换条遮挡的吸顶偏移问题。
+
+### 验收项
+
+- [x] UX1 新增横向模块菜单 `ModuleMenuBar`：单击切换启用、拖拽排序、已选计数、全选/清空，泛型支持个股与基金两套模块定义
+- [x] UX2 两个侧栏移除模块勾选列表与底部全选/清空，仅保留「代码查询 + 自选管理」，标题改为「自选与查询」，折叠竖排标签改为「自选」
+- [x] UX3 侧栏保留导出兼容：`MODULE_OPTIONS`/`ModuleKey`/`DEFAULT|ALL_MODULE_VISIBILITY`、`FUND_MODULE_OPTIONS`/`FundModuleKey`/`DEFAULT|ALL_FUND_MODULE_VISIBILITY` 签名不变
+- [x] UX4 自选面板瘦身（个股 + 基金）：添加表单默认收起（自选为空时自动展开）、关键字过滤（代码/名称/备注/分组）、列表 `max-h-[52vh]` 内部滚动；基金条目操作按钮改为横向一行并按红涨绿跌着色
+- [x] UX4b 自选筛选抽成纯函数 `src/lib/watchlist-filter.ts`（`matchesWatchlistKeyword`）并补单测
+- [x] UX5 工作台布局：标题大卡片改为紧凑单行，`ModuleMenuBar` 吸顶于 `--app-header-h` 之下；空状态与说明文案由「左侧功能选项」改为「顶部功能模块菜单」
+- [x] UX6 吸顶偏移修正：`globals.css` 新增 `--app-header-h: 68px`，`page.tsx` 顶部条固定 `h-[68px] z-30`，侧栏改 `sticky top-[var(--app-header-h)] h-[calc(100vh_-_var(--app-header-h))]`
+- [x] UX7 同类臃肿：`RealtimeQuoteBar` 自选池超过 6 只时默认折叠，可「展开全部」
+- [x] UX8 `corepack pnpm typecheck`、`lint`、`test`、`build` 全部通过
+
+### 实测结果
+
+- 静态检查：`corepack pnpm typecheck`、`corepack pnpm lint` 均无报错（期间修掉一次 `react-hooks/set-state-in-effect`：自动展开添加表单由 effect 改为派生值 `addFormOpen = showAddForm || items.length === 0`）。
+- 单测：`corepack pnpm test` 全量 38 个文件 / 410 个用例通过；新增 `tests/watchlist-filter.test.ts`（6 例）覆盖自选搜索关键字匹配（空关键字放行、忽略大小写、代码/名称/备注/分组命中、空值字段不报错）。
+- 构建：停 dev 后 `corepack pnpm build` 通过，路由表与改动前一致，无新增/缺失路由。
+- 运行时冒烟（dev 3000 + 侧车 8000）：`GET /` 返回 200，SSR 输出含「自选与查询」「个股盘面分析与 AI 学习台」「基金分析与 AI 学习台」「顶部“功能模块”菜单」「留空使用 600519」「留空使用 510300」。
+- 样式产物核对：dev 输出的 CSS 中确认 `--app-header-h: 68px`、`.top-\[var\(--app-header-h\)\]{top:var(--app-header-h)}`、`.h-\[calc\(100vh_-_var\(--app-header-h\)\)\]{height:calc(100vh - var(--app-header-h))}`、`max-h-[52vh]` 均已生成，吸顶与内部滚动样式生效。
+- 覆盖率：新增 `src/lib/watchlist-filter.ts`（纯函数，6 例单测全覆盖），未改动其他 `src/lib/**` 代码，整体基线基本不变（仍约 49.4%）。
+
+### 手动验收步骤（仓库暂无浏览器端到端测试）
+
+1. 打开 `http://localhost:3000`，确认顶部「功能模块」横向菜单吸顶：向下滚动页面时菜单仍在切换条下方可见，侧栏标题不再被切换条遮住。
+2. 点击任意 chip 可切换模块显隐（已选为主色填充并带 ✓），右侧「全选/清空」生效且已全选/全清时按钮置灰；拖拽 chip 可调整模块展示顺序。
+3. 侧栏「自选与查询」：输入代码回车或点「查询」可切换上下文；点「＋ 添加」展开表单，添加多只后列表出现搜索框，输入代码/名称/备注可过滤，列表超过约半屏时仅在列表内部滚动。
+4. 个股侧额外确认：分组折叠、↑/↓ 排序、备注与删除仍可用；自选全部删除后添加表单自动展开。
+5. 开启「实时行情」后，自选池超过 6 只时出现「展开全部（共 N 只）」按钮，点击可展开/收起。
+
+### 风险与遗留
+
+- 模块启用状态与展示顺序仍为组件内 `useState`，刷新后回到默认（本次未做持久化）。
+- 吸顶偏移依赖固定值 68px（`--app-header-h`）：若后续调整顶部切换条高度，需同步该变量。
+- 窄屏（< ~768px）下横向菜单会出现横向滚动条，未做移动端专门布局。
+- 未做浏览器端到端自动化测试，交互项依赖上述手动步骤复核。
+

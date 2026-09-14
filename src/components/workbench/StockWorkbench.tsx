@@ -22,6 +22,7 @@ import {
   type ModuleKey,
 } from "@/components/panels/FunctionOptionsSidebar";
 import { IndicatorsPanel } from "@/components/panels/IndicatorsPanel";
+import { ModuleMenuBar } from "@/components/panels/ModuleMenuBar";
 import { NewsPanel } from "@/components/panels/NewsPanel";
 import {
   ObservabilityPanel,
@@ -762,7 +763,10 @@ export default function StockWorkbench() {
           onMouseLeave={() => setSidebarPeek(false)}
         >
           <div
-            className={"sticky top-0 h-screen overflow-hidden border-r border-border bg-white transition-[width] duration-300 ease-out " + (sidebarOpen || sidebarPeek ? "w-80" : "w-10")}
+            className={
+              "sticky top-[var(--app-header-h)] h-[calc(100vh_-_var(--app-header-h))] overflow-hidden border-r border-border bg-white transition-[width] duration-300 ease-out " +
+              (sidebarOpen || sidebarPeek ? "w-80" : "w-10")
+            }
           >
             {sidebarOpen || sidebarPeek ? (
               <FunctionOptionsSidebar
@@ -770,18 +774,12 @@ export default function StockWorkbench() {
                 loading={loading}
                 code={code}
                 activeCode={code}
-                enabledModules={enabledModules}
-                moduleOrder={moduleOrder}
                 onInputChange={(value) => setInput(value)}
                 onSearch={handleSearch}
                 onRefresh={() => void handleRefresh()}
                 onCleanup={() => void handleCleanup()}
-                onToggleModule={toggleModule}
-                onReorderModule={reorderModule}
                 onWatchlistSelect={handleWatchlistSelect}
                 onWatchlistClearActive={handleWatchlistClear}
-                onSelectAll={selectAllModules}
-                onClearAll={clearAllModules}
                 pinned={sidebarOpen}
                 onToggle={() => setSidebarOpen((previous) => !previous)}
               />
@@ -789,34 +787,41 @@ export default function StockWorkbench() {
               <button
                 type="button"
                 onClick={() => setSidebarOpen(true)}
-                aria-label="展开功能侧栏"
+                aria-label="展开自选侧栏"
                 className="flex h-full w-full flex-col items-center pt-3 text-muted-foreground transition-colors hover:bg-accent"
               >
                 <span className="text-xs font-medium tracking-[0.35em] [writing-mode:vertical-rl]">
-                  功能选项
+                  自选
                 </span>
               </button>
             )}
           </div>
         </div>
 
-        <section className="min-w-0 flex-1 px-4 py-8">
-          <div className="mx-auto flex max-w-6xl flex-col gap-6">
-            <header className="rounded-xl border bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">个股盘面分析与 AI 学习台</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      在左侧功能选项页勾选模块，按需查看行情、资讯、AI 报告与多轮追问。
-                    </p>
-                  </div>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  当前时间：{currentTime ?? "正在同步..."}
-                </div>
+        <section className="min-w-0 flex-1 px-4 py-6">
+          <div className="mx-auto flex max-w-6xl flex-col gap-4">
+            {/* 标题改为紧凑单行，把纵向空间让给模块内容。 */}
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">个股盘面分析与 AI 学习台</h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  在顶部功能模块菜单中勾选模块，按需查看行情、资讯、AI 报告与多轮追问。
+                </p>
               </div>
-            </header>
+              <div className="text-xs text-muted-foreground">
+                当前时间：{currentTime ?? "正在同步..."}
+              </div>
+            </div>
+
+            <ModuleMenuBar
+              options={MODULE_OPTIONS}
+              enabledModules={enabledModules}
+              moduleOrder={moduleOrder}
+              onToggleModule={toggleModule}
+              onReorderModule={reorderModule}
+              onSelectAll={selectAllModules}
+              onClearAll={clearAllModules}
+            />
 
             <RealtimeQuoteBar target="stock" />
 
@@ -837,7 +842,7 @@ export default function StockWorkbench() {
                 <div>
                   <h2 className="text-lg font-semibold">请选择功能模块</h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    在左侧“功能选项”中勾选需要展示的信息区；留空股票代码时默认展示 600519。
+                    在顶部“功能模块”菜单中勾选需要展示的信息区；留空股票代码时默认展示 600519。
                   </p>
                 </div>
               </div>

@@ -30,6 +30,8 @@
   --border: #e5e7eb;
   --input: #e5e7eb;
   --ring: #2563eb;
+  /* 顶部工作台切换条高度：工作台内的吸顶元素据此计算偏移。 */
+  --app-header-h: 68px;
 }
 
 .markdown-body {
