@@ -1,0 +1,1 @@
+ALTER TABLE "fund_positions" ADD COLUMN "profit_caliber" text DEFAULT 'include_today' NOT NULL;

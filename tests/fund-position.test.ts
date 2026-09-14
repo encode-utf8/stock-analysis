@@ -29,6 +29,7 @@ function position(overrides: Partial<FundPosition> = {}): FundPosition {
     name: "易方达消费行业股票",
     amount: 10_000,
     profit: 2_000,
+    profit_caliber: "include_today",
     note: null,
     created_at: "2026-01-05T02:00:00.000Z",
     updated_at: "2026-01-05T02:00:00.000Z",
@@ -84,13 +85,38 @@ describe("validateFundPositionInput", () => {
     });
     expect("value" in result).toBe(true);
     if ("value" in result) {
-      expect(result.value).toEqual({ code: "110022", amount: 15_000, profit: -3_000, note: "定投" });
+      expect(result.value).toEqual({
+        code: "110022",
+        amount: 15_000,
+        profit: -3_000,
+        profit_caliber: "include_today",
+        note: "定投",
+      });
     }
   });
 
   it("累计收益缺省按 0 处理", () => {
     const result = validateFundPositionInput({ code: "110022", amount: 5_000 });
     expect("value" in result && result.value.profit).toBe(0);
+  });
+
+  it("累计收益口径缺省为含当日，可显式指定，非法值被拒绝", () => {
+    const fallback = validateFundPositionInput({ code: "110022", amount: 5_000 });
+    expect("value" in fallback && fallback.value.profit_caliber).toBe("include_today");
+
+    const empty = validateFundPositionInput({ code: "110022", amount: 5_000, profit_caliber: "" });
+    expect("value" in empty && empty.value.profit_caliber).toBe("include_today");
+
+    const explicit = validateFundPositionInput({
+      code: "110022",
+      amount: 5_000,
+      profit_caliber: "exclude_today",
+    });
+    expect("value" in explicit && explicit.value.profit_caliber).toBe("exclude_today");
+
+    expect(
+      validateFundPositionInput({ code: "110022", amount: 5_000, profit_caliber: "yesterday" }),
+    ).toEqual({ error: "累计收益口径只能是「含当日收益」或「不含当日收益」。" });
   });
 
   it("拒绝非法代码、非法金额与非法收益", () => {
@@ -128,13 +154,29 @@ describe("validateFundPositionUpdate", () => {
       error: "当前持有金额必须是大于 0 的数字。",
     });
   });
+
+  it("允许只切换累计收益口径，非法口径返回错误", () => {
+    expect(validateFundPositionUpdate({ profit_caliber: "exclude_today" })).toEqual({
+      value: { profit_caliber: "exclude_today" },
+    });
+    expect(validateFundPositionUpdate({ profit_caliber: "bogus" })).toEqual({
+      error: "累计收益口径只能是「含当日收益」或「不含当日收益」。",
+    });
+  });
 });
 
 describe("buildFundPosition", () => {
   it("优先使用上游名称，缺失时回退本地档案名", () => {
-    const named = buildFundPosition({ code: "110022", amount: 1, profit: 0, note: null }, " 易方达消费 ");
+    const input = {
+      code: "110022",
+      amount: 1,
+      profit: 0,
+      profit_caliber: "include_today" as const,
+      note: null,
+    };
+    const named = buildFundPosition(input, " 易方达消费 ");
     expect(named.name).toBe("易方达消费");
-    const fallback = buildFundPosition({ code: "110022", amount: 1, profit: 0, note: null });
+    const fallback = buildFundPosition(input);
     expect(fallback.name).toBe("易方达消费行业股票");
   });
 });
@@ -200,7 +242,9 @@ describe("valueFundPosition", () => {
       { nav: 3.5, source: "akshare", fetchedAt: "2026-01-06T02:00:00.000Z" },
     );
 
+    // 含当日口径：录入值即当前市值，上一交易日市值由涨跌幅反推
     expect(valuation.market_value).toBe(10_000);
+    expect(valuation.prev_market_value).toBe(9_803.92);
     expect(valuation.cost_amount).toBe(8_000);
     expect(valuation.estimated_nav).toBe(3.57);
     expect(valuation.prev_nav).toBe(3.5);
@@ -209,7 +253,7 @@ describe("valueFundPosition", () => {
     expect(valuation.total_profit_pct).toBe(25);
     expect(valuation.quote_available).toBe(true);
     expect((valuation.prev_total_profit as number) + (valuation.day_profit as number)).toBeCloseTo(
-      valuation.total_profit,
+      valuation.total_profit as number,
       2,
     );
   });
@@ -224,6 +268,7 @@ describe("valueFundPosition", () => {
     expect(valuation.change_pct).toBeNull();
     expect(valuation.day_profit).toBeNull();
     expect(valuation.prev_total_profit).toBeNull();
+    expect(valuation.prev_market_value).toBeNull();
     // 手动录入的口径不依赖行情
     expect(valuation.market_value).toBe(10_000);
     expect(valuation.total_profit).toBe(2_000);
@@ -256,6 +301,52 @@ describe("valueFundPosition", () => {
     expect(valuation.prev_total_profit).toBeNull();
     expect(valuation.total_profit).toBe(2_000);
     expect(valuation.total_profit_pct).toBe(25);
+  });
+
+  it("不含当日口径：录入值即上一交易日口径，当前市值与累计收益按涨跌幅折算", () => {
+    const valuation = valueFundPosition(
+      position({ profit: 1_803.92, profit_caliber: "exclude_today" }),
+      { nav: 3.57, changePct: 2, mode: "estimate", source: "akshare", fetchedAt: null },
+      null,
+    );
+
+    expect(valuation.profit_caliber).toBe("exclude_today");
+    expect(valuation.prev_market_value).toBe(10_000);
+    expect(valuation.market_value).toBe(10_200);
+    expect(valuation.day_profit).toBe(200);
+    expect(valuation.prev_total_profit).toBe(1_803.92);
+    expect(valuation.total_profit).toBe(2_003.92);
+    expect(valuation.cost_amount).toBe(8_196.08);
+  });
+
+  it("不含当日口径且行情不可用时，当前市值与当前累计收益留空，不用 0 冒充", () => {
+    const valuation = valueFundPosition(
+      position({ profit: 1_803.92, profit_caliber: "exclude_today" }),
+      null,
+      null,
+    );
+
+    expect(valuation.market_value).toBeNull();
+    expect(valuation.day_profit).toBeNull();
+    expect(valuation.total_profit).toBeNull();
+    expect(valuation.total_profit_pct).toBeNull();
+    // 上一交易日口径与推算本金只依赖录入值，仍然可用
+    expect(valuation.prev_market_value).toBe(10_000);
+    expect(valuation.prev_total_profit).toBe(1_803.92);
+    expect(valuation.cost_amount).toBe(8_196.08);
+  });
+
+  it("历史记录缺少口径字段时按含当日收益处理", () => {
+    const legacy = { ...position(), profit_caliber: undefined } as unknown as FundPosition;
+    const valuation = valueFundPosition(
+      legacy,
+      { nav: 3.57, changePct: 2, mode: "estimate", source: "akshare", fetchedAt: null },
+      null,
+    );
+
+    expect(valuation.profit_caliber).toBe("include_today");
+    expect(valuation.total_profit).toBe(2_000);
+    expect(valuation.prev_total_profit).toBe(1_803.92);
   });
 
   it("累计收益不小于持有金额时收益率留空", () => {
@@ -314,7 +405,13 @@ describe("fundPositionRepository 本地文件回退", () => {
 
   it("未配置数据库时增删改查走本地 JSON 文件", async () => {
     const record = buildFundPosition(
-      { code: "110022", amount: 10_000, profit: 2_000, note: "回退测试" },
+      {
+        code: "110022",
+        amount: 10_000,
+        profit: 2_000,
+        profit_caliber: "include_today",
+        note: "回退测试",
+      },
       "易方达消费行业股票",
     );
 

@@ -443,8 +443,10 @@ export const fundPositions = pgTable(
     name: text("name").notNull(),
     /** 当前持有金额（市值），单位元，必须大于 0。 */
     amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
-    /** 当前累计收益，单位元，可为负。 */
+    /** 当前累计收益，单位元，可为负；含义由 profit_caliber 决定。 */
     profit: numeric("profit", { precision: 18, scale: 2 }).notNull().default("0"),
+    /** 累计收益口径：include_today（含当日收益，缺省）/ exclude_today（截至上一交易日）。 */
+    profitCaliber: text("profit_caliber").notNull().default("include_today"),
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),

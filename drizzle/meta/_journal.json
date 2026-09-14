@@ -78,6 +78,13 @@
       "when": 1789307706430,
       "tag": "0010_zippy_iron_man",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789382049479,
+      "tag": "0011_awesome_white_tiger",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 import {
   computeFundPositionMath,
   computeWeights,
+  DEFAULT_FUND_PROFIT_CALIBER,
+  isFundProfitCaliber,
+  normalizeFundProfitCaliber,
   parseNumericInput,
   round2,
   roundPct,
@@ -37,14 +40,19 @@ describe("computeFundPositionMath", () => {
     expect(result.costAmount).toBe(8_000);
     expect(result.totalProfit).toBe(2_000);
     expect(result.totalProfitPct).toBe(25);
-    // 10000 − 10000 / 1.02 = 196.08
+    // 含当日口径：录入值即当前市值，上一交易日市值 = 10000 / 1.02 = 9803.92
+    expect(result.marketValue).toBe(10_000);
+    expect(result.prevMarketValue).toBe(9_803.92);
     expect(result.dayProfit).toBe(196.08);
     expect(result.prevTotalProfit).toBe(1_803.92);
   });
 
   it("满足恒等式「上一交易日累计收益 + 当日收益 = 累计收益」", () => {
     const result = computeFundPositionMath({ marketValue: 10_000, totalProfit: 2_000, changePct: 2 });
-    expect((result.prevTotalProfit as number) + (result.dayProfit as number)).toBeCloseTo(result.totalProfit, 2);
+    expect((result.prevTotalProfit as number) + (result.dayProfit as number)).toBeCloseTo(
+      result.totalProfit as number,
+      2,
+    );
   });
 
   it("亏损场景下当日收益为负", () => {
@@ -62,7 +70,9 @@ describe("computeFundPositionMath", () => {
       const result = computeFundPositionMath({ marketValue: 10_000, totalProfit: 2_000, changePct });
       expect(result.dayProfit).toBeNull();
       expect(result.prevTotalProfit).toBeNull();
-      // 累计口径与涨跌幅无关，仍然可用
+      expect(result.prevMarketValue).toBeNull();
+      // 含当日口径的当前市值与累计口径不依赖行情，仍然可用
+      expect(result.marketValue).toBe(10_000);
       expect(result.costAmount).toBe(8_000);
       expect(result.totalProfitPct).toBe(25);
     }
@@ -71,6 +81,92 @@ describe("computeFundPositionMath", () => {
   it("推算本金非正时收益率留空", () => {
     expect(computeFundPositionMath({ marketValue: 1_000, totalProfit: 1_000, changePct: 1 }).totalProfitPct).toBeNull();
     expect(computeFundPositionMath({ marketValue: 1_000, totalProfit: 3_000, changePct: 1 }).totalProfitPct).toBeNull();
+  });
+});
+
+describe("computeFundPositionMath 累计收益口径", () => {
+  it("缺省按「含当日收益」处理，并在结果中回填口径", () => {
+    const result = computeFundPositionMath({ marketValue: 10_000, totalProfit: 2_000, changePct: 2 });
+
+    expect(result.profitCaliber).toBe(DEFAULT_FUND_PROFIT_CALIBER);
+    expect(result.totalProfit).toBe(2_000);
+    expect(result.prevTotalProfit).toBe(1_803.92);
+  });
+
+  it("不含当日口径：录入值即上一交易日口径，当前市值与累计收益按涨跌幅折算", () => {
+    const result = computeFundPositionMath({
+      marketValue: 10_000,
+      totalProfit: 1_803.92,
+      changePct: 2,
+      profitCaliber: "exclude_today",
+    });
+
+    // 录入的 10,000 是上一交易日市值，当日 +2% → 当前市值 10,200
+    expect(result.prevMarketValue).toBe(10_000);
+    expect(result.marketValue).toBe(10_200);
+    expect(result.dayProfit).toBe(200);
+    expect(result.prevTotalProfit).toBe(1_803.92);
+    expect(result.totalProfit).toBe(2_003.92);
+    // 本金 = 录入市值 − 录入累计收益，与录入口径无关
+    expect(result.costAmount).toBe(8_196.08);
+    expect(result.totalProfitPct).toBe(24.45);
+  });
+
+  it("两种口径互为逆运算，且都满足恒等式", () => {
+    const include = computeFundPositionMath({
+      marketValue: 10_000,
+      totalProfit: 2_000,
+      changePct: 2,
+      profitCaliber: "include_today",
+    });
+    // 把含当日口径推出的「上一交易日市值 + 上一交易日累计收益」当作不含当日口径的录入值，应还原出同一组结果。
+    const exclude = computeFundPositionMath({
+      marketValue: include.prevMarketValue as number,
+      totalProfit: include.prevTotalProfit as number,
+      changePct: 2,
+      profitCaliber: "exclude_today",
+    });
+
+    expect(exclude.costAmount).toBe(include.costAmount);
+    expect(exclude.totalProfit).toBe(include.totalProfit);
+    expect(exclude.dayProfit).toBe(include.dayProfit);
+    expect(exclude.prevTotalProfit).toBe(include.prevTotalProfit);
+    expect((exclude.prevTotalProfit as number) + (exclude.dayProfit as number)).toBeCloseTo(
+      exclude.totalProfit as number,
+      2,
+    );
+  });
+
+  it("不含当日口径下行情不可用：当前市值与当前累计收益留空，上一交易日口径保留录入值", () => {
+    for (const changePct of [null, 120, -100, Number.NaN]) {
+      const result = computeFundPositionMath({
+        marketValue: 10_000,
+        totalProfit: 2_000,
+        changePct,
+        profitCaliber: "exclude_today",
+      });
+
+      expect(result.marketValue).toBeNull();
+      expect(result.dayProfit).toBeNull();
+      expect(result.totalProfit).toBeNull();
+      expect(result.totalProfitPct).toBeNull();
+      // 录入值本身就是上一交易日口径，不依赖行情
+      expect(result.prevMarketValue).toBe(10_000);
+      expect(result.prevTotalProfit).toBe(2_000);
+      // 推算本金只依赖录入值，任何情况下都可算
+      expect(result.costAmount).toBe(8_000);
+    }
+  });
+
+  it("口径工具函数：识别合法值，缺失或非法值归一到缺省", () => {
+    expect(DEFAULT_FUND_PROFIT_CALIBER).toBe("include_today");
+    expect(isFundProfitCaliber("include_today")).toBe(true);
+    expect(isFundProfitCaliber("exclude_today")).toBe(true);
+    expect(isFundProfitCaliber("bogus")).toBe(false);
+    expect(isFundProfitCaliber(null)).toBe(false);
+    expect(normalizeFundProfitCaliber(undefined)).toBe("include_today");
+    expect(normalizeFundProfitCaliber("bogus")).toBe("include_today");
+    expect(normalizeFundProfitCaliber("exclude_today")).toBe("exclude_today");
   });
 });
 
@@ -85,27 +181,57 @@ describe("computeWeights", () => {
     expect(computeWeights([])).toEqual([]);
     expect(computeWeights([Number.NaN, 100])).toEqual([0, 100]);
   });
+
+  it("任一只市值不可用时整列返回 null，避免部分合计算出失真占比", () => {
+    expect(computeWeights([6_000, null])).toEqual([null, null]);
+    expect(computeWeights([null, null])).toEqual([null, null]);
+  });
 });
 
 describe("sumValuations", () => {
-  it("汇总持有金额、推算本金与累计收益率", () => {
+  it("汇总当前市值、推算本金与累计收益率", () => {
     const totals = sumValuations([
-      { market_value: 10_000, total_profit: 2_000, day_profit: 196.08 },
-      { market_value: 5_000, total_profit: -500, day_profit: null },
+      { market_value: 10_000, cost_amount: 8_000, total_profit: 2_000, day_profit: 196.08 },
+      { market_value: 5_000, cost_amount: 5_500, total_profit: -500, day_profit: null },
     ]);
 
     expect(totals.total_market_value).toBe(15_000);
-    expect(totals.total_profit).toBe(1_500);
     expect(totals.total_cost).toBe(13_500);
+    expect(totals.total_profit).toBe(1_500);
     expect(totals.total_profit_pct).toBe(11.11);
     expect(totals.total_day_profit).toBe(196.08);
   });
 
-  it("全部取不到当日收益时为 null，空组合收益率为 null", () => {
-    const totals = sumValuations([{ market_value: 1_000, total_profit: 100, day_profit: null }]);
+  it("全部取不到当日收益时当日合计为 null，空组合收益率为 null", () => {
+    const totals = sumValuations([
+      { market_value: 1_000, cost_amount: 900, total_profit: 100, day_profit: null },
+    ]);
     expect(totals.total_day_profit).toBeNull();
     expect(totals.total_profit_pct).toBe(11.11);
     expect(sumValuations([]).total_profit_pct).toBeNull();
     expect(sumValuations([]).total_day_profit).toBeNull();
+  });
+
+  it("任一只当前市值不可用时市值/收益合计留空（不做部分求和），但本金仍可合计", () => {
+    const totals = sumValuations([
+      { market_value: 10_000, cost_amount: 8_000, total_profit: 2_000, day_profit: 196.08 },
+      { market_value: null, cost_amount: 5_500, total_profit: null, day_profit: null },
+    ]);
+
+    expect(totals.total_market_value).toBeNull();
+    expect(totals.total_profit).toBeNull();
+    expect(totals.total_profit_pct).toBeNull();
+    // 推算本金只依赖录入值，任何情况下都可合计
+    expect(totals.total_cost).toBe(13_500);
+    // 当日收益合计维持既有约定：按可计算部分求和
+    expect(totals.total_day_profit).toBe(196.08);
+  });
+
+  it("空组合仍按 0 汇总", () => {
+    const totals = sumValuations([]);
+    expect(totals.total_market_value).toBe(0);
+    expect(totals.total_profit).toBe(0);
+    expect(totals.total_cost).toBe(0);
+    expect(totals.total_profit_pct).toBeNull();
   });
 });

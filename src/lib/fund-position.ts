@@ -1,7 +1,8 @@
 // 基金持有组合数据访问与估值编排。
 // 存储策略与自选池、个股持仓一致：优先 PostgreSQL，失败时回退 .data/fund-positions.json。
-// 录入口径为极简三项（代码、当前持有金额、当前累计收益），当日收益由盘中涨跌幅推导，
-// 数值计算全部复用纯函数 fund-position-calc。
+// 录入口径为极简四项（代码、当前持有金额、累计收益、累计收益是否含当日收益），
+// 当日收益由盘中涨跌幅推导，数值计算全部复用纯函数 fund-position-calc。
+// 两种口径的定义与降级约定见 docs/fund-position-caliber-plan.md。
 import { asc, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -14,6 +15,9 @@ import { normalizeFundCode, resolveFundProfile } from "@/lib/fund-market";
 import {
   computeFundPositionMath,
   computeWeights,
+  DEFAULT_FUND_PROFIT_CALIBER,
+  isFundProfitCaliber,
+  normalizeFundProfitCaliber,
   parseNumericInput,
   round2,
   sumValuations,
@@ -23,6 +27,7 @@ import type {
   FundNavPoint,
   FundPosition,
   FundPositionInput,
+  FundProfitCaliber,
   FundPositionNavMode,
   FundPositionSnapshot,
   FundPositionSummary,
@@ -53,10 +58,18 @@ function normalizeNote(value: unknown): string | null {
   return trimmed ? trimmed.slice(0, NOTE_MAX_LENGTH) : null;
 }
 
-/** 校验新增持仓入参：只接受代码、当前持有金额与当前累计收益。 */
+/** 校验新增持仓入参：只接受代码、当前持有金额、当前累计收益与累计收益口径。 */
 export function validateFundPositionInput(
   input: FundPositionInput,
-): { value: { code: string; amount: number; profit: number; note: string | null } } | { error: string } {
+): {
+  value: {
+    code: string;
+    amount: number;
+    profit: number;
+    profit_caliber: FundProfitCaliber;
+    note: string | null;
+  };
+} | { error: string } {
   const code = typeof input?.code === "string" ? normalizeFundCode(input.code) : null;
   if (!code) {
     return { error: "请输入 6 位基金代码。" };
@@ -78,16 +91,46 @@ export function validateFundPositionInput(
     return { error: "当前累计收益过大，请确认输入是否正确。" };
   }
 
+  // 口径缺省为「含当日收益」：与历史数据语义一致，避免旧调用方被拒。
+  const caliberRaw = input.profit_caliber;
+  const profitCaliber =
+    caliberRaw === undefined || caliberRaw === null || caliberRaw === ""
+      ? undefined
+      : isFundProfitCaliber(caliberRaw)
+        ? caliberRaw
+        : null;
+  if (profitCaliber === null) {
+    return { error: "累计收益口径只能是「含当日收益」或「不含当日收益」。" };
+  }
+
   return {
-    value: { code, amount: round2(amount), profit: round2(profit), note: normalizeNote(input.note) },
+    value: {
+      code,
+      amount: round2(amount),
+      profit: round2(profit),
+      profit_caliber: profitCaliber ?? DEFAULT_FUND_PROFIT_CALIBER,
+      note: normalizeNote(input.note),
+    },
   };
 }
 
-/** 校验更新持仓入参；只允许调整持有金额、累计收益与备注。 */
+/** 校验更新持仓入参；只允许调整持有金额、累计收益、累计收益口径与备注。 */
 export function validateFundPositionUpdate(
   input: FundPositionUpdateInput,
-): { value: { amount?: number; profit?: number; note?: string | null } } | { error: string } {
-  const value: { amount?: number; profit?: number; note?: string | null } = {};
+): {
+  value: {
+    amount?: number;
+    profit?: number;
+    profit_caliber?: FundProfitCaliber;
+    note?: string | null;
+  };
+} | { error: string } {
+  const value: {
+    amount?: number;
+    profit?: number;
+    profit_caliber?: FundProfitCaliber;
+    note?: string | null;
+  } = {};
 
   if (input.amount !== undefined) {
     const amount = parseNumericInput(input.amount);
@@ -111,6 +154,14 @@ export function validateFundPositionUpdate(
     value.profit = round2(profit);
   }
 
+  // 口径只在显式传入时更新；传 null/缺省表示不动。
+  if (input.profit_caliber !== undefined && input.profit_caliber !== null) {
+    if (!isFundProfitCaliber(input.profit_caliber)) {
+      return { error: "累计收益口径只能是「含当日收益」或「不含当日收益」。" };
+    }
+    value.profit_caliber = input.profit_caliber;
+  }
+
   if (input.note !== undefined) {
     value.note = normalizeNote(input.note);
   }
@@ -124,7 +175,13 @@ export function validateFundPositionUpdate(
 
 /** 构建可持久化的持仓记录；名称优先取上游校验结果，其次本地档案。 */
 export function buildFundPosition(
-  input: { code: string; amount: number; profit: number; note: string | null },
+  input: {
+    code: string;
+    amount: number;
+    profit: number;
+    profit_caliber: FundProfitCaliber;
+    note: string | null;
+  },
   name?: string | null,
 ): FundPosition {
   const now = new Date().toISOString();
@@ -135,6 +192,7 @@ export function buildFundPosition(
     name: name?.trim() || fallbackName,
     amount: input.amount,
     profit: input.profit,
+    profit_caliber: input.profit_caliber,
     note: input.note,
     created_at: now,
     updated_at: now,
@@ -244,13 +302,16 @@ export function valueFundPosition(
     marketValue: position.amount,
     totalProfit: position.profit,
     changePct,
+    profitCaliber: normalizeFundProfitCaliber(position.profit_caliber),
   });
 
   return {
     position,
-    market_value: round2(position.amount),
+    market_value: math.marketValue,
+    prev_market_value: math.prevMarketValue,
     cost_amount: math.costAmount,
     total_profit: math.totalProfit,
+    profit_caliber: math.profitCaliber,
     total_profit_pct: math.totalProfitPct,
     day_profit: math.dayProfit,
     prev_total_profit: math.prevTotalProfit,
@@ -258,7 +319,7 @@ export function valueFundPosition(
     // 只有估算/实时口径才展示实时估值；回退官方净值时保持空值，避免误读。
     estimated_nav: pricing && pricing.mode !== "nav" ? round2(pricing.nav) : null,
     prev_nav: official ? round2(official.nav) : null,
-    weight_pct: 0,
+    weight_pct: null,
     nav_mode: pricing?.mode ?? "unavailable",
     quote_available: changePct !== null,
     source: pricing?.source ?? official?.source ?? null,
@@ -286,7 +347,7 @@ export async function valueFundPositions(
   );
 
   const weights = computeWeights(valued.map((item) => item.market_value));
-  return valued.map((item, index) => ({ ...item, weight_pct: weights[index] ?? 0 }));
+  return valued.map((item, index) => ({ ...item, weight_pct: weights[index] ?? null }));
 }
 
 /** 组装接口返回的持仓快照。 */
@@ -297,6 +358,7 @@ export function buildFundPositionSnapshot(
   const totals = sumValuations(
     valuations.map((item) => ({
       market_value: item.market_value,
+      cost_amount: item.cost_amount,
       total_profit: item.total_profit,
       day_profit: item.day_profit,
     })),
@@ -319,7 +381,12 @@ export interface FundPositionRepository {
   add(position: FundPosition): Promise<void>;
   update(
     id: string,
-    patch: { amount?: number; profit?: number; note?: string | null },
+    patch: {
+      amount?: number;
+      profit?: number;
+      profit_caliber?: FundProfitCaliber;
+      note?: string | null;
+    },
   ): Promise<void>;
   remove(id: string): Promise<void>;
 }
@@ -332,6 +399,7 @@ function mapRow(row: typeof schema.fundPositions.$inferSelect): FundPosition {
     name: row.name,
     amount: Number(row.amount),
     profit: Number(row.profit),
+    profit_caliber: normalizeFundProfitCaliber(row.profitCaliber),
     note: row.note,
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
@@ -364,7 +432,9 @@ async function loadPositionFile(): Promise<FundPosition[]> {
     if (!Array.isArray(parsed)) {
       return [];
     }
-    return parsed.filter(isFundPosition);
+    return parsed
+      .filter(isFundPosition)
+      .map((item) => ({ ...item, profit_caliber: normalizeFundProfitCaliber(item.profit_caliber) }));
   } catch {
     return [];
   }
@@ -474,6 +544,7 @@ function createDrizzleFundPositionRepository(): FundPositionRepository {
         name: position.name,
         amount: position.amount.toFixed(2),
         profit: position.profit.toFixed(2),
+        profitCaliber: position.profit_caliber,
         note: position.note,
         createdAt: new Date(position.created_at),
         updatedAt: new Date(position.updated_at),
@@ -486,6 +557,9 @@ function createDrizzleFundPositionRepository(): FundPositionRepository {
       }
       if (patch.profit !== undefined) {
         values.profit = patch.profit.toFixed(2);
+      }
+      if (patch.profit_caliber !== undefined) {
+        values.profitCaliber = patch.profit_caliber;
       }
       if (patch.note !== undefined) {
         values.note = patch.note;
