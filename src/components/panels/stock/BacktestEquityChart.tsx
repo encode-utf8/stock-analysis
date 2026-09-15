@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import type { MouseEvent } from "react";
@@ -21,7 +21,7 @@ const PLOT_WIDTH = WIDTH - PADDING_LEFT - PADDING_RIGHT;
 const PLOT_HEIGHT = HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
 function formatMoney(value: number): string {
-  return `¥${Math.round(value).toLocaleString("zh-CN")}`;
+  return `${Math.round(value).toLocaleString("zh-CN")}`;
 }
 
 function formatSignedPercent(value: number): string {

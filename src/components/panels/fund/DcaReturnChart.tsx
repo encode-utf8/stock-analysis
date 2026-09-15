@@ -16,7 +16,7 @@ const PLOT_HEIGHT = HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
 function formatMoney(value: number): string {
   const sign = value < 0 ? "-" : "";
-  return `${sign}¥${Math.abs(value).toLocaleString("zh-CN", {
+  return `${sign}${Math.abs(value).toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;

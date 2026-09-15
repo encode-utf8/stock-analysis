@@ -1,4 +1,4 @@
-﻿// 统一 API 响应与错误类型：冻结自 docs/design.md 第 7 节统一返回约定。
+// 统一 API 响应与错误类型：冻结自 docs/design.md 第 7 节统一返回约定。
 // 所有 mock 路由与后续真实实现都必须使用这里的包装结构。
 
 import type {
@@ -28,6 +28,7 @@ export type ApiErrorCode =
   | "UPSTREAM_ERROR"
   | "RATE_LIMITED"
   | "FORBIDDEN"
+  | "SERVICE_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
 /** 统一错误响应。 */

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { DataConsistencyEntry } from "@/components/panels/DataConsistencyEntry";
 import FundWorkbench from "@/components/workbench/FundWorkbench";
 import StockWorkbench from "@/components/workbench/StockWorkbench";
 import {
@@ -18,6 +19,10 @@ export default function Home() {
       {/* 顶部条固定 68px 高（对应 CSS 变量 --app-header-h），工作台吸顶元素据此对齐。 */}
       <div className="sticky top-0 z-30 flex h-[68px] items-center justify-center border-b border-border bg-white/95 px-4 backdrop-blur">
         <WorkbenchSwitcher value={workbench} onChange={setWorkbench} />
+        {/* 右上角：数据一致性清理入口（由用户手动触发）。 */}
+        <div className="absolute right-4 top-1/2 -translate-y-1/2">
+          <DataConsistencyEntry />
+        </div>
       </div>
 
       <div className={workbench === "stock" ? "" : "hidden"}>

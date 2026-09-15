@@ -372,6 +372,7 @@ describe("定时注册", () => {
     delete process.env.CLEANUP_CRON;
     delete process.env.REFRESH_CRON;
     delete process.env.FUND_REFRESH_CRON;
+    delete process.env.FUND_SETTLE_CRON;
     delete process.env.ALERT_CRON;
     delete process.env.DAILY_STOCK_REPORT_CRON;
     delete process.env.DAILY_FUND_REPORT_CRON;
@@ -379,12 +380,13 @@ describe("定时注册", () => {
 
     startScheduler();
 
-    expect(scheduleMock).toHaveBeenCalledTimes(6);
+    expect(scheduleMock).toHaveBeenCalledTimes(7);
     // node-cron 签名为 schedule(表达式, 回调, 选项)，任务名在第三个参数。
     expect(scheduleMock.mock.calls.map((call) => (call[2] as { name?: string })?.name)).toEqual([
       "news-cleanup",
       "sample-quote-refresh",
       "sample-fund-refresh",
+      "fund-settlement",
       "alert-scan",
       "daily-stock-report",
       "daily-fund-report",
@@ -392,7 +394,7 @@ describe("定时注册", () => {
     expect(scheduleMock.mock.calls[0][2]).toMatchObject({ timezone: "Asia/Shanghai" });
 
     startScheduler();
-    expect(scheduleMock).toHaveBeenCalledTimes(6);
+    expect(scheduleMock).toHaveBeenCalledTimes(7);
   });
 
   it("表达式非法时跳过该任务并记录错误", () => {
@@ -406,7 +408,7 @@ describe("定时注册", () => {
     startScheduler();
 
     expect(scheduleMock).not.toHaveBeenCalled();
-    expect(errorSpy).toHaveBeenCalledTimes(6);
+    expect(errorSpy).toHaveBeenCalledTimes(7);
     errorSpy.mockRestore();
   });
 });

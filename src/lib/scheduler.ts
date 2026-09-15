@@ -12,6 +12,7 @@ import { getFundIntraday } from "@/lib/fund-intraday";
 import { SAMPLE_FUND_CODES } from "@/lib/fund-market";
 import { getFundMetrics } from "@/lib/fund-metrics";
 import { getFundNav, getFundProfile } from "@/lib/fund-data";
+import { fundPositionRepository, settleFundPositions } from "@/lib/fund-position";
 import { runAlertScan } from "@/lib/alert-scan";
 import { runDailyReportJob } from "@/lib/daily-report";
 import type { DailyReportJobOptions } from "@/lib/daily-report";
@@ -29,7 +30,7 @@ import type {
   NewsItem,
 } from "@/lib/shared/types";
 
-type JobName = "cleanup" | "refresh" | "fund-refresh" | "alert-scan" | "daily-report";
+type JobName = "cleanup" | "refresh" | "fund-refresh" | "fund-settlement" | "alert-scan" | "daily-report";
 type JobSource = "manual" | "cron";
 type RefreshTarget = "quote" | "kline" | "news" | "all";
 export type FundRefreshTarget = "profile" | "intraday" | "nav" | "holdings" | "metrics" | "all";
@@ -49,6 +50,10 @@ export interface RefreshJobOptions {
 export interface FundRefreshJobOptions {
   codes?: string[];
   target?: FundRefreshTarget;
+  source?: JobSource;
+}
+
+export interface FundSettlementJobOptions {
   source?: JobSource;
 }
 
@@ -249,6 +254,33 @@ export function runScheduledFundRefresh(): Promise<JobRun> {
   });
 }
 
+/**
+ * 净值结算：把持有基金的官方净值刷新到最新，把手动持仓推进到最新收盘口径，并把估算锚定的校准基线重锚后落库。
+ * 读时投影（settleCalibration）已经保证「官方净值一公布就按官方口径展示」，
+ * 本任务负责把结果落库并刷新缓存，保证下一交易日开盘前拿到的是官方数据。
+ */
+export async function runFundSettlementJob(
+  options: FundSettlementJobOptions = {},
+): Promise<JobRun> {
+  const source = options.source ?? "manual";
+  return trackJob("fund-settlement", { source }, async () => {
+    const positions = await fundPositionRepository.list();
+    const result = await settleFundPositions(positions);
+    return {
+      checked: result.checked,
+      resettled_count: result.resettled.length,
+      resettled: result.resettled,
+      pending_count: result.pending.length,
+      pending: result.pending,
+    };
+  });
+}
+
+/** 定时净值结算：每交易日晚间结算一次。 */
+export function runScheduledFundSettlement(): Promise<JobRun> {
+  return runFundSettlementJob({ source: "cron" });
+}
+
 /** 预警扫描任务选项。 */
 export interface AlertScanJobOptions {
   source?: JobSource;
@@ -440,6 +472,7 @@ export const SCHEDULER_RUNNERS: Record<string, () => Promise<unknown>> = {
   "news-cleanup": runScheduledCleanup,
   "sample-quote-refresh": runScheduledRefresh,
   "sample-fund-refresh": runScheduledFundRefresh,
+  "fund-settlement": runScheduledFundSettlement,
   "alert-scan": runAlertScanJob,
   "daily-stock-report": runScheduledStockReport,
   "daily-fund-report": runScheduledFundReport,

@@ -66,7 +66,7 @@ function formatMoney(value: number | null): string {
     return "—";
   }
   const sign = value < 0 ? "-" : "";
-  return `${sign}¥${Math.abs(value).toLocaleString("zh-CN", {
+  return `${sign}${Math.abs(value).toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
