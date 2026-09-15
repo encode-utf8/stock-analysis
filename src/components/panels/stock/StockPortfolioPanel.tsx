@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -51,7 +51,7 @@ function formatMoney(value: number | null, digits = 2): string {
     return "—";
   }
   const sign = value < 0 ? "-" : "";
-  return `${sign}¥${Math.abs(value).toLocaleString("zh-CN", {
+  return `${sign}${Math.abs(value).toLocaleString("zh-CN", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })}`;
