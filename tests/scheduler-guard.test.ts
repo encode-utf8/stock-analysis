@@ -75,8 +75,8 @@ beforeEach(() => {
 });
 
 describe("调度表与 cron 配置", () => {
-  it("包含 6 个任务且 key 唯一", () => {
-    expect(SCHEDULE_TABLE).toHaveLength(6);
+  it("包含 7 个任务且 key 唯一", () => {
+    expect(SCHEDULE_TABLE).toHaveLength(7);
     const keys = SCHEDULE_TABLE.map((entry) => entry.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
@@ -89,6 +89,7 @@ describe("调度表与 cron 配置", () => {
       "news-cleanup": "0 3 * * *",
       "sample-quote-refresh": "30 3 * * *",
       "sample-fund-refresh": "45 3 * * *",
+      "fund-settlement": "30 21 * * 1-5",
       "alert-scan": "*/30 9-15 * * 1-5",
       "daily-stock-report": "*/10 15-16 * * 1-5",
       "daily-fund-report": "*/20 20-23 * * 1-5",
@@ -288,7 +289,7 @@ describe("summarizeSchedulerStatus", () => {
     expect(summary.schedulerRegistered).toBe(true);
     expect(summary.tradingDay).toBe(true);
     expect(summary.timezone).toBe("Asia/Shanghai");
-    expect(summary.tasks).toHaveLength(6);
+    expect(summary.tasks).toHaveLength(7);
     expect(summary.staleCount).toBe(4);
 
     const cleanup = summary.tasks.find((task) => task.key === "news-cleanup");

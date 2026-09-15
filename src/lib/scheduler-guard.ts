@@ -69,6 +69,17 @@ export const SCHEDULE_TABLE: readonly ScheduleEntry[] = [
     jobName: "fund-refresh",
   },
   {
+    key: "fund-settlement",
+    label: "净值结算",
+    envKey: "FUND_SETTLE_CRON",
+    defaultCron: "30 21 * * 1-5",
+    freshness: "daily",
+    staleAfterMinutes: 26 * 60,
+    tradingDayOnly: true,
+    earliestHour: 21,
+    jobName: "fund-settlement",
+  },
+  {
     key: "alert-scan",
     label: "预警扫描",
     envKey: "ALERT_CRON",

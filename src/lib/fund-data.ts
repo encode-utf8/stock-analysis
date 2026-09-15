@@ -6,7 +6,9 @@ import {
   buildDeterministicFundProfile,
 } from "@/lib/fund-deterministic";
 import { fundDataStore } from "@/lib/fund-data-store";
+import { isUsableNavSource } from "@/lib/fund-nav-settlement";
 import { recordExternalCall } from "@/lib/observability";
+import { beijingDateKey } from "@/lib/trading-calendar";
 import type { FundNavPoint, FundProfile } from "@/lib/shared/types";
 
 export type FundNavRange = "1m" | "3m" | "6m" | "1y" | "3y" | "all";
@@ -15,6 +17,8 @@ export type FundNavType = "unit" | "cumulative";
 const DEFAULT_DATA_SERVICE_URL = "http://127.0.0.1:8000";
 const PROFILE_TTL_MS = 24 * 60 * 60_000;
 const NAV_TTL_MS = 6 * 60 * 60_000;
+/** 最新净值点不是今天的缓存有效期：官方净值随时可能公布，10 分钟后重取。 */
+const NAV_REFRESH_TTL_MS = 10 * 60_000;
 const PROFILE_CACHE_VERSION = "v2";
 const SIDE_CAR_TIMEOUT_MS = 10_000;
 const FUND_PROFILE_TIMEOUT_MS = 30_000;
@@ -30,6 +34,21 @@ function dataServiceUrl(): string {
 function isFresh(timestamp: string, ttlMs: number): boolean {
   const age = Date.now() - new Date(timestamp).getTime();
   return Number.isFinite(age) && age >= 0 && age <= ttlMs;
+}
+
+/**
+ * 净值缓存有效期：最新点属于今天（当天不会再变）→ 6 小时；否则 10 分钟。
+ * 收盘后官方净值随时可能公布，窗口期内缓存 6 小时会让晚上进页面仍读到
+ * 「只有昨天净值」的旧数据，看不到当天已公布的真实净值。
+ */
+export function resolveNavCacheTtlMs(
+  points: readonly FundNavPoint[],
+  today: string = beijingDateKey(new Date()),
+): number {
+  const publishedToday = points.some(
+    (point) => isUsableNavSource(point.source) && point.nav_date === today,
+  );
+  return publishedToday ? NAV_TTL_MS : NAV_REFRESH_TTL_MS;
 }
 
 async function fetchJson<T>(path: string, timeoutMs = SIDE_CAR_TIMEOUT_MS): Promise<T | null> {
@@ -251,7 +270,7 @@ export async function getFundNav(
         saved.every(
           (item) =>
             typeof item.fetched_at === "string" &&
-            isFresh(item.fetched_at, NAV_TTL_MS),
+            isFresh(item.fetched_at, resolveNavCacheTtlMs(saved)),
         ) &&
         navCoversRange(saved, startDate, endDate)
       ) {
@@ -265,7 +284,7 @@ export async function getFundNav(
           item.nav_date <= endDate &&
           item.source !== "deterministic-fallback" &&
           typeof item.fetched_at === "string" &&
-          isFresh(item.fetched_at, NAV_TTL_MS),
+          isFresh(item.fetched_at, resolveNavCacheTtlMs(persistedNav)),
       );
       if (persisted.length > 0 && navCoversRange(persisted, startDate, endDate)) {
         fundNavStore.set(cacheKey, persisted);
@@ -282,7 +301,7 @@ export async function getFundNav(
 
   const nav = await loader();
   if (nav.length > 0 && nav[0]?.source !== "deterministic-fallback") {
-    cacheSet(cacheKey, nav, NAV_TTL_MS);
+    cacheSet(cacheKey, nav, resolveNavCacheTtlMs(nav));
   }
   return nav;
 }

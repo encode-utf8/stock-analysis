@@ -1,4 +1,4 @@
-﻿// Drizzle ORM 数据表定义：对应 docs/design.md 第 6 节数据模型。
+// Drizzle ORM 数据表定义：对应 docs/design.md 第 6 节数据模型。
 // 本阶段只定义 schema 与迁移配置，不执行线上迁移。
 import { sql } from "drizzle-orm";
 import {
@@ -433,7 +433,8 @@ export const stockHoldings = pgTable(
   },
   (table) => [uniqueIndex("stock_holdings_code_idx").on(table.code)],
 );
-/** 基金持有组合：手动录入当前持有金额与累计收益，当日收益由盘中涨跌幅推导。 */
+/** 基金持有组合：手动录入当前持有金额与累计收益，或启用定投计划后由计划派生。 */
+
 // 与自选池/个股持仓一致，数据库不可用时回退 .data/fund-positions.json。
 export const fundPositions = pgTable(
   "fund_positions",
@@ -447,7 +448,32 @@ export const fundPositions = pgTable(
     profit: numeric("profit", { precision: 18, scale: 2 }).notNull().default("0"),
     /** 累计收益口径：include_today（含当日收益，缺省）/ exclude_today（截至上一交易日）。 */
     profitCaliber: text("profit_caliber").notNull().default("include_today"),
+    /** 定投频率：daily / weekly / biweekly / monthly；null 表示未启用定投计划。 */
+    dcaFrequency: text("dca_frequency"),
+    /** 每周定投的星期几（1-5）；非 weekly 计划为 null。 */
+    dcaWeekday: integer("dca_weekday"),
+    /** 每期定投金额（元）。 */
+    dcaAmount: numeric("dca_amount", { precision: 18, scale: 2 }),
+    /** 定投计划启用日（首期目标日），YYYY-MM-DD。 */
+    dcaStartDate: text("dca_start_date"),
+    /** 手动校准采用的净值日，YYYY-MM-DD；null 表示未校准。 */
+    calibNavDate: text("calib_nav_date"),
+    /** 手动校准得到的持仓份额（校准持有金额 / 校准日净值）。 */
+    calibShares: numeric("calib_shares", { precision: 18, scale: 4 }),
+    /** 手动校准得到的累计投入（本金）= 校准持有金额 − 校准累计收益。 */
+    calibCost: numeric("calib_cost", { precision: 18, scale: 2 }),
+    /** 校准锚定净值（估算锚定时为盘中估算 / 实时价，官方锚定时为官方单位净值）。 */
+    calibNav: numeric("calib_nav", { precision: 18, scale: 4 }),
+    /** 校准锚点来源：official（官方净值）/ estimate（估算锚定，待结算官方净值）。 */
+    calibAnchor: text("calib_anchor"),
+    /** 手动持仓锚点对应的净值日，YYYY-MM-DD；null 表示按录入时间推断。 */
+    manualAnchorDate: text("manual_anchor_date"),
+    /** 手动持仓锚定净值：官方锚定为官方单位净值，估算锚定为盘中估算 / 实时价。 */
+    manualAnchorNav: numeric("manual_anchor_nav", { precision: 18, scale: 4 }),
+    /** 手动持仓锚点来源：official（官方净值）/ estimate（估算锚定，待官方净值公布后重锚）。 */
+    manualAnchorSource: text("manual_anchor_source"),
     note: text("note"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
