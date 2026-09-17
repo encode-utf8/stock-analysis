@@ -260,6 +260,14 @@ corepack pnpm db:studio
 ./scripts/db-down.ps1
 ```
 
+## 持续集成
+
+- `push`（所有分支）与 `pull_request` 都会触发 `.github/workflows/ci.yml`；同一分支连续提交会自动取消上一次未完成的运行。
+- Web 作业（Node 22 + pnpm，版本取自 `packageManager`，缓存 pnpm store）：`pnpm install --frozen-lockfile` → `typecheck` → `lint` → `test` → `build`，任一失败即停。
+- 侧车作业（Python 3.12）：`python -m compileall -q data-service/app` 只做语法检查，不安装 akshare 等重依赖（侧车真正的运行验证依赖外部行情源，暂不纳入 CI）。
+- CI 不注入任何密钥、不启动数据库与行情侧车，跑的就是「未配置外部依赖时的降级路径」；权限为 `contents: read`，每个作业都有超时。
+- 方案与验收记录见 `docs/ci-plan.md` 与 `checklist.md` 的「CI 流水线（GitHub Actions）」。
+
 ## 健康检查
 
 - `GET http://127.0.0.1:3000/api/health`
