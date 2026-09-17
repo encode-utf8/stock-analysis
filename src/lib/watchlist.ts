@@ -4,12 +4,13 @@ import { asc, eq } from "drizzle-orm";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { dataPath } from "@/lib/data-dir";
 import { getDb, schema } from "@/lib/db";
 import { detectExchange, normalizeStockCode, resolveStock } from "@/lib/market";
 import type { WatchlistItem } from "@/lib/shared/types";
 
 /** 本地持久化自选股文件；数据库不可用时保证重启后仍保留。 */
-const WATCHLIST_FILE = path.join(process.cwd(), ".data", "watchlist.json");
+const WATCHLIST_FILE = dataPath("watchlist.json");
 const DEFAULT_WATCHLIST_GROUP = "默认";
 
 /** 空分组或旧数据缺省分组统一归入默认分组。 */

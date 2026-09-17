@@ -40,6 +40,36 @@ jobs:
       - name: 生产构建
         run: pnpm build
 
+  e2e:
+    name: 浏览器端到端测试（Playwright / Chromium）
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 pnpm（版本取自 package.json 的 packageManager）
+        uses: pnpm/action-setup@v4
+      - name: 安装 Node 22 并缓存 pnpm store
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: 安装依赖（锁文件冻结）
+        run: pnpm install --frozen-lockfile
+      - name: 安装 Chromium 与系统依赖
+        run: pnpm exec playwright install --with-deps chromium
+      - name: 生产构建
+        run: pnpm build
+      - name: 端到端测试
+        run: pnpm test:e2e
+      - name: 上传失败产物（trace 与截图）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: .logs/e2e
+          retention-days: 7
+
   data-service:
     name: 行情侧车语法检查（Python 3.12）
     runs-on: ubuntu-latest

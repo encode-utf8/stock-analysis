@@ -3,6 +3,7 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { dataPath } from "@/lib/data-dir";
 import {
   BACKGROUND_SETTINGS_VERSION,
   DEFAULT_BACKGROUND_SETTINGS,
@@ -11,9 +12,9 @@ import {
   type BackgroundSettings,
 } from "@/lib/ui-background";
 
-/** 设置文件与图片目录（均在 .data 下，已随 .gitignore 忽略）。 */
-const SETTINGS_FILE = path.join(process.cwd(), ".data", "ui-background.json");
-const IMAGE_DIR = path.join(process.cwd(), ".data", "backgrounds");
+/** 设置文件与图片目录（均在降级数据目录下，已随 .gitignore 忽略）。 */
+const SETTINGS_FILE = dataPath("ui-background.json");
+const IMAGE_DIR = dataPath("backgrounds");
 
 /** 扩展名到响应 Content-Type 的映射。 */
 const EXTENSION_CONTENT_TYPES: Record<string, string> = {

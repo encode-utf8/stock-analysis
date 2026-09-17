@@ -4,12 +4,13 @@ import { asc, eq } from "drizzle-orm";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { dataPath } from "@/lib/data-dir";
 import { getDb, schema } from "@/lib/db";
 import { normalizeFundCode, resolveFundProfile } from "@/lib/fund-market";
 import type { FundWatchlistItem } from "@/lib/shared/types";
 
 /** 本地持久化自选基金文件；数据库不可用时保证重启后仍保留。 */
-const FUND_WATCHLIST_FILE = path.join(process.cwd(), ".data", "fund-watchlist.json");
+const FUND_WATCHLIST_FILE = dataPath("fund-watchlist.json");
 const DEFAULT_WATCHLIST_GROUP = "默认";
 
 /** 空分组或旧数据缺省分组统一归入默认分组。 */

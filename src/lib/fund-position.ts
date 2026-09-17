@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { dataPath } from "@/lib/data-dir";
 import { getDb, schema } from "@/lib/db";
 import { getFundNav, type FundNavRange } from "@/lib/fund-data";
 import {
@@ -74,7 +75,7 @@ import type {
 } from "@/lib/shared/types";
 
 /** 本地持久化文件；数据库不可用时保证重启后仍保留。 */
-const POSITION_FILE = path.join(process.cwd(), ".data", "fund-positions.json");
+const POSITION_FILE = dataPath("fund-positions.json");
 
 /** 持有金额与累计收益的取值范围，超出视为脏数据直接拒绝。 */
 const AMOUNT_MAX = 1e12;

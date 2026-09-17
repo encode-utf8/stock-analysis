@@ -4,6 +4,7 @@
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { dataPath } from "@/lib/data-dir";
 import {
   deleteObject,
   getJsonObject,
@@ -20,7 +21,7 @@ import type {
   DailyReportSummary,
 } from "@/lib/shared/types";
 
-const LOCAL_ROOT = path.join(process.cwd(), ".data", "daily-reports");
+const LOCAL_ROOT = dataPath("daily-reports");
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 /** R2 索引损坏时最多恢复的日报篇数，控制列举+读取成本。 */
 const RECOVER_LIMIT = 30;

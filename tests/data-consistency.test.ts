@@ -229,7 +229,13 @@ function createDeps(
   db: ConsistencyDb,
   reports: ConsistencyReportStore,
 ): ConsistencyDeps {
-  return { rootDir, now: () => new Date("2026-09-15T10:00:00.000Z"), db, reports };
+  return {
+    rootDir,
+    dataDir: path.join(rootDir, ".data"),
+    now: () => new Date("2026-09-15T10:00:00.000Z"),
+    db,
+    reports,
+  };
 }
 
 /** 写入 .data 下的文件，并固定修改时间，让「数据库是否落后」的判定可复现。 */

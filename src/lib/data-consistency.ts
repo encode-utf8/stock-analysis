@@ -7,6 +7,7 @@ import path from "node:path";
 
 import { isPlaceholderName } from "@/lib/code-verify";
 import { createDrizzleConsistencyDb } from "@/lib/data-consistency-db";
+import { dataDir } from "@/lib/data-dir";
 import {
   alertEventSignature,
   alertRuleSignature,
@@ -114,6 +115,8 @@ export interface ConsistencyReportStore {
 /** 清理依赖，默认使用真实实现，单测注入替身与临时目录。 */
 export interface ConsistencyDeps {
   rootDir: string;
+  /** 本地降级数据目录：默认 <rootDir>/.data，可用 DATA_ROOT 整体切换。 */
+  dataDir: string;
   now(): Date;
   db: ConsistencyDb;
   reports: ConsistencyReportStore;
@@ -338,10 +341,10 @@ interface LoadedDump<T> {
 
 /** 读取本地 JSON 数组降级文件。 */
 async function loadJsonArrayDump<T>(
-  rootDir: string,
+  dataRoot: string,
   relPath: string,
 ): Promise<LoadedDump<T>> {
-  const file = path.join(rootDir, ".data", relPath);
+  const file = path.join(dataRoot, relPath);
   let raw: string;
   let bytes = 0;
   let mtime: string | null = null;
@@ -377,8 +380,8 @@ interface LoadedAlertDump {
 }
 
 /** 读取本地预警降级文件（`{ rules, events }` 结构）。 */
-async function loadAlertDump(rootDir: string, relPath: string): Promise<LoadedAlertDump> {
-  const file = path.join(rootDir, ".data", relPath);
+async function loadAlertDump(dataRoot: string, relPath: string): Promise<LoadedAlertDump> {
+  const file = path.join(dataRoot, relPath);
   let raw: string;
   let bytes = 0;
   let mtime: string | null = null;
@@ -403,10 +406,10 @@ async function loadAlertDump(rootDir: string, relPath: string): Promise<LoadedAl
 }
 
 /** 校验降级文件路径必须落在 .data 目录内，避免任何越界写入。 */
-function resolveInsideData(rootDir: string, relPath: string): string {
-  const dataRoot = path.resolve(rootDir, ".data");
-  const target = path.resolve(dataRoot, relPath);
-  if (target !== dataRoot && !target.startsWith(dataRoot + path.sep)) {
+function resolveInsideData(dataRoot: string, relPath: string): string {
+  const base = path.resolve(dataRoot);
+  const target = path.resolve(base, relPath);
+  if (target !== base && !target.startsWith(base + path.sep)) {
     throw new Error(`非法的 .data 相对路径：${relPath}`);
   }
   return target;
@@ -418,8 +421,8 @@ async function quarantineFile(
   relPath: string,
   stamp: string,
 ): Promise<void> {
-  const source = resolveInsideData(deps.rootDir, relPath);
-  const target = resolveInsideData(deps.rootDir, path.join("quarantine", stamp, relPath));
+  const source = resolveInsideData(deps.dataDir, relPath);
+  const target = resolveInsideData(deps.dataDir, path.join("quarantine", stamp, relPath));
   await mkdir(path.dirname(target), { recursive: true });
   await rename(source, target);
 }
@@ -652,7 +655,7 @@ async function scanDomain<T>(
   domain: DumpDomain<T>,
   ready: boolean,
 ): Promise<DumpFileReport> {
-  const loaded = await loadJsonArrayDump<T>(deps.rootDir, domain.relPath);
+  const loaded = await loadJsonArrayDump<T>(deps.dataDir, domain.relPath);
   const base = {
     path: `.data/${toDisplayPath(domain.relPath)}`,
     kind: domain.kind,
@@ -713,7 +716,7 @@ async function scanDomain<T>(
 /** 预警降级文件的扫描：规则按 id 与更新时间比对，事件按 id 去重回填。 */
 async function scanAlerts(deps: ConsistencyDeps, ready: boolean): Promise<DumpFileReport> {
   const relPath = "alerts.json";
-  const loaded = await loadAlertDump(deps.rootDir, relPath);
+  const loaded = await loadAlertDump(deps.dataDir, relPath);
   const base = { path: `.data/${toDisplayPath(relPath)}`, kind: "alerts" as DumpFileKind, bytes: loaded.bytes };
 
   if (!loaded.exists) {
@@ -865,10 +868,10 @@ function isDailyReportLike(value: unknown): value is DailyReport {
 }
 
 /** 列出本地日报正文文件。 */
-async function listLocalReportBodies(rootDir: string): Promise<LocalReportBody[]> {
+async function listLocalReportBodies(dataRoot: string): Promise<LocalReportBody[]> {
   const result: LocalReportBody[] = [];
   for (const kind of DAILY_REPORT_KINDS) {
-    const dir = path.join(rootDir, ".data", "daily-reports", kind);
+    const dir = path.join(dataRoot, "daily-reports", kind);
     let files: string[];
     try {
       files = await readdir(dir);
@@ -911,13 +914,13 @@ async function listLocalReportBodies(rootDir: string): Promise<LocalReportBody[]
 
 /** 读取一类日报的本地索引条目。 */
 async function listLocalReportIndex(
-  rootDir: string,
+  dataRoot: string,
 ): Promise<{ entries: LocalIndexEntry[]; bytes: number }> {
   const entries: LocalIndexEntry[] = [];
   let bytes = 0;
 
   for (const kind of DAILY_REPORT_KINDS) {
-    const file = path.join(rootDir, ".data", "daily-reports", kind, "index.json");
+    const file = path.join(dataRoot, "daily-reports", kind, "index.json");
     try {
       const info = await stat(file);
       bytes += info.size;
@@ -961,8 +964,8 @@ async function readReportSafely(
  */
 async function scanDailyReports(deps: ConsistencyDeps): Promise<DumpFileReport> {
   const base = { path: ".data/daily-reports", kind: "daily-reports" as DumpFileKind };
-  const bodies = await listLocalReportBodies(deps.rootDir);
-  const index = await listLocalReportIndex(deps.rootDir);
+  const bodies = await listLocalReportBodies(deps.dataDir);
+  const index = await listLocalReportIndex(deps.dataDir);
   const bytes = bodies.reduce((sum, body) => sum + body.bytes, 0) + index.bytes;
 
   if (bodies.length === 0 && index.entries.length === 0) {
@@ -1042,7 +1045,7 @@ async function scanDailyReports(deps: ConsistencyDeps): Promise<DumpFileReport> 
 async function scanSettingsFile(deps: ConsistencyDeps): Promise<DumpFileReport> {
   const relPath = "alert-settings.json";
   try {
-    const info = await stat(path.join(deps.rootDir, ".data", relPath));
+    const info = await stat(path.join(deps.dataDir, relPath));
     return {
       path: `.data/${toDisplayPath(relPath)}`,
       kind: "alert-settings",
@@ -1082,7 +1085,7 @@ async function scanUnknownFiles(deps: ConsistencyDeps): Promise<DumpFileReport> 
   const base = { path: ".data", kind: "unknown" as DumpFileKind, bytes: 0 };
   let names: string[] = [];
   try {
-    const items = await readdir(path.join(deps.rootDir, ".data"), { withFileTypes: true });
+    const items = await readdir(deps.dataDir, { withFileTypes: true });
     names = items
       .filter((item) => item.isFile() && !KNOWN_DATA_ENTRIES.has(item.name))
       .map((item) => item.name)
@@ -1159,7 +1162,7 @@ async function applyDomain<T>(
   applied: AppliedAccumulator,
   errors: string[],
 ): Promise<void> {
-  const loaded = await loadJsonArrayDump<T>(deps.rootDir, domain.relPath);
+  const loaded = await loadJsonArrayDump<T>(deps.dataDir, domain.relPath);
   if (!loaded.exists) {
     return;
   }
@@ -1228,7 +1231,7 @@ async function applyAlerts(
   errors: string[],
 ): Promise<void> {
   const relPath = "alerts.json";
-  const loaded = await loadAlertDump(deps.rootDir, relPath);
+  const loaded = await loadAlertDump(deps.dataDir, relPath);
   if (!loaded.exists) {
     return;
   }
@@ -1345,7 +1348,7 @@ async function applyDailyReports(
   }
 
   const report = await scanDailyReports(deps);
-  const bodies = await listLocalReportBodies(deps.rootDir);
+  const bodies = await listLocalReportBodies(deps.dataDir);
   const bodyByKey = new Map(bodies.map((body) => [reportKey(body.kind, body.date), body]));
 
   for (const entry of report.entries) {
@@ -1419,11 +1422,12 @@ export async function applyDataConsistency(
   };
 }
 
-/** 默认依赖：真实数据库适配层 + 日报存储 + 项目根目录。 */
+/** 默认依赖：真实数据库适配层 + 日报存储 + 项目根目录与降级数据目录。 */
 export function createDefaultConsistencyDeps(): ConsistencyDeps {
   const rootDir = process.cwd();
   return {
     rootDir,
+    dataDir: dataDir(),
     now: () => new Date(),
     db: createDrizzleConsistencyDb(rootDir),
     reports: {
@@ -1446,7 +1450,7 @@ export function createDefaultConsistencyDeps(): ConsistencyDeps {
 async function scanUiSettingsFile(deps: ConsistencyDeps): Promise<DumpFileReport> {
   const relPath = "ui-background.json";
   try {
-    const info = await stat(path.join(deps.rootDir, ".data", relPath));
+    const info = await stat(path.join(deps.dataDir, relPath));
     return {
       path: `.data/${toDisplayPath(relPath)}`,
       kind: "ui-settings",
