@@ -2461,6 +2461,7 @@ corepack pnpm build
 - 单测计数：同一代码树在本轮为 46 个文件 / 570 例通过（沿用收口轮次的白盒统计口径）。
 - 依赖安装：`pnpm install --frozen-lockfile` 可用的前提成立——本轮未改动 `package.json` 与 `pnpm-lock.yaml`，锁文件与配置一致。
 - 写法取舍：`push` 不写 `branches` 过滤（等价于所有分支），Node 与 Python 版本用单引号写成字符串 `'22'`、`'3.12'`，避免依赖加引号的写法带来的解析歧义。
+- 远端实测：推送 `feature/ci-pipeline` 后 GitHub Actions 运行 `35199675240` 结论为 `success`——「Web 校验」76 秒（安装依赖、类型检查、代码规范、单元测试、生产构建逐步通过），「行情侧车语法检查」4 秒通过；两个作业的每一步均为 `success`。
 
 ### 风险与遗留
 
