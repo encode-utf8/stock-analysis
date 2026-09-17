@@ -1,0 +1,56 @@
+# 持续集成：所有分支的提交与 PR 都会跑一遍静态检查、单测与生产构建。
+# 只使用公共 runner 与仓库内的脚本，不注入任何密钥：CI 校验的就是「无密钥降级路径」。
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# 同一个 ref 上只保留最新一次运行，避免连续提交堆积排队。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web 校验（typecheck / lint / test / build）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 pnpm（版本取自 package.json 的 packageManager）
+        uses: pnpm/action-setup@v4
+      - name: 安装 Node 22 并缓存 pnpm store
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: 安装依赖（锁文件冻结）
+        run: pnpm install --frozen-lockfile
+      - name: 类型检查
+        run: pnpm typecheck
+      - name: 代码规范检查
+        run: pnpm lint
+      - name: 单元测试
+        run: pnpm test
+      - name: 生产构建
+        run: pnpm build
+
+  data-service:
+    name: 行情侧车语法检查（Python 3.12）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # 侧车依赖 akshare 等重包，安装成本高且外部行情源不稳定，因此这里只做语法级校验。
+      - name: 编译侧车源码
+        run: python -m compileall -q data-service/app

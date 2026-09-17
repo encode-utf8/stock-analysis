@@ -2421,3 +2421,47 @@ corepack pnpm build
 - 视觉与交互验收依赖无头浏览器脚本（存放于 `%TEMP%\ui-verify\`），脚本未入库；仓库仍没有浏览器端到端自动化测试。
 - 「极光」是 canvas 程序化纹理，不是照片级素材；照片级效果需要上传自定义图片后叠加动效。
 - 自定义背景的对比度由用户调节遮罩与面板不透明度兜底，系统只提示不强制。
+
+## CI 流水线（GitHub Actions）（2026-09-17）
+
+需求来源：下一步开发方向的第二步——给仓库补上自动化校验，让每次提交都自动跑 `lint / typecheck / test / build`，不再依赖人工在本地逐条执行。
+
+- 关联方案：`docs/ci-plan.md`
+- 分支：`feature/ci-pipeline`
+
+### 任务目标与范围
+
+- 目标：新增 GitHub Actions 工作流，覆盖 Web 侧四道校验与行情侧车语法检查；同步方案文档、README 与验收记录。
+- 范围：`.github/workflows/ci.yml`、`docs/ci-plan.md`、`README.md`、`checklist.md`。
+- 非目标：不引入浏览器端到端测试、不做覆盖率门槛、不在 CI 里启动 Postgres 与行情侧车、不涉及部署与发布。
+
+### 验收项
+
+- [x] 新增 `.github/workflows/ci.yml`：所有分支 push 与 PR 触发，同一 ref 并发取消
+- [x] Web 作业：Node 22 + pnpm（版本取自 `packageManager`）+ pnpm store 缓存 + `--frozen-lockfile` 安装
+- [x] Web 作业依次执行 `typecheck`、`lint`、`test`、`build`，任一失败即停
+- [x] 侧车作业：Python 3.12 执行 `python -m compileall` 语法检查
+- [x] 最小权限（`contents: read`）与作业超时均已设置
+- [x] 工作流不依赖任何密钥、数据库与外部行情源
+- [x] 本地按 CI 口径复跑四项校验全部通过（临时移开 `.env` 模拟 runner 上无环境文件）
+- [x] 工作流 YAML 通过解析与关键字段断言
+- [x] `docs/ci-plan.md` 与 `README.md` 同步说明
+- [x] 中文注释与中文提交信息，独立分支开发
+
+### 验证方式
+
+- 本地：`corepack pnpm typecheck`、`corepack pnpm lint`、`corepack pnpm test`、`corepack pnpm build`（临时移开 `.env`，模拟 runner 上没有任何本地环境文件）
+- 工作流：PyYAML 解析并断言触发条件、作业与步骤、版本、缓存、权限与超时
+- 远端：推送后在 GitHub Actions 上观察运行结果
+
+### 实测结果（2026-09-17）
+
+- 工作流静态校验：PyYAML 解析通过，17 项断言全部 PASS（触发条件、作业与步骤顺序、`--frozen-lockfile`、官方 action 版本、pnpm 缓存、`contents: read`、作业超时、未引用任何密钥、步骤名均为中文）。
+- CI 口径本地复跑：把 `.env` 临时移开后依次执行 `typecheck`、`lint`、`test`、`build`，四项退出码均为 0，复跑结束后 `.env` 已原样恢复（`Test-Path` 为真）。
+- 单测计数：同一代码树在本轮为 46 个文件 / 570 例通过（沿用收口轮次的白盒统计口径）。
+- 依赖安装：`pnpm install --frozen-lockfile` 可用的前提成立——本轮未改动 `package.json` 与 `pnpm-lock.yaml`，锁文件与配置一致。
+- 写法取舍：`push` 不写 `branches` 过滤（等价于所有分支），Node 与 Python 版本用单引号写成字符串 `'22'`、`'3.12'`，避免依赖加引号的写法带来的解析歧义。
+
+### 风险与遗留
+
+- 未引入端到端测试与覆盖率门槛；公共 runner（Ubuntu/Node 22）与本地 Windows 环境存在差异。
