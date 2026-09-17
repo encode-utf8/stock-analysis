@@ -2515,6 +2515,7 @@ corepack pnpm build
 - 降级依据：服务端日志出现「缺少 DATABASE_URL，请复制 .env.example 为 .env 并填写配置。」并切换为本地文件存储，与「无密钥降级路径」的预期一致（属预期行为，不是失败）。
 - 工作流静态校验：PyYAML 解析通过，12 项断言全部 PASS（触发条件、三个作业顺序、runner 与超时、冻结安装、Chromium 系统依赖、先构建后跑用例、Node 22 与 pnpm 缓存、失败产物上传、最小权限、未引用密钥）。
 - 依赖变更：新增 devDependency `@playwright/test`（1.63.0），锁文件随之更新；Chromium 浏览器装在用户缓存目录，不进仓库。
+- 远端实测：推送 `feature/e2e-playwright` 后 GitHub Actions 运行 `35202929850` 结论为 `success`——「浏览器端到端测试」83 秒（安装依赖、安装 Chromium 与系统依赖、生产构建、端到端测试依次通过，失败产物上传按预期 skipped），「Web 校验」56 秒，「行情侧车语法检查」4 秒；三个作业的每一步均为 `success`。
 
 ### 风险与遗留
 
