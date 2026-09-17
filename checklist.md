@@ -2466,3 +2466,59 @@ corepack pnpm build
 ### 风险与遗留
 
 - 未引入端到端测试与覆盖率门槛；公共 runner（Ubuntu/Node 22）与本地 Windows 环境存在差异。
+
+## 浏览器端到端测试（Playwright）（2026-09-17）
+
+需求来源：下一步开发方向的第三步——把浏览器端到端测试纳入仓库，让页面外壳与关键交互（自选增删、工作台切换、背景预设）有自动化兜底，并纳入 CI。
+
+- 关联方案：`docs/e2e-plan.md`
+- 分支：`feature/e2e-playwright`
+
+### 任务目标与范围
+
+- 目标：引入 Playwright 端到端测试；先把本地降级数据目录改为可配置（`DATA_ROOT`）以实现数据隔离；同步方案文档、README、CI 与验收记录。
+- 范围：`playwright.config.ts`、`tests/e2e/`（3 个 spec）、`src/lib/data-dir.ts`、`tests/data-dir.test.ts`、7 个存储模块与 `src/lib/data-consistency.ts` 的数据目录改造、`.github/workflows/ci.yml`、`README.md`、`docs/e2e-plan.md`、`checklist.md`。
+- 非目标：不改页面结构与交互逻辑（仅两处 `data-testid`）、不改数据库结构、不引入 mock 侧车、不覆盖真实行情与 AI 链路。
+
+### 验收项
+
+- [x] 新增 `src/lib/data-dir.ts`：`DATA_ROOT` 可整体切换数据根目录，默认进程工作目录
+- [x] 7 个存储模块（自选、基金自选、个股持仓、基金持仓、预警、日报、背景设置）改走 `dataPath()`
+- [x] 数据一致性扫描依赖新增 `dataDir`，`createDefaultConsistencyDeps()` 默认取 `dataDir()`
+- [x] 新增 `tests/data-dir.test.ts`（4 例）覆盖默认目录、`DATA_ROOT` 覆盖、空白回退与相对路径
+- [x] 新增 `playwright.config.ts`：临时数据根目录、端口 3100、以 `/api/health` 作为就绪探针
+- [x] 新增 3 个端到端 spec（共 5 例）：首页外壳、工作台切换与首屏异常、自选股增删、背景预设切换
+- [x] 用例优先用无障碍语义定位，仅新增两处 `data-testid`
+- [x] `package.json` 增加 `test:e2e` 与 `test:e2e:install`，`.gitignore` 忽略 Playwright 产物
+- [x] CI 新增 e2e 作业（Chromium 与系统依赖、生产构建、失败上传 trace）
+- [x] 本地静态校验、单元测试与端到端全部通过
+- [x] 实测数据隔离：跑完后仓库 `.data` 无任何新增或改动
+- [x] `docs/e2e-plan.md` 与 `README.md` 同步说明
+- [x] 中文注释与中文提交信息，独立分支开发
+
+### 验证方式
+
+- 静态与构建：`corepack pnpm typecheck`、`corepack pnpm lint`、`corepack pnpm test`、`corepack pnpm build`
+- 端到端：`corepack pnpm test:e2e`（首次先执行 `corepack pnpm test:e2e:install` 安装 Chromium）
+- 隔离证据：跑前与跑后对仓库 `.data` 递归取「路径 + 大小 + 修改时间」快照并比对
+- 工作流：PyYAML 解析并断言 e2e 作业的触发、步骤、版本、权限与产物上传
+- 远端：推送后在 GitHub Actions 上观察含端到端作业的运行结果
+
+### 实测结果（2026-09-17）
+
+- typecheck：`tsc --noEmit` 退出码 0。
+- lint：`eslint .` 退出码 0。
+- 单测：`vitest run` 输出 `Test Files 47 passed (47)`、`Tests 574 passed (574)`，用时约 21 秒。
+- 构建：`next build` 退出码 0，`next start` 可直接拉起生产产物。
+- 端到端：`playwright test` 输出 `5 passed (24.3s)`，5 例依次为背景预设切换、首页默认渲染、个股台与基金台切换、首屏无未捕获异常、自选股增删全链路。
+- 隔离证据：跑前与跑后对仓库 `.data` 递归取「路径 + 大小 + 修改时间」快照，13 个文件完全一致（`Compare-Object` 无输出）；用例数据落在临时根目录 `%TEMP%\stock-analysis-e2e-ZnamOs\.data\watchlist.json`，用例自身删除后为 `[]`。
+- 降级依据：服务端日志出现「缺少 DATABASE_URL，请复制 .env.example 为 .env 并填写配置。」并切换为本地文件存储，与「无密钥降级路径」的预期一致（属预期行为，不是失败）。
+- 工作流静态校验：PyYAML 解析通过，12 项断言全部 PASS（触发条件、三个作业顺序、runner 与超时、冻结安装、Chromium 系统依赖、先构建后跑用例、Node 22 与 pnpm 缓存、失败产物上传、最小权限、未引用密钥）。
+- 依赖变更：新增 devDependency `@playwright/test`（1.63.0），锁文件随之更新；Chromium 浏览器装在用户缓存目录，不进仓库。
+
+### 风险与遗留
+
+- 覆盖范围有限：只验证页面外壳与本地存储链路；行情、AI 与数据库路径依赖外部服务，用例跑的是无密钥降级分支。
+- 首次需要在本地安装 Chromium（约 150MB，本机走 npmmirror 镜像下载）；CI 每次运行都要下载浏览器并重跑一次生产构建，流水线时间会变长。
+- 首版只有 5 例，基金工作台、数据一致性清理对话框、多分组自选等场景尚未覆盖。
+- 用例串行执行以换取稳定；后续用例变多时需要评估并行策略（例如每例独立数据根目录）。

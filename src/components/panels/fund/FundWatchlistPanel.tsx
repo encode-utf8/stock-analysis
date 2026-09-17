@@ -189,7 +189,7 @@ export function FundWatchlistPanel({
   );
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" data-testid="fund-watchlist-panel">
       <div className="flex items-center justify-between gap-2">
         <h3 className="flex items-baseline gap-1.5 text-sm font-semibold">
           自选基金

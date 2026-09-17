@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { isEmailConfigured } from "@/lib/alert-email";
+import { dataPath } from "@/lib/data-dir";
 import { getDb, hasRealDatabaseUrl, schema } from "@/lib/db";
 import { ALERT_METRIC_LABELS } from "@/lib/shared/types";
 import type {
@@ -18,8 +19,8 @@ import type {
   AlertTarget,
 } from "@/lib/shared/types";
 
-const STORE_FILE = path.join(process.cwd(), ".data", "alerts.json");
-const SETTINGS_FILE = path.join(process.cwd(), ".data", "alert-settings.json");
+const STORE_FILE = dataPath("alerts.json");
+const SETTINGS_FILE = dataPath("alert-settings.json");
 
 /** 事件查询条件。 */
 export interface AlertEventQuery {

@@ -31,6 +31,10 @@ yarn-error.log*
 # 测试覆盖率产物
 coverage/
 
+# Playwright 端到端产物（截图、trace 与报告）
+test-results/
+playwright-report/
+
 # Next.js 与构建产物
 .next/
 out/

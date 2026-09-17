@@ -192,6 +192,7 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 | `SMTP_USER` | 可选 | SMTP 账号，QQ 邮箱填 `你的QQ号@qq.com` |
 | `SMTP_PASS` | 可选 | SMTP 授权码（QQ 邮箱为 16 位授权码，不是登录密码） |
 | `SMTP_FROM` | 可选 | 发件人地址，默认与 `SMTP_USER` 相同 |
+| `DATA_ROOT` | 可选 | 本地降级数据根目录，默认进程工作目录（`.data` 落在其下）；设置后自选、持仓、预警、日报与背景设置整体挪到该目录，端到端测试用它指向临时目录 |
 
 > `DATABASE_URL` 未携带端口时会自动补默认端口 `5432`；本地 Docker 配置默认使用 `postgresql://postgres:postgres@localhost:5432/stock_analysis`。
 >
@@ -219,6 +220,7 @@ python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 80
 - 未配置 `DEEPSEEK_API_KEY` 或模型输出未包含具体行情/资讯数据时，AI 分析自动回退到包含最新价、K 线和指标的教学式报告。
 - R2 快照写入有超时保护，失败不会阻塞主流程。
 - 本地生成文件 `.env`、`.logs/`、`.data/` 不会提交到仓库。
+- 上述降级文件统一定位在 `<数据根目录>/.data` 下；默认数据根目录是进程工作目录，设置 `DATA_ROOT` 可整体切换（见 `src/lib/data-dir.ts`）。
 
 ## 数据一致性清理
 
@@ -236,6 +238,7 @@ corepack pnpm typecheck
 corepack pnpm lint
 corepack pnpm test
 corepack pnpm test:coverage
+corepack pnpm test:e2e
 corepack pnpm build
 corepack pnpm dev
 ```
@@ -267,6 +270,16 @@ corepack pnpm db:studio
 - 侧车作业（Python 3.12）：`python -m compileall -q data-service/app` 只做语法检查，不安装 akshare 等重依赖（侧车真正的运行验证依赖外部行情源，暂不纳入 CI）。
 - CI 不注入任何密钥、不启动数据库与行情侧车，跑的就是「未配置外部依赖时的降级路径」；权限为 `contents: read`，每个作业都有超时。
 - 方案与验收记录见 `docs/ci-plan.md` 与 `checklist.md` 的「CI 流水线（GitHub Actions）」。
+
+## 端到端测试（Playwright）
+
+- 作用：用真实浏览器跑一遍「打开页面 → 点按钮 → 数据落盘」的链路，兜住单元测试覆盖不到的页面外壳与交互。
+- 首次准备：`corepack pnpm test:e2e:install` 安装 Chromium（约 150MB，装在用户缓存目录，不进仓库）。
+- 运行：先 `corepack pnpm build` 生成生产产物，再 `corepack pnpm test:e2e`；配置会自动拉起 `next start`（端口 3100）并在 `/api/health` 就绪后开跑。
+- 数据隔离：用例的 `DATA_ROOT` 指向系统临时目录，`DATABASE_URL`、SMTP、AI 与资讯密钥一律置空，因此不会读写本机 `.data`，跑的就是无密钥降级路径。
+- 覆盖范围（首版 5 例）：首页外壳与免责声明、个股台与基金台切换、首屏无未捕获异常、自选股增删全链路、背景预设切换。
+- 可选环境变量：`E2E_PORT` 覆盖端口，`E2E_DATA_ROOT` 固定数据根目录（便于复现失败现场）。
+- 失败时的 trace 与截图写在 `.logs/e2e`（已忽略提交）；方案与验收记录见 `docs/e2e-plan.md` 与 `checklist.md`。
 
 ## 健康检查
 

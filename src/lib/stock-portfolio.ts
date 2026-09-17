@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { dataPath } from "@/lib/data-dir";
 import { getDb, schema } from "@/lib/db";
 import { getMarketQuote } from "@/lib/market-data";
 import { normalizeStockCode, resolveStock } from "@/lib/market";
@@ -21,7 +22,7 @@ import type {
 } from "@/lib/shared/types";
 
 /** 本地持久化文件；数据库不可用时保证重启后仍保留。 */
-const PORTFOLIO_FILE = path.join(process.cwd(), ".data", "stock-portfolio.json");
+const PORTFOLIO_FILE = dataPath("stock-portfolio.json");
 
 /** 金额与收益的取值范围，超出视为脏数据直接拒绝。 */
 const AMOUNT_MAX = 1e12;

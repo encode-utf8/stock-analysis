@@ -292,7 +292,7 @@ export function WatchlistSidebar({
   };
 
   return (
-    <section className="space-y-2">
+    <section className="space-y-2" data-testid="watchlist-sidebar">
       <div className="flex items-center justify-between gap-2">
         <h3 className="flex items-baseline gap-1.5 text-sm font-semibold">
           自选股
