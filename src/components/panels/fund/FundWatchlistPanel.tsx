@@ -233,7 +233,7 @@ export function FundWatchlistPanel({
       ) : null}
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
         </div>
       ) : null}
@@ -265,9 +265,9 @@ export function FundWatchlistPanel({
           const quoteClass = !quote
             ? ""
             : quote.change_pct > 0
-              ? "text-red-600"
+              ? "text-red-400"
               : quote.change_pct < 0
-                ? "text-green-600"
+                ? "text-emerald-400"
                 : "text-muted-foreground";
           return (
             <div
@@ -276,7 +276,7 @@ export function FundWatchlistPanel({
               "rounded-lg border p-2.5 transition-colors " +
               (activeCode === item.code
                 ? "border-primary bg-primary/5"
-                : "border-slate-200 bg-slate-50")
+                : "border-border bg-muted/50")
             }
           >
             <div className="flex items-center gap-2">
@@ -305,14 +305,14 @@ export function FundWatchlistPanel({
                 <button
                   type="button"
                   onClick={() => startEdit(item)}
-                  className="rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-slate-200"
+                  className="rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted"
                 >
                   备注
                 </button>
                 <button
                   type="button"
                   onClick={() => setPendingDeleteCode(item.code)}
-                  className="rounded px-1.5 py-1 text-xs text-red-600 hover:bg-red-50"
+                  className="rounded px-1.5 py-1 text-xs text-red-400 hover:bg-red-500/10"
                 >
                   删除
                 </button>

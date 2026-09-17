@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
+import { createPortal } from "react-dom";
 import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
@@ -129,16 +130,16 @@ function TimelineEventCard({
         </div>
       </div>
 
-      {open ? (
+      {open ? createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           onClick={() => setOpen(false)}
         >
           <div
-            className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl bg-white shadow-xl"
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden tech-panel"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
               <div>
                 <h3 className="font-semibold">
                   {event.type === "analysis" ? "AI 分析详情" : "对话详情"}
@@ -156,7 +157,7 @@ function TimelineEventCard({
                 <>
                   <MarkdownContent content={event.report.content} />
                   {event.report.risk_note ? (
-                    <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <p className="mt-4 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
                       {event.report.risk_note}
                     </p>
                   ) : null}
@@ -170,7 +171,7 @@ function TimelineEventCard({
                       <div
                         key={message.id}
                         className={`rounded-lg border px-3 py-2 text-sm ${
-                          message.role === "user" ? "bg-muted/40" : "bg-white"
+                          message.role === "user" ? "bg-muted/40" : "bg-card"
                         }`}
                       >
                         <span className="mr-2 text-xs font-medium text-muted-foreground">
@@ -186,7 +187,8 @@ function TimelineEventCard({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );
@@ -329,13 +331,13 @@ export function ReplayPanel({ code, refreshToken = 0, deletedReportId = null }: 
   };
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">历史复盘与命中率统计</h2>
           <p className="text-xs text-muted-foreground">仅用于学习，不构成投资建议，不承诺收益。</p>
         </div>
-        <span className="rounded bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+        <span className="rounded bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-300">
           仅供学习
         </span>
       </div>
@@ -367,7 +369,7 @@ export function ReplayPanel({ code, refreshToken = 0, deletedReportId = null }: 
       </form>
 
       {error ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
       ) : null}
@@ -395,11 +397,11 @@ export function ReplayPanel({ code, refreshToken = 0, deletedReportId = null }: 
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">利好资讯</p>
-              <p className="mt-1 text-2xl font-semibold text-green-700">{stats.positive_hits}</p>
+              <p className="mt-1 text-2xl font-semibold text-emerald-300">{stats.positive_hits}</p>
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">利空资讯</p>
-              <p className="mt-1 text-2xl font-semibold text-red-700">{stats.negative_hits}</p>
+              <p className="mt-1 text-2xl font-semibold text-red-300">{stats.negative_hits}</p>
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">中性资讯</p>

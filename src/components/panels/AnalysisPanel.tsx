@@ -35,7 +35,7 @@ export function AnalysisPanel({
   const hasReport = Boolean(latestReport);
 
   return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm">
+    <div className="tech-panel tech-lift p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">周期内 AI 分析</h2>
         {latestReport ? (
@@ -64,7 +64,7 @@ export function AnalysisPanel({
               </span>
             </div>
             <MarkdownContent content={latestReport.content} />
-            <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <p className="mt-3 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
               {latestReport.risk_note}
             </p>
           </div>

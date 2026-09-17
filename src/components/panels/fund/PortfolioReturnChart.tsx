@@ -9,7 +9,7 @@ export function PortfolioReturnChart({ points }: { points: FundPortfolioCurvePoi
     {
       key: "portfolio-return",
       label: "组合累计收益",
-      color: "#2563eb",
+      color: "#3b82f6",
       tone: "return",
       points: points.map((point) => ({ date: point.date, value: point.return_pct })),
     },

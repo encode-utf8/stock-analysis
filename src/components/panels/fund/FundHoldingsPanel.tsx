@@ -30,7 +30,7 @@ function allocationText(allocation: Record<string, number>): string {
 export function FundHoldingsPanel({ holdings, loading }: FundHoldingsPanelProps) {
   if (loading) {
     return (
-      <section className="rounded-xl border bg-white p-4 shadow-sm">
+      <section className="tech-panel tech-lift p-4 shadow-sm">
         <div className="py-12 text-center text-sm text-muted-foreground">
           持仓数据加载中...
         </div>
@@ -40,7 +40,7 @@ export function FundHoldingsPanel({ holdings, loading }: FundHoldingsPanelProps)
 
   if (!holdings) {
     return (
-      <section className="rounded-xl border bg-white p-4 shadow-sm">
+      <section className="tech-panel tech-lift p-4 shadow-sm">
         <div className="py-12 text-center text-sm text-muted-foreground">
           暂无持仓数据。
         </div>
@@ -49,7 +49,7 @@ export function FundHoldingsPanel({ holdings, loading }: FundHoldingsPanelProps)
   }
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">最新季度持仓</h2>
@@ -59,7 +59,7 @@ export function FundHoldingsPanel({ holdings, loading }: FundHoldingsPanelProps)
             {formatDateTime(holdings.fetched_at)}
           </p>
         </div>
-        <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+        <span className="rounded-md bg-sky-500/10 px-2 py-1 text-xs font-medium text-sky-300">
           持仓报告期，存在滞后
         </span>
       </div>

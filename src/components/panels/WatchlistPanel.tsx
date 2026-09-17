@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -227,18 +227,18 @@ export function WatchlistPanel({
   };
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold">自选股</h2>
         <span className="text-xs text-muted-foreground">共 {items.length} 只</span>
       </div>
 
       {error ? (
-        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
           <button
             type="button"
-            className="ml-2 text-red-400 hover:text-red-600"
+            className="ml-2 text-red-400 hover:text-red-400"
             onClick={() => setError(null)}
             aria-label="关闭错误提示"
           >
@@ -334,7 +334,7 @@ export function WatchlistPanel({
                     </button>
                     <button
                       type="button"
-                      className="rounded border px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                      className="rounded border px-2 py-1 text-xs text-red-400 hover:bg-red-500/10"
                       disabled={saving}
                       onClick={() => requestDelete(item.code)}
                     >

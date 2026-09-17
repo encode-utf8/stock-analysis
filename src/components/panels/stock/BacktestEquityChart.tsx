@@ -95,14 +95,14 @@ export function BacktestEquityChart({ points, initialCapital }: BacktestEquityCh
   };
 
   return (
-    <div className="relative overflow-x-auto rounded-lg border bg-white p-3">
+    <div className="relative overflow-x-auto tech-panel tech-lift p-3">
       <div className="mb-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-5 bg-red-600" aria-hidden="true" />
           策略净值
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-0.5 w-5 bg-slate-500" aria-hidden="true" />
+          <span className="inline-block h-0.5 w-5 bg-muted-foreground/60" aria-hidden="true" />
           买入持有基准
         </span>
         <span>初始资金 {formatMoney(initialCapital)}</span>
@@ -124,10 +124,10 @@ export function BacktestEquityChart({ points, initialCapital }: BacktestEquityCh
               x2={WIDTH - PADDING_RIGHT}
               y1={yOf(value)}
               y2={yOf(value)}
-              stroke="#e2e8f0"
+              stroke="var(--chart-grid)"
               strokeDasharray="3 3"
             />
-            <text x={PADDING_LEFT - 8} y={yOf(value) + 4} textAnchor="end" fontSize="11" fill="#64748b">
+            <text x={PADDING_LEFT - 8} y={yOf(value) + 4} textAnchor="end" fontSize="11" fill="#94a3b8">
               {formatMoney(value)}
             </text>
           </g>
@@ -140,13 +140,13 @@ export function BacktestEquityChart({ points, initialCapital }: BacktestEquityCh
             y={HEIGHT - 10}
             textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}
             fontSize="11"
-            fill="#64748b"
+            fill="#94a3b8"
           >
             {points[index].date}
           </text>
         ))}
 
-        <path d={benchmarkPath} fill="none" stroke="#64748b" strokeWidth="1.6" strokeDasharray="5 4" />
+        <path d={benchmarkPath} fill="none" stroke="#94a3b8" strokeWidth="1.6" strokeDasharray="5 4" />
         <path d={strategyPath} fill="none" stroke="#dc2626" strokeWidth="2" />
 
         {hovered && hoverIndex !== null ? (
@@ -160,7 +160,7 @@ export function BacktestEquityChart({ points, initialCapital }: BacktestEquityCh
               strokeDasharray="3 3"
             />
             <circle cx={xOf(hoverIndex)} cy={yOf(hovered.strategy)} r="3.5" fill="#dc2626" />
-            <circle cx={xOf(hoverIndex)} cy={yOf(hovered.benchmark)} r="3.5" fill="#64748b" />
+            <circle cx={xOf(hoverIndex)} cy={yOf(hovered.benchmark)} r="3.5" fill="#94a3b8" />
           </g>
         ) : null}
       </svg>
@@ -168,7 +168,7 @@ export function BacktestEquityChart({ points, initialCapital }: BacktestEquityCh
       <div className="mt-2 min-h-[2.5rem] text-xs text-muted-foreground">
         {hovered && hoveredRatio !== null ? (
           <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <span className="font-medium text-slate-700">{hovered.date}</span>
+            <span className="font-medium text-foreground/85">{hovered.date}</span>
             <span>
               策略 {formatMoney(hovered.strategy)}（{formatSignedPercent(hoveredRatio)}）
             </span>

@@ -60,23 +60,23 @@ function formatPercent(value: number | null): string {
 
 function returnTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return value > 0 ? "text-red-700" : "text-green-700";
+  return value > 0 ? "text-red-300" : "text-emerald-300";
 }
 
 function drawdownTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return "text-green-700";
+  return "text-emerald-300";
 }
 
 function ratioTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return value > 0 ? "text-red-700" : "text-green-700";
+  return value > 0 ? "text-red-300" : "text-emerald-300";
 }
 
 /** 基金多代码对比面板：按同一区间横向对比业绩与风险指标。 */
@@ -126,7 +126,7 @@ export function FundComparisonPanel() {
   };
 
   return (
-    <section className="rounded-xl border bg-white p-5 shadow-sm">
+    <section className="tech-panel tech-lift p-5 shadow-sm">
       <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-base font-semibold">基金对比</h2>
@@ -134,7 +134,7 @@ export function FundComparisonPanel() {
             输入 2–5 个基金代码，横向比较同区间业绩与风险指标。
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 rounded-lg border bg-slate-50 p-3">
+        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/50 p-3">
           <div className="flex flex-col gap-2">
             {codeRows.map((code, index) => (
               <div key={index} className="flex items-center gap-2">
@@ -186,7 +186,7 @@ export function FundComparisonPanel() {
       </div>
 
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
         </div>
       ) : null}
@@ -238,7 +238,7 @@ export function FundComparisonPanel() {
                   <td className={`px-2 py-3 font-medium ${returnTone(item.annualized_return_pct)}`}>
                     {formatPercent(item.annualized_return_pct)}
                   </td>
-                  <td className="px-2 py-3 text-slate-900">
+                  <td className="px-2 py-3 text-foreground">
                     {formatPercent(item.annualized_volatility_pct)}
                   </td>
                   <td className={`px-2 py-3 font-medium ${drawdownTone(item.max_drawdown_pct)}`}>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
@@ -25,7 +25,7 @@ export function FundAnalysisPanel({
   const latestReport = reports[0] ?? null;
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">基金 AI 分析</h2>
@@ -65,7 +65,7 @@ export function FundAnalysisPanel({
               {latestReport.content}
             </ReactMarkdown>
           </div>
-          <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <p className="mt-3 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
             {latestReport.risk_note}
           </p>
         </div>

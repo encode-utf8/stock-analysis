@@ -72,23 +72,23 @@ function formatMoney(value: number | null): string {
 
 function returnTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return value > 0 ? "text-red-700" : "text-green-700";
+  return value > 0 ? "text-red-300" : "text-emerald-300";
 }
 
 function drawdownTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return "text-green-700";
+  return "text-emerald-300";
 }
 
 function ratioTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return value > 0 ? "text-red-700" : "text-green-700";
+  return value > 0 ? "text-red-300" : "text-emerald-300";
 }
 
 function rangeLabel(range: string): string {
@@ -207,7 +207,7 @@ export function FundPortfolioPanel() {
   };
 
   return (
-    <section className="rounded-xl border bg-white p-5 shadow-sm">
+    <section className="tech-panel tech-lift p-5 shadow-sm">
       <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-base font-semibold">基金组合分析</h2>
@@ -215,7 +215,7 @@ export function FundPortfolioPanel() {
             输入 2–5 个基金代码，可按百分比权重或持仓份额分析，按共同交易日合成组合并比较同区间表现。
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 rounded-lg border bg-slate-50 p-3">
+        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/50 p-3">
           <div className="flex flex-col gap-2">
             {rows.map((row, index) => (
               <div key={index} className="flex items-center gap-2">
@@ -302,7 +302,7 @@ export function FundPortfolioPanel() {
       </div>
 
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
         </div>
       ) : null}
@@ -315,12 +315,12 @@ export function FundPortfolioPanel() {
                 <MetricCard
                   label="总持仓金额"
                   value={formatMoney(summary.total_holding_amount)}
-                  tone="text-slate-900"
+                  tone="text-foreground"
                 />
                 <MetricCard
                   label="最新总市值"
                   value={formatMoney(summary.total_latest_value)}
-                  tone="text-slate-900"
+                  tone="text-foreground"
                 />
                 <MetricCard
                   label="持仓盈亏"
@@ -342,7 +342,7 @@ export function FundPortfolioPanel() {
             <MetricCard
               label="年化波动"
               value={formatPercent(summary.annualized_volatility_pct)}
-              tone="text-slate-900"
+              tone="text-foreground"
             />
             <MetricCard
               label="最大回撤"
@@ -389,7 +389,7 @@ export function FundPortfolioPanel() {
           </div>
 
           {summary.items.some((item) => item.rebalance_status === "below" || item.rebalance_status === "above") ? (
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
               存在偏离目标权重区间的基金，建议再平衡：
               {summary.items
                 .filter((item) => item.rebalance_status === "below" || item.rebalance_status === "above")
@@ -430,20 +430,20 @@ export function FundPortfolioPanel() {
                       <div className="font-medium">{item.name}</div>
                       <div className="text-xs text-muted-foreground">{item.code}</div>
                     </td>
-                    <td className="px-2 py-3 text-slate-900">
+                    <td className="px-2 py-3 text-foreground">
                       {summary.mode === "range"
                         ? `${formatNumber(item.target_weight_min_pct)}%~${formatNumber(item.target_weight_max_pct)}%`
                         : `${formatNumber(item.target_weight_pct)}%`}
                     </td>
-                    <td className="px-2 py-3 text-slate-900">
+                    <td className="px-2 py-3 text-foreground">
                       {formatNumber(item.current_weight_pct)}%
                     </td>
-                    <td className="px-2 py-3 text-slate-900">
+                    <td className="px-2 py-3 text-foreground">
                       {item.weight_drift_pct === null
                         ? "—"
                         : `${item.weight_drift_pct > 0 ? "+" : ""}${item.weight_drift_pct.toFixed(2)}%`}
                     </td>
-                    <td className={`px-2 py-3 font-medium ${item.rebalance_status === "below" || item.rebalance_status === "above" ? "text-amber-700" : "text-slate-900"}`}>
+                    <td className={`px-2 py-3 font-medium ${item.rebalance_status === "below" || item.rebalance_status === "above" ? "text-amber-300" : "text-foreground"}`}>
                       {item.rebalance_status === "below"
                         ? "偏低"
                         : item.rebalance_status === "above"
@@ -454,10 +454,10 @@ export function FundPortfolioPanel() {
                     </td>
                     {summary.mode === "shares" ? (
                       <>
-                        <td className="px-2 py-3 text-slate-900">
+                        <td className="px-2 py-3 text-foreground">
                           {formatMoney(item.holding_amount)}
                         </td>
-                        <td className="px-2 py-3 text-slate-900">
+                        <td className="px-2 py-3 text-foreground">
                           {formatMoney(item.latest_value)}
                         </td>
                         <td className={`px-2 py-3 font-medium ${returnTone(item.profit_loss)}`}>
@@ -471,7 +471,7 @@ export function FundPortfolioPanel() {
                     <td className={`px-2 py-3 font-medium ${returnTone(item.annualized_return_pct)}`}>
                       {formatPercent(item.annualized_return_pct)}
                     </td>
-                    <td className="px-2 py-3 text-slate-900">
+                    <td className="px-2 py-3 text-foreground">
                       {formatPercent(item.annualized_volatility_pct)}
                     </td>
                     <td className={`px-2 py-3 font-medium ${drawdownTone(item.max_drawdown_pct)}`}>
@@ -483,7 +483,7 @@ export function FundPortfolioPanel() {
                     <td className={`px-2 py-3 font-medium ${ratioTone(item.calmar)}`}>
                       {formatNumber(item.calmar)}
                     </td>
-                    <td className="px-2 py-3 text-slate-900">
+                    <td className="px-2 py-3 text-foreground">
                       {item.risk_contribution_pct === null ? "—" : `${item.risk_contribution_pct.toFixed(2)}%`}
                     </td>
                   </tr>
@@ -511,7 +511,7 @@ function MetricCard({
   tone: string;
 }) {
   return (
-    <div className="rounded-lg border bg-slate-50 px-3 py-3">
+    <div className="rounded-lg border bg-muted/50 px-3 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`mt-1 text-lg font-semibold ${tone}`}>{value}</div>
     </div>

@@ -32,7 +32,7 @@ function trendClass(value: number | null): string {
   if (value === null || value === 0) {
     return "";
   }
-  return value > 0 ? "text-red-600" : "text-green-700";
+  return value > 0 ? "text-red-400" : "text-emerald-300";
 }
 
 function formatAmount(value: number | null): string {
@@ -52,7 +52,7 @@ function formatAmount(value: number | null): string {
 export function FundIntradayPanel({ intraday, loading }: FundIntradayPanelProps) {
   if (loading) {
     return (
-      <section className="rounded-xl border bg-white p-4 shadow-sm">
+      <section className="tech-panel tech-lift p-4 shadow-sm">
         <div className="py-12 text-center text-sm text-muted-foreground">
           当日行情加载中...
         </div>
@@ -62,7 +62,7 @@ export function FundIntradayPanel({ intraday, loading }: FundIntradayPanelProps)
 
   if (!intraday) {
     return (
-      <section className="rounded-xl border bg-white p-4 shadow-sm">
+      <section className="tech-panel tech-lift p-4 shadow-sm">
         <div className="py-12 text-center text-sm text-muted-foreground">
           暂无当日行情数据。
         </div>
@@ -74,7 +74,7 @@ export function FundIntradayPanel({ intraday, loading }: FundIntradayPanelProps)
   const headline = isEstimate ? intraday.estimated_nav : intraday.price;
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">
@@ -86,7 +86,7 @@ export function FundIntradayPanel({ intraday, loading }: FundIntradayPanelProps)
           </p>
         </div>
         {isEstimate ? (
-          <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+          <span className="rounded-md bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-300">
             估算值，非官方净值
           </span>
         ) : null}

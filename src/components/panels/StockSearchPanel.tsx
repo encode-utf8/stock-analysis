@@ -23,7 +23,7 @@ export function StockSearchPanel({
   onCleanup,
 }: StockSearchPanelProps) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-white p-4 shadow-sm md:flex-row">
+    <div className="flex flex-col gap-3 tech-panel tech-lift p-4 shadow-sm md:flex-row">
       <input
         value={input}
         onChange={(event) => onInputChange(event.target.value)}

@@ -90,23 +90,23 @@ function formatRatio(value: number | null): string {
 
 function returnTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return value > 0 ? "text-red-700" : "text-green-700";
+  return value > 0 ? "text-red-300" : "text-emerald-300";
 }
 
 function MetricCard({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: string }) {
   return (
     <div className="rounded-lg border p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={"mt-1 text-base font-semibold " + (tone ?? "text-slate-900")}>{value}</div>
+      <div className={"mt-1 text-base font-semibold " + (tone ?? "text-foreground")}>{value}</div>
       {hint ? <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div> : null}
     </div>
   );
 }
 
 const inputClass =
-  "h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary";
+  "h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary";
 
 /** 个股策略回测面板：单标的规则回测 + 组合权重再平衡回测。 */
 export function StockBacktestPanel() {
@@ -233,7 +233,7 @@ export function StockBacktestPanel() {
   const isRebalance = result?.strategy === "portfolio-rebalance";
 
   return (
-    <section className="rounded-xl border bg-white p-5 shadow-sm">
+    <section className="tech-panel tech-lift p-5 shadow-sm">
       <div>
         <h2 className="text-base font-semibold">策略回测</h2>
         <p className="mt-1 text-xs text-muted-foreground">
@@ -262,10 +262,10 @@ export function StockBacktestPanel() {
       </div>
 
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>
       ) : null}
 
-      <form onSubmit={handleSubmit} className="mt-4 rounded-lg border bg-slate-50/60 p-3">
+      <form onSubmit={handleSubmit} className="mt-4 rounded-lg border bg-muted/40 p-3">
         <div className="grid gap-3 md:grid-cols-4">
           {mode === "single" ? (
             <>
@@ -544,7 +544,7 @@ export function StockBacktestPanel() {
               label="最大回撤"
               value={formatPercent(-metrics.max_drawdown_pct)}
               hint={`${metrics.max_drawdown_start} → ${metrics.max_drawdown_end}`}
-              tone="text-green-700"
+              tone="text-emerald-300"
             />
             <MetricCard
               label="最大回撤修复"
@@ -570,7 +570,7 @@ export function StockBacktestPanel() {
           </div>
 
           {result.warnings.length > 0 ? (
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-700">
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-300">
               {result.warnings.map((warning) => (
                 <li key={warning}>{warning}</li>
               ))}

@@ -13,9 +13,9 @@ interface DisclaimerFooterProps {
 /** 免责声明与数据更新时间脚注。 */
 export function DisclaimerFooter({ quote }: DisclaimerFooterProps) {
   return (
-    <footer className="rounded-xl border bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+    <footer className="rounded-xl border bg-amber-500/10 px-4 py-3 text-xs leading-5 text-amber-300">
       {DISCLAIMER}
-      <span className="ml-2 text-amber-700">
+      <span className="ml-2 text-amber-300">
         数据更新：{quote ? formatDateTime(quote.fetched_at) : "尚未查询"}
       </span>
     </footer>

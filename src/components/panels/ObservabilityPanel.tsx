@@ -33,7 +33,7 @@ export function ObservabilityPanel({
   onRefresh,
 }: ObservabilityPanelProps) {
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold">可观测性</h2>
         <Button type="button" variant="outline" size="sm" onClick={onRefresh}>

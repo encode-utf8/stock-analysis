@@ -47,34 +47,34 @@ async function apiFetch<T>(
 
 /** 文件级动作的展示文案。 */
 const ACTION_META: Record<DumpAction, { label: string; className: string }> = {
-  restore: { label: "回填数据库", className: "bg-emerald-100 text-emerald-700" },
-  clean: { label: "清除垃圾", className: "bg-amber-100 text-amber-700" },
-  archive: { label: "归档冗余副本", className: "bg-slate-100 text-slate-600" },
-  keep: { label: "保持不动", className: "bg-slate-100 text-slate-600" },
-  pending: { label: "等待数据库", className: "bg-slate-100 text-slate-600" },
-  "report-only": { label: "仅报告", className: "bg-sky-100 text-sky-700" },
-  none: { label: "无需处理", className: "bg-slate-100 text-slate-500" },
+  restore: { label: "回填数据库", className: "bg-emerald-500/15 text-emerald-300" },
+  clean: { label: "清除垃圾", className: "bg-amber-500/15 text-amber-300" },
+  archive: { label: "归档冗余副本", className: "bg-muted text-muted-foreground" },
+  keep: { label: "保持不动", className: "bg-muted text-muted-foreground" },
+  pending: { label: "等待数据库", className: "bg-muted text-muted-foreground" },
+  "report-only": { label: "仅报告", className: "bg-sky-500/15 text-sky-300" },
+  none: { label: "无需处理", className: "bg-muted text-muted-foreground" },
 };
 
 /** 条目级判定的展示文案。 */
 const DECISION_META: Record<EntryDecisionKind, { label: string; className: string }> = {
-  insert: { label: "回填", className: "bg-emerald-100 text-emerald-700" },
-  update: { label: "覆盖", className: "bg-emerald-100 text-emerald-700" },
-  redundant: { label: "冗余", className: "bg-slate-100 text-slate-500" },
-  invalid: { label: "垃圾", className: "bg-amber-100 text-amber-700" },
-  template: { label: "模板垃圾", className: "bg-amber-100 text-amber-700" },
-  pending: { label: "待比对", className: "bg-slate-100 text-slate-600" },
+  insert: { label: "回填", className: "bg-emerald-500/15 text-emerald-300" },
+  update: { label: "覆盖", className: "bg-emerald-500/15 text-emerald-300" },
+  redundant: { label: "冗余", className: "bg-muted text-muted-foreground" },
+  invalid: { label: "垃圾", className: "bg-amber-500/15 text-amber-300" },
+  template: { label: "模板垃圾", className: "bg-amber-500/15 text-amber-300" },
+  pending: { label: "待比对", className: "bg-muted text-muted-foreground" },
 };
 
 /** 数据库状态横幅样式。 */
 function healthMeta(status: DatabaseHealth["status"]): { label: string; className: string } {
   if (status === "ready") {
-    return { label: "数据库就绪", className: "border-emerald-200 bg-emerald-50 text-emerald-800" };
+    return { label: "数据库就绪", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" };
   }
   if (status === "schema_behind") {
-    return { label: "数据库结构落后", className: "border-amber-200 bg-amber-50 text-amber-800" };
+    return { label: "数据库结构落后", className: "border-amber-500/30 bg-amber-500/10 text-amber-300" };
   }
-  return { label: "数据库不可用", className: "border-red-200 bg-red-50 text-red-700" };
+  return { label: "数据库不可用", className: "border-red-500/30 bg-red-500/10 text-red-300" };
 }
 
 /** 单个降级文件的扫描结果卡片。 */
@@ -84,11 +84,11 @@ function FileCard({ file }: { file: DumpFileReport }) {
   const visible = expanded ? file.entries : file.entries.slice(0, 5);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
+    <div className="rounded-lg border border-border bg-card p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-mono text-xs text-slate-700">{file.path}</p>
-          <p className="mt-1 text-xs text-slate-500">{file.summary}</p>
+          <p className="truncate font-mono text-xs text-foreground/85">{file.path}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{file.summary}</p>
         </div>
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${action.className}`}>
           {action.label}
@@ -96,7 +96,7 @@ function FileCard({ file }: { file: DumpFileReport }) {
       </div>
 
       {file.entries.length > 0 ? (
-        <ul className="mt-2 space-y-1 border-t border-slate-100 pt-2">
+        <ul className="mt-2 space-y-1 border-t border-border/60 pt-2">
           {visible.map((entry) => {
             const decision = DECISION_META[entry.decision];
             return (
@@ -104,8 +104,8 @@ function FileCard({ file }: { file: DumpFileReport }) {
                 <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${decision.className}`}>
                   {decision.label}
                 </span>
-                <span className="shrink-0 font-mono text-slate-700">{entry.key}</span>
-                <span className="min-w-0 flex-1 text-slate-500">
+                <span className="shrink-0 font-mono text-foreground/85">{entry.key}</span>
+                <span className="min-w-0 flex-1 text-muted-foreground">
                   {entry.label ? `${entry.label} · ` : ""}
                   {entry.reason}
                 </span>
@@ -119,7 +119,7 @@ function FileCard({ file }: { file: DumpFileReport }) {
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="mt-2 text-[11px] text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
+          className="mt-2 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground/85 hover:underline"
         >
           {expanded ? "收起明细" : `展开其余 ${file.entries.length - 5} 条`}
         </button>
@@ -212,22 +212,22 @@ export function DataConsistencyEntry() {
 
       {open ? createPortal(
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           onClick={() => setOpen(false)}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="data-consistency-title"
-            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5"
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden tech-panel shadow-2xl ring-1 ring-white/5"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+            <div className="flex items-start justify-between gap-4 border-b border-border/60 px-5 py-4">
               <div>
-                <h2 id="data-consistency-title" className="text-base font-semibold tracking-tight text-slate-900">
+                <h2 id="data-consistency-title" className="text-base font-semibold tracking-tight text-foreground">
                   数据一致性清理
                 </h2>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted-foreground">
                   数据库恢复可用后按「数据更新时间」判定：数据库缺少的条目回填入库；内容一致、或数据库最后改动不早于本地文件的条目视为冗余；数据库最后改动早于本地文件时以本地为准覆盖。断连期间产生的模板垃圾则被清除。
                 </p>
               </div>
@@ -235,7 +235,7 @@ export function DataConsistencyEntry() {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="关闭"
-                className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                className="rounded-md p-1 text-muted-foreground/70 transition-colors hover:bg-muted hover:text-muted-foreground"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -265,28 +265,28 @@ export function DataConsistencyEntry() {
               ) : null}
 
               {error ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
                   {error}
                 </div>
               ) : null}
 
               {scanning && !plan ? (
-                <p className="py-6 text-center text-sm text-slate-500">正在扫描本地降级数据...</p>
+                <p className="py-6 text-center text-sm text-muted-foreground">正在扫描本地降级数据...</p>
               ) : null}
 
               {plan ? (
                 <>
-                  <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span className="rounded-full bg-muted px-2 py-0.5">
                       待回填 {plan.totals.toRestore} 条
                     </span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                    <span className="rounded-full bg-muted px-2 py-0.5">
                       待覆盖 {plan.totals.toUpdate} 条
                     </span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                    <span className="rounded-full bg-muted px-2 py-0.5">
                       数据库已存在 {plan.totals.skipped} 条
                     </span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                    <span className="rounded-full bg-muted px-2 py-0.5">
                       垃圾 {plan.totals.toClean} 条
                     </span>
                   </div>
@@ -300,8 +300,8 @@ export function DataConsistencyEntry() {
               ) : null}
 
               {result ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                  <p className="font-medium text-slate-800">
+                <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs text-foreground/85">
+                  <p className="font-medium text-foreground">
                     清理完成：回填 {result.applied.restored} 条 / 覆盖 {result.applied.updated} 条 /
                     清除 {result.applied.dropped} 条 / 跳过 {result.applied.skipped} 条
                   </p>
@@ -311,20 +311,20 @@ export function DataConsistencyEntry() {
                     </p>
                   ) : null}
                   {result.errors.length > 0 ? (
-                    <p className="mt-1 text-amber-700">
+                    <p className="mt-1 text-amber-300">
                       部分失败：{result.errors.slice(0, 3).join("；")}
                       {result.errors.length > 3 ? ` 等 ${result.errors.length} 项` : ""}
                     </p>
                   ) : null}
-                  <p className="mt-1 text-slate-500">
+                  <p className="mt-1 text-muted-foreground">
                     若界面仍显示旧数据，请刷新页面；处于降级状态的进程需重启后才会切回数据库。
                   </p>
                 </div>
               ) : null}
             </div>
 
-            <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-5 py-3">
-              <p className="text-[11px] text-slate-500">
+            <div className="flex items-center justify-between gap-3 border-t border-border/60 bg-muted/50 px-5 py-3">
+              <p className="text-[11px] text-muted-foreground">
                 判定基准：数据库该数据域的最后改动时间 vs 本地文件修改时间。执行前先回填事实数据，再把处理完毕的降级文件移入 .data/quarantine/。
               </p>
               <div className="flex shrink-0 gap-2">

@@ -68,9 +68,9 @@ function formatPercent(value: number | null): string {
 /** 涨红跌绿，与项目其它面板保持一致。 */
 function returnTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return value > 0 ? "text-red-700" : "text-green-700";
+  return value > 0 ? "text-red-300" : "text-emerald-300";
 }
 
 function MetricCard({
@@ -87,7 +87,7 @@ function MetricCard({
   return (
     <div className="rounded-lg border p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={"mt-1 text-lg font-semibold " + (tone ?? "text-slate-900")}>{value}</div>
+      <div className={"mt-1 text-lg font-semibold " + (tone ?? "text-foreground")}>{value}</div>
       {hint ? <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div> : null}
     </div>
   );
@@ -110,7 +110,7 @@ function WeightBar({
           {sublabel} · {percent.toFixed(2)}%
         </span>
       </div>
-      <div className="mt-1 h-2 w-full overflow-hidden rounded bg-slate-100">
+      <div className="mt-1 h-2 w-full overflow-hidden rounded bg-muted">
         <div
           className="h-full rounded bg-primary/70"
           style={{ width: `${Math.min(Math.max(percent, 0), 100)}%` }}
@@ -232,7 +232,7 @@ export function StockPortfolioPanel() {
   const holdings = snapshot?.holdings ?? [];
 
   return (
-    <section className="rounded-xl border bg-white p-5 shadow-sm">
+    <section className="tech-panel tech-lift p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">我的持仓组合</h2>
@@ -246,15 +246,15 @@ export function StockPortfolioPanel() {
       </div>
 
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>
       ) : null}
       {formError ? (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
           {formError}
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit} className="mt-4 grid gap-3 rounded-lg border bg-slate-50/60 p-3 md:grid-cols-5">
+      <form onSubmit={handleSubmit} className="mt-4 grid gap-3 rounded-lg border bg-muted/40 p-3 md:grid-cols-5">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           股票代码
           <input
@@ -262,7 +262,7 @@ export function StockPortfolioPanel() {
             onChange={(event) => setCode(event.target.value)}
             placeholder="如 600519"
             inputMode="numeric"
-            className="h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary"
+            className="h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -272,7 +272,7 @@ export function StockPortfolioPanel() {
             onChange={(event) => setAmount(event.target.value)}
             placeholder="如 100000"
             inputMode="decimal"
-            className="h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary"
+            className="h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -282,7 +282,7 @@ export function StockPortfolioPanel() {
             onChange={(event) => setProfit(event.target.value)}
             placeholder="亏损填负数"
             inputMode="decimal"
-            className="h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary"
+            className="h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -291,7 +291,7 @@ export function StockPortfolioPanel() {
             value={note}
             onChange={(event) => setNote(event.target.value)}
             placeholder="如 长期持有"
-            className="h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary"
+            className="h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
           />
         </label>
         <div className="flex items-end">

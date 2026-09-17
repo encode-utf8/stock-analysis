@@ -492,12 +492,12 @@ export function AlertPanel({ target }: AlertPanelProps) {
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
       ) : null}
       {notice ? (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
           {notice}
         </div>
       ) : null}
@@ -527,7 +527,7 @@ export function AlertPanel({ target }: AlertPanelProps) {
                   ))}
                 </select>
                 {codeOptions.length === 0 ? (
-                  <p className="mt-1 text-xs text-amber-600">
+                  <p className="mt-1 text-xs text-amber-400">
                     当前自选池为空，请先在左侧加入自选{target === "stock" ? "股" : "基金"}。
                   </p>
                 ) : null}
@@ -655,7 +655,7 @@ export function AlertPanel({ target }: AlertPanelProps) {
                       <span
                         className={
                           "rounded-full px-2 py-0.5 text-xs font-medium " +
-                          (rule.enabled ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600")
+                          (rule.enabled ? "bg-emerald-500/15 text-emerald-300" : "bg-muted text-muted-foreground")
                         }
                       >
                         {rule.enabled ? "已启用" : "已停用"}
@@ -750,9 +750,9 @@ export function AlertPanel({ target }: AlertPanelProps) {
                 : "实时推送未开启：在行情条打开「开启实时」后，命中即可即时提醒。"}
             </span>
             {notifyPermission === "granted" ? (
-              <span className="text-green-700">浏览器通知已授权</span>
+              <span className="text-emerald-300">浏览器通知已授权</span>
             ) : notifyPermission === "denied" ? (
-              <span className="text-amber-600">浏览器通知被拒绝，已降级为站内提示</span>
+              <span className="text-amber-400">浏览器通知被拒绝，已降级为站内提示</span>
             ) : notifyPermission === "unsupported" ? (
               <span>当前浏览器不支持系统通知</span>
             ) : (
@@ -778,7 +778,7 @@ export function AlertPanel({ target }: AlertPanelProps) {
                 <li
                   key={event.id}
                   className={
-                    "rounded-md border p-3 " + (event.status === "unread" ? "border-amber-300 bg-amber-50" : "")
+                    "rounded-md border p-3 " + (event.status === "unread" ? "border-amber-500/40 bg-amber-500/10" : "")
                   }
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -787,8 +787,8 @@ export function AlertPanel({ target }: AlertPanelProps) {
                       className={
                         "rounded-full px-2 py-0.5 text-xs font-medium " +
                         (event.status === "unread"
-                          ? "bg-amber-100 text-amber-800"
-                          : "bg-slate-100 text-slate-600")
+                          ? "bg-amber-500/15 text-amber-300"
+                          : "bg-muted text-muted-foreground")
                       }
                     >
                       {event.status === "unread" ? "未读" : "已读"}

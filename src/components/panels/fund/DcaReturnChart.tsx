@@ -24,9 +24,9 @@ function formatMoney(value: number): string {
 
 function returnTone(value: number): string {
   if (value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return value > 0 ? "text-red-700" : "text-green-700";
+  return value > 0 ? "text-red-300" : "text-emerald-300";
 }
 
 /** 基金定投收益率变化曲线：支持鼠标悬停查看单日市值、投入与收益率。 */
@@ -116,7 +116,7 @@ export function DcaReturnChart({
   };
 
   return (
-    <div className="relative overflow-x-auto rounded-lg border bg-white p-3">
+    <div className="relative overflow-x-auto tech-panel tech-lift p-3">
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="min-w-[720px]"
@@ -132,7 +132,7 @@ export function DcaReturnChart({
               x2={WIDTH - PADDING_RIGHT}
               y1={tick.y}
               y2={tick.y}
-              stroke="#e5e7eb"
+              stroke="var(--chart-grid)"
               strokeDasharray="3 3"
             />
             <text
@@ -140,7 +140,7 @@ export function DcaReturnChart({
               y={tick.y + 4}
               textAnchor="end"
               fontSize="11"
-              fill="#737373"
+              fill="var(--chart-text)"
             >
               {tick.value.toFixed(1)}%
             </text>
@@ -181,7 +181,7 @@ export function DcaReturnChart({
         <path
           d={linePath}
           fill="none"
-          stroke="#2563eb"
+          stroke="#3b82f6"
           strokeWidth="2"
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -206,7 +206,7 @@ export function DcaReturnChart({
             opacity="0.9"
           />
         ))}
-        <text x={PADDING_LEFT} y={HEIGHT - 6} fontSize="11" fill="#737373">
+        <text x={PADDING_LEFT} y={HEIGHT - 6} fontSize="11" fill="var(--chart-text)">
           {points[0]?.date}
         </text>
         <text
@@ -214,7 +214,7 @@ export function DcaReturnChart({
           y={HEIGHT - 6}
           textAnchor="end"
           fontSize="11"
-          fill="#737373"
+          fill="var(--chart-text)"
         >
           {points.at(-1)?.date}
         </text>
@@ -223,7 +223,7 @@ export function DcaReturnChart({
           y={HEIGHT - 6}
           textAnchor="middle"
           fontSize="11"
-          fill="#737373"
+          fill="var(--chart-text)"
         >
           {points[Math.floor((points.length - 1) / 2)]?.date}
         </text>
@@ -233,13 +233,13 @@ export function DcaReturnChart({
         <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
           {drawdownStart && drawdownEnd ? (
             <span className="inline-flex items-center gap-1">
-              <span className="inline-block h-2 w-3 rounded-sm bg-green-200" />
+              <span className="inline-block h-2 w-3 rounded-sm bg-emerald-500/20" />
               最大回撤：{drawdownStart} 至 {drawdownEnd}
             </span>
           ) : null}
           {recoveryStart ? (
             <span className="inline-flex items-center gap-1">
-              <span className="inline-block h-2 w-3 rounded-sm bg-red-200" />
+              <span className="inline-block h-2 w-3 rounded-sm bg-red-500/20" />
               {recoveryComplete && recoveryEnd
                 ? `修复完成：${recoveryStart} 至 ${recoveryEnd}`
                 : `正在修复中：自 ${recoveryStart} 起`}
@@ -250,7 +250,7 @@ export function DcaReturnChart({
       ) : null}
 
       {hovered ? (
-        <div className="pointer-events-none absolute left-[70px] top-[26px] rounded-md border bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm">
+        <div className="pointer-events-none absolute left-[70px] top-[26px] rounded-md border bg-card/80 px-3 py-2 text-xs text-foreground/85 shadow-sm">
           <div className="font-medium">{hovered.date}</div>
           <div className={returnTone(hovered.return_pct)}>
             累计收益率：

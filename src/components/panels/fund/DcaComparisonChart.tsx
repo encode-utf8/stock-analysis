@@ -15,7 +15,7 @@ export function DcaComparisonChart({
     {
       key: "dca",
       label: "定投策略",
-      color: "#2563eb",
+      color: "#3b82f6",
       tone: "return",
       points: dcaPoints.map((point) => ({ date: point.date, value: point.return_pct })),
     },

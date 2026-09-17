@@ -99,7 +99,7 @@ function ModulePlaceholder({
   busy = false,
 }: ModulePlaceholderProps) {
   return (
-    <section className="rounded-xl border border-dashed bg-white p-6 text-center shadow-sm">
+    <section className="tech-panel tech-panel-dashed p-6 text-center">
       <h2 className="text-base font-semibold">{title}</h2>
       <p className="mt-2 text-sm text-muted-foreground">{message}</p>
       {actionLabel && onAction ? (
@@ -889,7 +889,7 @@ export default function FundWorkbench() {
         >
           <div
             className={
-              "sticky top-[var(--app-header-h)] h-[calc(100vh_-_var(--app-header-h))] overflow-hidden border-r border-border bg-white transition-[width] duration-300 ease-out " +
+              "sticky top-[var(--app-header-h)] h-[calc(100vh_-_var(--app-header-h))] overflow-hidden border-r border-border bg-card/70 backdrop-blur-xl transition-[width] duration-300 ease-out " +
               (sidebarOpen || sidebarPeek ? "w-80" : "w-10")
             }
           >
@@ -924,7 +924,7 @@ export default function FundWorkbench() {
           <div className="mx-auto flex max-w-6xl flex-col gap-4">
             {/* 标题改为紧凑单行，把纵向空间让给模块内容。 */}
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">基金分析与 AI 学习台</h1>
+              <h1 className="tech-title text-xl font-semibold tracking-tight">基金分析与 AI 学习台</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 在顶部功能模块菜单中勾选模块，按需查看档案、净值、风险、AI 分析与对话。
               </p>
@@ -943,7 +943,7 @@ export default function FundWorkbench() {
             <RealtimeQuoteBar target="fund" />
 
             {error ? (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                 {error}
               </div>
             ) : null}
@@ -955,7 +955,7 @@ export default function FundWorkbench() {
                 ))}
               </div>
             ) : (
-              <div className="flex min-h-[420px] items-center justify-center rounded-xl border border-dashed bg-white p-8 text-center shadow-sm">
+              <div className="flex min-h-[420px] items-center justify-center tech-panel tech-panel-dashed p-8 text-center">
                 <div>
                   <h2 className="text-lg font-semibold">请选择功能模块</h2>
                   <p className="mt-2 text-sm text-muted-foreground">

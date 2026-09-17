@@ -61,7 +61,7 @@ export function FundOptionsSidebar({
   onToggle,
 }: FundOptionsSidebarProps) {
   return (
-    <aside className="flex h-full w-full flex-col bg-white">
+    <aside className="flex h-full w-full flex-col bg-card">
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold">自选与查询</h2>
