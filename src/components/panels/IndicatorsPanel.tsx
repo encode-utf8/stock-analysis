@@ -41,7 +41,7 @@ export function IndicatorsPanel({ indicators, klines }: IndicatorsPanelProps) {
   }
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <h2 className="text-lg font-semibold">技术指标</h2>
       <p className="mb-3 text-xs text-muted-foreground">
         本地计算，基于 {klines.length} 根 K 线，更新时间 {formatDateTime(indicators.updated_at)}

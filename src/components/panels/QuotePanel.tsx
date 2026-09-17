@@ -12,7 +12,7 @@ function trendClass(value: number | null): string {
   if (value === null || value === 0) {
     return "";
   }
-  return value > 0 ? "text-red-600" : "text-green-700";
+  return value > 0 ? "text-red-400" : "text-emerald-300";
 }
 
 /** 当前行情概览面板。 */
@@ -26,13 +26,13 @@ export function QuotePanel({ stock, quote }: QuotePanelProps) {
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-white px-4 py-3 text-xs text-muted-foreground">
+      <div className="tech-panel tech-lift px-4 py-3 text-xs text-muted-foreground">
         数据时间：{formatDateTime(quote.fetched_at)}（{freshnessText(quote.fetched_at)}），
         来源：{sourceLabel(quote.source)}
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {items.map((item) => (
-          <div key={item.label} className="rounded-xl border bg-white p-4 shadow-sm">
+          <div key={item.label} className="tech-panel tech-lift p-4 shadow-sm">
             <div className="text-xs text-muted-foreground">{item.label}</div>
             <div className="mt-2 text-2xl font-semibold">{item.value}</div>
             <div className={`mt-1 text-xs text-muted-foreground ${item.tone ?? ""}`}>{item.note}</div>

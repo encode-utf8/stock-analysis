@@ -102,9 +102,9 @@ function formatNav(value: number | null): string {
 /** 涨红跌绿，与项目其它面板保持一致。 */
 function returnTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return value > 0 ? "text-red-700" : "text-green-700";
+  return value > 0 ? "text-red-300" : "text-emerald-300";
 }
 
 /** 净值口径中文标签，用于表格中的来源提示。 */
@@ -148,7 +148,7 @@ const PLAN_FREQUENCY_LABELS: Record<FundPlanFrequency, string> = {
 
 /** 表单输入框统一样式，避免重复长串类名。 */
 const FIELD_CLASS =
-  "h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary";
+  "h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary";
 
 /**
  * 组装定投计划请求体。
@@ -193,7 +193,7 @@ function MetricCard({
   return (
     <div className="rounded-lg border p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={"mt-1 text-lg font-semibold " + (tone ?? "text-slate-900")}>{value}</div>
+      <div className={"mt-1 text-lg font-semibold " + (tone ?? "text-foreground")}>{value}</div>
       {hint ? <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div> : null}
     </div>
   );
@@ -418,7 +418,7 @@ export function FundPositionsPanel() {
     normalizeFundProfitCaliber(existingMatch.position.profit_caliber) !== caliber;
 
   return (
-    <section className="rounded-xl border bg-white p-5 shadow-sm">
+    <section className="tech-panel tech-lift p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">我的持有基金</h2>
@@ -435,20 +435,20 @@ export function FundPositionsPanel() {
       </div>
 
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>
       ) : null}
       {formError ? (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
           {formError}
         </div>
       ) : null}
       {formNotice ? (
-        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+        <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
           {formNotice}
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 rounded-lg border bg-slate-50/60 p-3">
+      <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 rounded-lg border bg-muted/40 p-3">
         <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
           <input
             type="checkbox"
@@ -469,7 +469,7 @@ export function FundPositionsPanel() {
             }}
             placeholder="如 110022"
             inputMode="numeric"
-            className="h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary"
+            className="h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
           />
         </label>
         {planEnabled ? (
@@ -535,7 +535,7 @@ export function FundPositionsPanel() {
             onChange={(event) => setAmount(event.target.value)}
             placeholder="如 15000"
             inputMode="decimal"
-            className="h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary"
+            className="h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -545,7 +545,7 @@ export function FundPositionsPanel() {
             onChange={(event) => setProfit(event.target.value)}
             placeholder="亏损填负数"
             inputMode="decimal"
-            className="h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary"
+            className="h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -554,7 +554,7 @@ export function FundPositionsPanel() {
             value={caliber}
             onChange={(event) => setCaliber(normalizeFundProfitCaliber(event.target.value))}
             aria-label="累计收益口径"
-            className="h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary"
+            className="h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
           >
             {PROFIT_CALIBER_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -571,7 +571,7 @@ export function FundPositionsPanel() {
             value={note}
             onChange={(event) => setNote(event.target.value)}
             placeholder="如 定投中"
-            className="h-9 rounded-md border bg-white px-2 text-sm text-slate-900 outline-none focus:border-primary"
+            className="h-9 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus:border-primary"
           />
         </label>
         <div className="flex items-end">
@@ -672,7 +672,7 @@ export function FundPositionsPanel() {
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium">{position.name}</span>
                       {valuation.dca ? (
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                           定投
                         </span>
                       ) : null}
@@ -740,7 +740,7 @@ export function FundPositionsPanel() {
                           昨日累计 {formatSignedMoney(valuation.prev_total_profit)}
                         </div>
                         {valuation.total_profit === null ? (
-                          <div className="text-xs text-amber-600">缺当日涨跌幅，无法折算当前累计收益</div>
+                          <div className="text-xs text-amber-400">缺当日涨跌幅，无法折算当前累计收益</div>
                         ) : null}
                       </>
                     )}
@@ -756,7 +756,7 @@ export function FundPositionsPanel() {
                       <div className="text-xs text-muted-foreground">净值日 {valuation.nav_date}</div>
                     ) : null}
                     {valuation.settlement_pending ? (
-                      <div className="text-xs text-amber-600">官方净值未公布，待结算</div>
+                      <div className="text-xs text-amber-400">官方净值未公布，待结算</div>
                     ) : null}
                     {valuation.fetched_at ? (
                       <div className="text-xs text-muted-foreground">{freshnessText(valuation.fetched_at)}</div>
@@ -770,7 +770,7 @@ export function FundPositionsPanel() {
                       <span className="w-14 shrink-0">
                         {valuation.weight_pct === null ? "—" : `${valuation.weight_pct.toFixed(2)}%`}
                       </span>
-                      <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded bg-slate-100">
+                      <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded bg-muted">
                         <span
                           className="block h-full rounded bg-primary/70"
                           style={{
@@ -816,12 +816,12 @@ export function FundPositionsPanel() {
                   </td>
                 </tr>
                 {editing ? (
-                  <tr className="border-b bg-slate-50/60">
+                  <tr className="border-b bg-muted/40">
                     <td colSpan={10} className="px-3 py-3">
                       <div className="flex flex-col gap-3">
                         <div className="grid gap-3 md:grid-cols-2">
-                          <div className="rounded-lg border bg-white p-3">
-                            <div className="text-xs font-medium text-slate-700">累计收益口径</div>
+                          <div className="tech-panel tech-lift p-3">
+                            <div className="text-xs font-medium text-foreground/85">累计收益口径</div>
                             <p className="mt-1 text-xs text-muted-foreground">
                               只对手动持仓生效：定投计划持仓由计划派生，恒按「含当日收益」折算，点「取消定投」后该下拉才可切换。
                             </p>
@@ -848,8 +848,8 @@ export function FundPositionsPanel() {
                               </p>
                             ) : null}
                           </div>
-                          <div className="rounded-lg border bg-white p-3">
-                            <div className="text-xs font-medium text-slate-700">定投计划</div>
+                          <div className="tech-panel tech-lift p-3">
+                            <div className="text-xs font-medium text-foreground/85">定投计划</div>
                             {position.plan ? (
                               <>
                                 <p className="mt-1 text-xs text-muted-foreground">
@@ -857,7 +857,7 @@ export function FundPositionsPanel() {
                                   。一个基金只能有一个定投计划，调整参数请在「添加持有基金」里用同一代码重新提交。
                                 </p>
                                 {editCancelPlan ? (
-                                  <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                                  <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
                                     已选择取消定投：保存后本基金转为手动持仓，上表两格的持有金额与累计收益会被固化，请先核对。
                                   </p>
                                 ) : null}
@@ -881,8 +881,8 @@ export function FundPositionsPanel() {
                           </div>
                         </div>
                         {position.plan !== null && !editCancelPlan ? (
-                          <div className="rounded-lg border bg-white p-3">
-                            <div className="text-xs font-medium text-slate-700">手动校准（可选）</div>
+                          <div className="tech-panel tech-lift p-3">
+                            <div className="text-xs font-medium text-foreground/85">手动校准（可选）</div>
                             <p className="mt-1 text-xs text-muted-foreground">
                               按你实际看到的持仓覆盖：填写实际持有金额与实际累计收益，系统折算成「份额 + 本金」基线，
                               校准日（含）之前的期次不再重复计入，之后继续按期累加。
@@ -957,7 +957,7 @@ export function FundPositionsPanel() {
         <p
           className={
             "mt-3 text-xs " +
-            (pendingSettlementCount > 0 ? "text-amber-600" : "text-muted-foreground")
+            (pendingSettlementCount > 0 ? "text-amber-400" : "text-muted-foreground")
           }
         >
           {pendingSettlementCount > 0

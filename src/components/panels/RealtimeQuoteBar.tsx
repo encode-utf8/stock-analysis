@@ -23,7 +23,7 @@ const CONNECTION_LABELS: Record<string, string> = {
 };
 
 const CONNECTION_DOTS: Record<string, string> = {
-  off: "bg-slate-300",
+  off: "bg-muted-foreground/30",
   connecting: "bg-amber-400",
   connected: "bg-green-500",
   degraded: "bg-red-500",
@@ -31,8 +31,8 @@ const CONNECTION_DOTS: Record<string, string> = {
 
 /** 涨跌颜色：A 股口径红涨绿跌。 */
 function changeClass(value: number): string {
-  if (value > 0) return "text-red-600";
-  if (value < 0) return "text-green-600";
+  if (value > 0) return "text-red-400";
+  if (value < 0) return "text-emerald-400";
   return "text-muted-foreground";
 }
 
@@ -73,7 +73,7 @@ export function RealtimeQuoteBar({ target }: RealtimeQuoteBarProps) {
   const unitLabel = target === "fund" ? "估算净值" : "最新价";
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-sm font-semibold">实时行情（{target === "stock" ? "个股" : "基金"}自选池）</h2>
@@ -87,10 +87,10 @@ export function RealtimeQuoteBar({ target }: RealtimeQuoteBarProps) {
             </span>
           ) : null}
           {enabled && marketClosed ? (
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">休市</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">休市</span>
           ) : null}
           {status?.degraded ? (
-            <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700">
+            <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-xs text-red-300">
               上游不可用，已退避重试
             </span>
           ) : null}

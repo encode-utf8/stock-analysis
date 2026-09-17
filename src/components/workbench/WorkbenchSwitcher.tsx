@@ -18,7 +18,7 @@ export function WorkbenchSwitcher({ value, onChange }: WorkbenchSwitcherProps) {
     <div
       role="tablist"
       aria-label="工作台切换"
-      className="inline-flex rounded-lg border bg-white p-1 shadow-sm"
+      className="tech-panel inline-flex p-1"
     >
       {WORKBENCH_OPTIONS.map((option) => {
         const active = option.id === value;

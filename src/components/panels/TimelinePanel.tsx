@@ -17,7 +17,7 @@ export function TimelinePanel({
   onSelectConversation,
 }: TimelinePanelProps) {
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <h2 className="text-lg font-semibold">对话时间线回看</h2>
       <p className="mt-1 text-xs text-muted-foreground">
         点击历史会话即可加载对应消息，保留原始对话顺序。

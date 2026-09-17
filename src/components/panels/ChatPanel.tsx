@@ -40,7 +40,7 @@ export function ChatPanel({
   onStop,
 }: ChatPanelProps) {
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold">对话助手</h2>
         <span className="text-xs text-muted-foreground">
@@ -59,7 +59,7 @@ export function ChatPanel({
               className={`max-w-[85%] rounded-lg border px-3 py-2 text-sm ${
                 message.role === "user"
                   ? "ml-auto bg-primary text-primary-foreground"
-                  : "bg-white"
+                  : "bg-card"
               }`}
             >
               {message.content ? (
@@ -80,7 +80,7 @@ export function ChatPanel({
               {message.aiInvoked !== undefined && message.content ? (
                 <div
                   className={`mt-2 rounded-md px-2 py-1 text-xs ${
-                    message.aiInvoked ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-800"
+                    message.aiInvoked ? "bg-sky-500/10 text-sky-300" : "bg-amber-500/10 text-amber-300"
                   }`}
                 >
                   {message.aiInvoked ? "本次已调用 AI" : "本次未调用 AI，已使用本地数据摘要"}
@@ -115,7 +115,7 @@ export function ChatPanel({
                 </div>
               ) : null}
               {message.riskNote ? (
-                <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                <p className="mt-2 rounded bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
                   {message.riskNote}
                 </p>
               ) : null}

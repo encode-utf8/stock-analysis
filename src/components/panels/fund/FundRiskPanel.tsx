@@ -40,15 +40,15 @@ interface MetricCardProps {
 function MetricCard({ label, value, hint, tone }: MetricCardProps) {
   const toneClass =
     tone === "up"
-      ? "border-red-200 bg-red-50/60"
+      ? "border-red-500/30 bg-red-500/10"
       : tone === "down"
-        ? "border-green-200 bg-green-50/60"
+        ? "border-emerald-500/30 bg-emerald-500/10"
         : "border-transparent bg-muted/20";
   const valueClass =
     tone === "up"
-      ? "text-red-600"
+      ? "text-red-400"
       : tone === "down"
-        ? "text-green-700"
+        ? "text-emerald-300"
         : "text-foreground";
   return (
     <div className={`rounded-lg border p-3 ${toneClass}`} title={hint}>
@@ -149,7 +149,7 @@ export function FundRiskPanel({
   const latestMetrics = allMetrics ?? oneYearMetrics;
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3">
         <h2 className="text-lg font-semibold">回撤与风险指标</h2>
         <p className="text-xs text-muted-foreground">

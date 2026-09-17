@@ -128,6 +128,7 @@ export type DumpFileKind =
   | "alerts"
   | "daily-reports"
   | "alert-settings"
+  | "ui-settings"
   | "unknown";
 
 /** 文件级处置动作。 */
@@ -1070,6 +1071,8 @@ const KNOWN_DATA_ENTRIES = new Set([
   "fund-positions.json",
   "alerts.json",
   "alert-settings.json",
+  "ui-background.json",
+  "backgrounds",
   "daily-reports",
   "quarantine",
 ]);
@@ -1113,6 +1116,7 @@ export async function scanDataConsistency(
     await scanAlerts(deps, ready),
     await scanDailyReports(deps),
     await scanSettingsFile(deps),
+    await scanUiSettingsFile(deps),
     await scanUnknownFiles(deps),
   ];
 
@@ -1433,4 +1437,32 @@ export function createDefaultConsistencyDeps(): ConsistencyDeps {
       },
     },
   };
+}
+
+/**
+ * 扫描界面设置文件：背景画布与交互光效设置不是降级文件，
+ * 它只在本地读写（与数据库无关），因此一律保持不动，仅报告文件是否存在。
+ */
+async function scanUiSettingsFile(deps: ConsistencyDeps): Promise<DumpFileReport> {
+  const relPath = "ui-background.json";
+  try {
+    const info = await stat(path.join(deps.rootDir, ".data", relPath));
+    return {
+      path: `.data/${toDisplayPath(relPath)}`,
+      kind: "ui-settings",
+      action: "keep",
+      summary: "背景与交互光效设置不是降级文件（本身只存本地），保持不动",
+      entries: [],
+      bytes: info.size,
+    };
+  } catch {
+    return {
+      path: `.data/${toDisplayPath(relPath)}`,
+      kind: "ui-settings",
+      action: "none",
+      summary: "本地没有背景设置文件（使用默认背景）",
+      entries: [],
+      bytes: 0,
+    };
+  }
 }

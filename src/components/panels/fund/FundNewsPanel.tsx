@@ -93,7 +93,7 @@ export function FundNewsPanel() {
   };
 
   return (
-    <section className="rounded-xl border bg-white p-5 shadow-sm">
+    <section className="tech-panel tech-lift p-5 shadow-sm">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -111,7 +111,7 @@ export function FundNewsPanel() {
 
         <form
           onSubmit={handleSubmit}
-          className="flex flex-wrap items-end gap-2 rounded-lg border bg-slate-50 p-3"
+          className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/50 p-3"
         >
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             基金代码
@@ -131,7 +131,7 @@ export function FundNewsPanel() {
       </div>
 
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
         </div>
       ) : null}
@@ -153,7 +153,7 @@ export function FundNewsPanel() {
       {loading && !snapshot ? (
         <p className="mt-3 text-sm text-muted-foreground">正在分析持仓并检索行业资讯...</p>
       ) : snapshot && !snapshot.available ? (
-        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
           {snapshot.reason ?? "行业资讯暂不可用。"}
         </div>
       ) : news.length > 0 ? (

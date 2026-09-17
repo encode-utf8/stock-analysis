@@ -26,7 +26,7 @@ function fundSourceLabel(source: string): string {
 export function FundProfilePanel({ profile, loading }: FundProfilePanelProps) {
   if (loading) {
     return (
-      <section className="rounded-xl border bg-white p-4 shadow-sm">
+      <section className="tech-panel tech-lift p-4 shadow-sm">
         <div className="py-12 text-center text-sm text-muted-foreground">
           基金档案加载中...
         </div>
@@ -59,11 +59,11 @@ export function FundProfilePanel({ profile, loading }: FundProfilePanelProps) {
 
   return (
     <section className="space-y-3">
-      <div className="rounded-xl border bg-white px-4 py-3 text-xs text-muted-foreground">
+      <div className="tech-panel tech-lift px-4 py-3 text-xs text-muted-foreground">
         数据时间：{formatDateTime(profile.fetched_at)}，
         来源：{fundSourceLabel(profile.source)}
       </div>
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <div className="tech-panel tech-lift p-4 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">

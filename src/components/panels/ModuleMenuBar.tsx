@@ -36,7 +36,7 @@ export function ModuleMenuBar<K extends string>({
   const selectedCount = options.filter((option) => enabledModules[option.key]).length;
 
   return (
-    <div className="sticky top-[var(--app-header-h)] z-20 rounded-xl border bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
+    <div className="sticky top-[var(--app-header-h)] z-20 rounded-xl border bg-card/80 px-3 py-2 shadow-sm backdrop-blur">
       <div className="flex items-center gap-3">
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-sm font-semibold">功能模块</span>
@@ -75,7 +75,7 @@ export function ModuleMenuBar<K extends string>({
                     "flex shrink-0 cursor-grab items-center gap-1 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition-colors " +
                     (enabled
                       ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-white text-muted-foreground hover:bg-accent hover:text-foreground") +
+                      : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground") +
                     (draggingKey === key ? " opacity-60" : "")
                   }
                 >

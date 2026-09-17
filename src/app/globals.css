@@ -1,10 +1,17 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
+/*
+ * 全局主题：深空蓝黑 + 霓虹青的暗色科技风。
+ * 所有界面颜色统一走这里的语义令牌，组件里不再写死具体色值，
+ * 这样“自定义背景 / 面板透明度 / 交互光效”只需要改令牌即可全局生效。
+ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-muted: var(--muted);
@@ -17,22 +24,567 @@
 }
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --card: #ffffff;
-  --card-foreground: #171717;
-  --primary: #2563eb;
-  --primary-foreground: #ffffff;
-  --muted: #f5f5f5;
-  --muted-foreground: #737373;
-  --accent: #f1f5f9;
-  --accent-foreground: #0f172a;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #2563eb;
+  color-scheme: dark;
+
+  /* 画面基调：深空底 + 冷白字，保证正文对比度 ≥ 12:1。 */
+  --background: #050b18;
+  --foreground: #e6f1ff;
+
+  /* 面板底色用 rgb 分量 + 透明度分离，便于“面板不透明度”实时调节。 */
+  --panel-tint: 13 24 45;
+  --panel-alpha: 0.78;
+  --card: rgb(var(--panel-tint) / var(--panel-alpha));
+  --card-foreground: #e6f1ff;
+  --popover: rgb(9 18 34 / 0.97);
+  --popover-foreground: #e6f1ff;
+
+  /* 主色：科技青，配深色前景文字满足 10:1 对比度。 */
+  --primary: #22d3ee;
+  --primary-foreground: #04121f;
+
+  --muted: rgb(148 176 214 / 0.12);
+  --muted-foreground: #93aacd;
+  --accent: rgb(34 211 238 / 0.16);
+  --accent-foreground: #d9f7ff;
+
+  --border: rgb(94 160 214 / 0.24);
+  --input: rgb(94 160 214 / 0.32);
+  --ring: rgb(34 211 238 / 0.65);
+
+  /* 图表专用：暗底可读的网格、坐标与悬浮提示配色。 */
+  --chart-grid: rgb(125 170 220 / 0.18);
+  --chart-text: #8ea6c8;
+  --chart-text-strong: #c7dcf5;
+  --chart-tooltip-bg: rgb(8 17 33 / 0.96);
+  --chart-tooltip-border: rgb(94 160 214 / 0.45);
+  --chart-tooltip-text: #dcebff;
+  --chart-marker: #050b18;
+
+  /* 交互光效强度系数：由背景设置面板写入。 */
+  --fx-intensity: 1;
+
   /* 顶部工作台切换条高度：工作台内的吸顶元素据此计算偏移。 */
   --app-header-h: 68px;
 }
+
+/* ---------------------------------------------------------------- 基础层 */
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    background-color: var(--background);
+  }
+
+  body {
+    background-color: transparent;
+    color: var(--foreground);
+  }
+}
+
+::selection {
+  background: rgb(34 211 238 / 0.32);
+  color: #eaf9ff;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(94 160 214 / 0.4) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgb(94 160 214 / 0.35);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(34 211 238 / 0.55);
+  background-clip: content-box;
+}
+
+/* ------------------------------------------------------------ 组件化样式 */
+
+@layer components {
+  /*
+   * 通用科技面板：取代原先的白底卡片（bg-white + border + shadow-sm）。
+   * 悬停时描边发光并轻微上浮，作为“每个部分都有交互反馈”的基础。
+   */
+  .tech-panel {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 0.85rem;
+    background-color: var(--card);
+    background-image: linear-gradient(
+      165deg,
+      rgb(34 211 238 / 0.05),
+      transparent 45%
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(148 197 255 / 0.06),
+      0 18px 40px -30px rgb(4 10 24 / 0.9);
+    transition:
+      border-color 180ms ease,
+      box-shadow 180ms ease,
+      transform 180ms ease;
+  }
+
+  /* 面板顶部的 HUD 光带，强化科技感（绝对定位，不参与布局）。 */
+  .tech-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(34 211 238 / 0.55),
+      transparent
+    );
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  /* 标题左侧的青色标识条。 */
+  .tech-title {
+    position: relative;
+    padding-left: 0.75rem;
+    letter-spacing: 0.01em;
+  }
+
+  .tech-title::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.22em;
+    bottom: 0.22em;
+    width: 3px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #22d3ee, rgb(34 211 238 / 0.15));
+    box-shadow: 0 0 10px rgb(34 211 238 / 0.6);
+  }
+}
+
+/*
+ * 面板的悬停反馈刻意写在图层之外（unlayered）：
+ * Tailwind 的 shadow-* 工具类位于 utilities 图层，只有未分层的规则才能稳定覆盖它，
+ * 否则面板自带的辉光会被卡片上的 shadow-sm 顶掉。
+ */
+.tech-panel:hover {
+  border-color: rgb(34 211 238 / 0.42);
+  box-shadow:
+    inset 0 1px 0 rgb(148 197 255 / 0.08),
+    0 0 0 1px rgb(34 211 238 / 0.18),
+    0 22px 46px -28px rgb(34 211 238 / 0.42);
+}
+
+/* 主要卡片额外轻微上浮，形成“可交互”的直觉；列表行不启用，避免密集跳动。 */
+.tech-panel.tech-lift:hover {
+  transform: translateY(-2px);
+}
+
+/* 空状态面板：保留虚线边框语义。 */
+.tech-panel-dashed {
+  border-style: dashed;
+  border-color: rgb(94 160 214 / 0.35);
+  background-image: none;
+}
+
+/* -------------------------------------------------------------- 背景画布 */
+
+/*
+ * 背景画布：固定在最底层，自下而上为「自定义图片 → 预设纹理 → 光晕 → 遮罩 → 动态层」。
+ * 遮罩负责保证任意背景下的内容对比度；动态层（星链/星域粒子、极光帘幕）画在遮罩之上，
+ * 避免被遮罩二次压暗，其亮度按遮罩值缩放，因此「背景遮罩」滑杆依然能整体压暗背景。
+ */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: var(--background);
+}
+
+.app-backdrop__image {
+  position: absolute;
+  inset: -4%;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: blur(var(--bg-blur, 8px)) saturate(118%);
+  opacity: var(--bg-image-opacity, 1);
+}
+
+.app-backdrop__preset,
+.app-backdrop__glow {
+  position: absolute;
+  inset: 0;
+}
+
+/*
+ * 预设基调：每个预设在最底层先给一层「底色 + 大范围洗染」。
+ * 这一层铺满整个视口（含面板之外的边距与缝隙），也是隔着半透明面板
+ * 唯一还能透出来的大色块，因此“切换预设第一眼有没有变化”由它负责。
+ * 「纯净」不设洗染，只保留纯色底，和其余预设形成明确对比。
+ */
+.app-backdrop[data-preset="grid"] {
+  background-color: #050b18;
+  background-image: linear-gradient(
+    180deg,
+    rgb(38 104 180 / 1),
+    rgb(12 34 70 / 0.45) 92%
+  );
+}
+
+.app-backdrop[data-preset="particles"] {
+  background-color: #03130f;
+  background-image: linear-gradient(
+    190deg,
+    rgb(8 100 86 / 0.92),
+    rgb(4 30 28 / 0.42) 92%
+  );
+}
+
+.app-backdrop[data-preset="starfield"] {
+  background-color: #05030f;
+  background-image: linear-gradient(
+    172deg,
+    rgb(88 32 124 / 0.95),
+    rgb(12 6 28 / 0.45) 90%
+  );
+}
+
+.app-backdrop[data-preset="aurora"] {
+  background-color: #03070f;
+  background-image: linear-gradient(
+    168deg,
+    rgb(10 62 84 / 0.88),
+    rgb(3 7 15 / 0.35) 58%,
+    rgb(40 22 88 / 0.72)
+  );
+}
+
+.app-backdrop[data-preset="none"] {
+  background-color: #050b18;
+}
+
+/* 科技网格：48px 细格 + 240px 粗格双层坐标线，整层按一个格子步长平移，循环无缝。 */
+.app-backdrop__preset[data-preset="grid"] {
+  inset: -96px;
+  background-image:
+    linear-gradient(rgb(86 165 230 / 0.42) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(86 165 230 / 0.42) 1px, transparent 1px),
+    linear-gradient(rgb(125 211 252 / 0.62) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(125 211 252 / 0.62) 1px, transparent 1px);
+  background-size:
+    48px 48px,
+    48px 48px,
+    240px 240px,
+    240px 240px;
+  animation: backdrop-drift 32s linear infinite;
+}
+
+/*
+ * 星域：星点按 260px 瓦片平铺，整屏可铺出数百颗；
+ * 之前只写了 5 颗固定坐标的星，切换后几乎看不出区别，这里改为可平铺的多层星点。
+ */
+.app-backdrop__preset[data-preset="starfield"] {
+  background-image:
+    radial-gradient(1.6px 1.6px at 12% 22%, rgb(226 244 255 / 0.95), transparent),
+    radial-gradient(1.4px 1.4px at 66% 9%, rgb(198 232 255 / 0.9), transparent),
+    radial-gradient(1.2px 1.2px at 35% 63%, rgb(214 240 255 / 0.85), transparent),
+    radial-gradient(1.8px 1.8px at 88% 46%, rgb(236 248 255 / 0.95), transparent),
+    radial-gradient(1.2px 1.2px at 54% 87%, rgb(190 224 255 / 0.8), transparent),
+    radial-gradient(1px 1px at 7% 78%, rgb(190 224 255 / 0.7), transparent),
+    radial-gradient(2.2px 2.2px at 26% 36%, rgb(178 220 255 / 0.72), transparent),
+    radial-gradient(1px 1px at 78% 72%, rgb(206 236 255 / 0.68), transparent);
+  background-size: 260px 260px;
+  opacity: 0.9;
+  animation: backdrop-twinkle 6.5s ease-in-out infinite;
+}
+
+/*
+ * 极光：真正的动态帘幕由 canvas 逐列绘制（见 BackgroundCanvas 的 drawAurora），
+ * 这里只保留一层贴地平线的青绿余辉，让帘幕看起来是「落在地上」而不是浮在半空。
+ */
+.app-backdrop__preset[data-preset="aurora"] {
+  background-image: linear-gradient(
+    0deg,
+    rgb(45 212 191 / 0.2),
+    rgb(45 212 191 / 0.06) 18%,
+    transparent 40%
+  );
+}
+
+/*
+ * 光晕层：承担“大范围色调”，是隔着面板最容易察觉的差异来源。
+ * 每个预设单独给一组大半径渐变，避免所有预设共用一套颜色而看起来一样。
+ */
+.app-backdrop__glow[data-preset="grid"] {
+  background: radial-gradient(
+    150% 110% at 50% 120%,
+    rgb(34 211 238 / 0.42),
+    transparent 72%
+  );
+}
+
+.app-backdrop__glow[data-preset="particles"] {
+  background:
+    radial-gradient(120% 90% at 20% 4%, rgb(34 211 238 / 0.34), transparent 64%),
+    radial-gradient(120% 95% at 86% 96%, rgb(59 130 246 / 0.3), transparent 68%);
+}
+
+.app-backdrop__glow[data-preset="starfield"] {
+  background:
+    radial-gradient(130% 100% at 78% 8%, rgb(129 140 248 / 0.42), transparent 68%),
+    radial-gradient(120% 95% at 10% 78%, rgb(37 99 235 / 0.3), transparent 70%);
+}
+
+.app-backdrop__glow[data-preset="aurora"] {
+  background:
+    radial-gradient(120% 85% at 84% 88%, rgb(14 165 233 / 0.24), transparent 68%),
+    radial-gradient(110% 85% at 8% 40%, rgb(168 85 247 / 0.2), transparent 70%);
+}
+
+.app-backdrop__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 遮罩：压暗静态背景，保证面板与文字对比度。 */
+.app-backdrop__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #04091a 0%, #04091a 55%, #03060f 100%);
+  opacity: var(--bg-overlay, 0.45);
+}
+
+@keyframes backdrop-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(48px, 48px, 0);
+  }
+}
+
+@keyframes backdrop-twinkle {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+@keyframes backdrop-pulse {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.06) rotate(4deg);
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------ 交互光效层 */
+
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  pointer-events: none;
+  /* 强度系数映射为整层透明度：0.3 → 0.5，1 → 0.85，≥1.3 → 1（浏览器自动夹取）。 */
+  opacity: calc(0.35 + var(--fx-intensity, 1) * 0.5);
+}
+
+/* 关闭交互光效时整层隐藏，避免残留节点拦截视觉。 */
+html[data-fx="off"] .fx-layer {
+  display: none;
+}
+
+.fx-spotlight,
+.fx-ring,
+.fx-dot,
+.fx-ripple,
+.fx-spark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+.fx-spotlight {
+  width: 640px;
+  height: 640px;
+  margin: -320px 0 0 -320px;
+  background: radial-gradient(
+    circle,
+    rgb(34 211 238 / 0.16),
+    rgb(34 211 238 / 0.05) 42%,
+    transparent 66%
+  );
+  mix-blend-mode: screen;
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+
+.fx-ring {
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border: 1px solid rgb(34 211 238 / 0.75);
+  box-shadow:
+    0 0 12px rgb(34 211 238 / 0.35),
+    inset 0 0 8px rgb(34 211 238 / 0.22);
+  transition:
+    width 160ms ease,
+    height 160ms ease,
+    margin 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 220ms ease;
+}
+
+.fx-ring[data-hover="true"] {
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-color: rgb(103 232 249 / 0.95);
+  box-shadow:
+    0 0 18px rgb(34 211 238 / 0.5),
+    inset 0 0 12px rgb(34 211 238 / 0.35);
+}
+
+.fx-ring[data-press="true"] {
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-color: rgb(165 243 252 / 1);
+}
+
+.fx-dot {
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  background: #67e8f9;
+  box-shadow: 0 0 10px rgb(34 211 238 / 0.9);
+}
+
+.fx-ripple {
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 1.5px solid rgb(103 232 249 / 0.85);
+  box-shadow: 0 0 18px rgb(34 211 238 / 0.5);
+  animation: fx-ripple-out 640ms cubic-bezier(0.16, 0.84, 0.44, 1) forwards;
+}
+
+.fx-spark {
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  background: #a5f3fc;
+  box-shadow: 0 0 8px rgb(34 211 238 / 0.9);
+  animation: fx-spark-out 560ms ease-out forwards;
+}
+
+@keyframes fx-ripple-out {
+  from {
+    transform: scale(0.35);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(7);
+    opacity: 0;
+  }
+}
+
+@keyframes fx-spark-out {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.95;
+  }
+  to {
+    transform: translate3d(var(--fx-dx, 24px), var(--fx-dy, 0), 0) scale(0.2);
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------- 交互相应细节 */
+
+/* 可点击元素的按压反馈：整体缩放 + 青色光晕。 */
+@media (hover: hover) {
+  button:not(:disabled),
+  [role="button"],
+  summary,
+  a {
+    transition:
+      transform 140ms ease,
+      color 140ms ease,
+      background-color 140ms ease,
+      border-color 140ms ease,
+      box-shadow 140ms ease;
+  }
+
+  button:not(:disabled):active,
+  [role="button"]:active,
+  summary:active {
+    transform: scale(0.97);
+  }
+
+  button:not(:disabled):hover,
+  [data-slot="button"]:hover {
+    box-shadow: 0 0 16px -4px rgb(34 211 238 / 0.45);
+  }
+}
+
+/* 表格行悬停高亮：让数据区也有即时反馈。 */
+tbody tr {
+  transition: background-color 140ms ease;
+}
+
+tbody tr:hover {
+  background-color: rgb(34 211 238 / 0.06);
+}
+
+/* ------------------------------------------------ 动效降级与无障碍偏好 */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+
+  .fx-layer {
+    display: none;
+  }
+}
+
+/* --------------------------------------------------------------- Markdown */
 
 .markdown-body {
   color: var(--foreground);
@@ -105,10 +657,11 @@
 .markdown-body pre {
   margin: 0.75rem 0;
   overflow: auto;
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
-  background: #0f172a;
+  background: rgb(4 10 22 / 0.9);
   padding: 0.75rem;
-  color: #e2e8f0;
+  color: #dbeafe;
 }
 
 .markdown-body pre code {
@@ -139,15 +692,4 @@
   margin: 0.75rem 0;
   border: 0;
   border-top: 1px solid var(--border);
-}
-
-@layer base {
-  * {
-    border-color: var(--border);
-  }
-
-  body {
-    background: var(--background);
-    color: var(--foreground);
-  }
 }

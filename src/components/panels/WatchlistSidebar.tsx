@@ -314,11 +314,11 @@ export function WatchlistSidebar({
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
           {error}
           <button
             type="button"
-            className="ml-2 text-red-400 hover:text-red-600"
+            className="ml-2 text-red-400 hover:text-red-400"
             onClick={() => setError(null)}
             aria-label="关闭错误提示"
           >
@@ -407,9 +407,9 @@ export function WatchlistSidebar({
                       const quoteClass = !quote
                         ? ""
                         : quote.change_pct > 0
-                          ? "text-red-600"
+                          ? "text-red-400"
                           : quote.change_pct < 0
-                            ? "text-green-600"
+                            ? "text-emerald-400"
                             : "text-muted-foreground";
                       const index = items.findIndex(
                         (candidate) => candidate.code === item.code,
@@ -448,7 +448,7 @@ export function WatchlistSidebar({
                                     {quote.change_pct > 0 ? "+" : ""}
                                     {quote.change_pct.toFixed(2)}%
                                   </span>
-                                  <span className="rounded bg-green-50 px-1 text-[10px] text-green-700">
+                                  <span className="rounded bg-emerald-500/10 px-1 text-[10px] text-emerald-300">
                                     实时
                                   </span>
                                 </p>
@@ -487,7 +487,7 @@ export function WatchlistSidebar({
                               </button>
                               <button
                                 type="button"
-                                className="rounded border px-1.5 py-1 text-xs text-red-600 hover:bg-red-50"
+                                className="rounded border px-1.5 py-1 text-xs text-red-400 hover:bg-red-500/10"
                                 disabled={saving}
                                 onClick={() => requestDelete(item.code)}
                               >

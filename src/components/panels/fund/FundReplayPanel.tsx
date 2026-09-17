@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
+import { createPortal } from "react-dom";
 import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
@@ -114,16 +115,16 @@ function FundTimelineEventCard({
         </div>
       </div>
 
-      {open ? (
+      {open ? createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           onClick={() => setOpen(false)}
         >
           <div
-            className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl bg-white shadow-xl"
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden tech-panel"
             onClick={(nextEvent) => nextEvent.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
               <div>
                 <h3 className="font-semibold">
                   {event.type === "analysis" ? "AI 分析详情" : "对话详情"}
@@ -164,7 +165,8 @@ function FundTimelineEventCard({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );
@@ -301,7 +303,7 @@ export function FundReplayPanel({ code, refreshToken = 0, deletedReportId = null
   };
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">基金历史复盘</h2>
@@ -309,7 +311,7 @@ export function FundReplayPanel({ code, refreshToken = 0, deletedReportId = null
             展示当前基金的历史 AI 分析与对话时间线，仅用于学习，不构成投资建议。
           </p>
         </div>
-        <span className="rounded bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+        <span className="rounded bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-300">
           仅供学习
         </span>
       </div>
@@ -343,7 +345,7 @@ export function FundReplayPanel({ code, refreshToken = 0, deletedReportId = null
       </form>
 
       {error ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
       ) : null}

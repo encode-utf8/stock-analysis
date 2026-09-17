@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 
@@ -24,25 +26,27 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  // 弹窗统一挂到 body：避免被带毛玻璃/溢出裁剪的面板容器限制定位。
+  // 弹窗只在用户交互后渲染（open 为 true），因此不存在服务端渲染阶段访问 document 的问题。
   if (!open) {
     return null;
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
       onClick={onCancel}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5"
+        className="tech-panel w-full max-w-md overflow-hidden"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="p-6">
           <div className="flex items-start gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-red-300">
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -59,18 +63,18 @@ export function ConfirmDialog({
               </svg>
             </div>
             <div className="min-w-0 flex-1">
-              <h2 id="confirm-dialog-title" className="text-lg font-semibold tracking-tight text-slate-900">
+              <h2 id="confirm-dialog-title" className="text-lg font-semibold tracking-tight text-foreground">
                 {title}
               </h2>
               {description ? (
-                <p className="mt-1.5 text-sm leading-6 text-slate-500">{description}</p>
+                <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{description}</p>
               ) : null}
             </div>
             <button
               type="button"
               onClick={onCancel}
               aria-label="关闭"
-              className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -88,13 +92,13 @@ export function ConfirmDialog({
             </button>
           </div>
         </div>
-        <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+        <div className="flex justify-end gap-3 border-t border-border bg-muted/40 px-6 py-4">
           <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
             {cancelLabel}
           </Button>
           <Button
             type="button"
-            className="bg-red-600 hover:bg-red-600/90"
+            className="bg-red-600 text-white hover:bg-red-500"
             onClick={onConfirm}
             disabled={loading}
           >
@@ -102,6 +106,7 @@ export function ConfirmDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

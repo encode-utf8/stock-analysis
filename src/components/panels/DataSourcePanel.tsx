@@ -28,23 +28,23 @@ function stateLabel(state: DataSourceState): string {
 /** 数据源状态对应的卡片配色。 */
 function stateTone(state: DataSourceState): string {
   if (state === "online") {
-    return "border-green-200 bg-green-50 text-green-900";
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
   }
   if (state === "degraded") {
-    return "border-amber-200 bg-amber-50 text-amber-900";
+    return "border-amber-500/30 bg-amber-500/10 text-amber-200";
   }
-  return "border-red-200 bg-red-50 text-red-900";
+  return "border-red-500/30 bg-red-500/10 text-red-200";
 }
 
 /** 数据源状态徽标配色。 */
 function badgeTone(state: DataSourceState): string {
   if (state === "online") {
-    return "bg-green-100 text-green-700";
+    return "bg-emerald-500/15 text-emerald-300";
   }
   if (state === "degraded") {
-    return "bg-amber-100 text-amber-700";
+    return "bg-amber-500/15 text-amber-300";
   }
-  return "bg-red-100 text-red-700";
+  return "bg-red-500/15 text-red-300";
 }
 
 /** 调度任务状态文案。 */
@@ -62,15 +62,15 @@ function jobStatusLabel(status: SchedulerJobView["status"]): string {
 /** 调度任务状态徽标配色。 */
 function jobStatusTone(status: SchedulerJobView["status"]): string {
   if (status === "success") {
-    return "bg-green-100 text-green-700";
+    return "bg-emerald-500/15 text-emerald-300";
   }
   if (status === "failed") {
-    return "bg-red-100 text-red-700";
+    return "bg-red-500/15 text-red-300";
   }
   if (status === "running" || status === "pending") {
-    return "bg-blue-100 text-blue-700";
+    return "bg-sky-500/15 text-sky-300";
   }
-  return "bg-slate-100 text-slate-600";
+  return "bg-muted text-muted-foreground";
 }
 
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -189,7 +189,7 @@ export function DataSourcePanel() {
   };
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">数据源状态</h2>
         <div className="flex flex-wrap gap-2">
@@ -209,7 +209,7 @@ export function DataSourcePanel() {
       </div>
 
       {error ? (
-        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
       ) : null}
@@ -252,7 +252,7 @@ export function DataSourcePanel() {
                   </div>
                 </dl>
                 {source.message ? (
-                  <p className="mt-2 rounded-md bg-white/60 px-2 py-1 text-xs leading-5">
+                  <p className="mt-2 rounded-md bg-card/60 px-2 py-1 text-xs leading-5">
                     {source.message}
                   </p>
                 ) : null}

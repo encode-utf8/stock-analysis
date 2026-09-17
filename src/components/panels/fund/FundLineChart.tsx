@@ -26,15 +26,15 @@ const PLOT_HEIGHT = HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
 function valueTone(tone: FundLineSeries["tone"], value: number): string {
   if (tone === "drawdown") {
-    return value === 0 ? "text-slate-700" : "text-green-700";
+    return value === 0 ? "text-foreground/85" : "text-emerald-300";
   }
   if (tone === "neutral") {
-    return "text-slate-700";
+    return "text-foreground/85";
   }
   if (value === 0) {
-    return "text-slate-700";
+    return "text-foreground/85";
   }
-  return value > 0 ? "text-red-700" : "text-green-700";
+  return value > 0 ? "text-red-300" : "text-emerald-300";
 }
 
 function formatValue(value: number): string {
@@ -124,7 +124,7 @@ export function FundLineChart({ series }: FundLineChartProps) {
   };
 
   return (
-    <div className="relative overflow-x-auto rounded-lg border bg-white p-3">
+    <div className="relative overflow-x-auto tech-panel tech-lift p-3">
       <div className="mb-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
         {series.map((item) => (
           <span key={item.key} className="inline-flex items-center gap-1.5">
@@ -151,7 +151,7 @@ export function FundLineChart({ series }: FundLineChartProps) {
               x2={WIDTH - PADDING_RIGHT}
               y1={tick.y}
               y2={tick.y}
-              stroke="#e5e7eb"
+              stroke="var(--chart-grid)"
               strokeDasharray="3 3"
             />
             <text
@@ -159,7 +159,7 @@ export function FundLineChart({ series }: FundLineChartProps) {
               y={tick.y + 4}
               textAnchor="end"
               fontSize="11"
-              fill="#737373"
+              fill="var(--chart-text)"
             >
               {tick.value.toFixed(1)}%
             </text>
@@ -205,13 +205,13 @@ export function FundLineChart({ series }: FundLineChartProps) {
                   cy={y(value)}
                   r="5"
                   fill={item.color}
-                  stroke="#ffffff"
+                  stroke="var(--chart-marker)"
                   strokeWidth="1.5"
                 />
               );
             })
           : null}
-        <text x={PADDING_LEFT} y={HEIGHT - 6} fontSize="11" fill="#737373">
+        <text x={PADDING_LEFT} y={HEIGHT - 6} fontSize="11" fill="var(--chart-text)">
           {dates[0]}
         </text>
         <text
@@ -219,7 +219,7 @@ export function FundLineChart({ series }: FundLineChartProps) {
           y={HEIGHT - 6}
           textAnchor="end"
           fontSize="11"
-          fill="#737373"
+          fill="var(--chart-text)"
         >
           {dates.at(-1)}
         </text>
@@ -228,14 +228,14 @@ export function FundLineChart({ series }: FundLineChartProps) {
           y={HEIGHT - 6}
           textAnchor="middle"
           fontSize="11"
-          fill="#737373"
+          fill="var(--chart-text)"
         >
           {dates[Math.floor((dates.length - 1) / 2)]}
         </text>
       </svg>
 
       {hoveredDate && hoveredIndex !== null ? (
-        <div className="pointer-events-none absolute left-[72px] top-[52px] rounded-md border bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm">
+        <div className="pointer-events-none absolute left-[72px] top-[52px] rounded-md border bg-card/80 px-3 py-2 text-xs text-foreground/85 shadow-sm">
           <div className="font-medium">{hoveredDate}</div>
           {alignedSeries.map(({ item, values }) => {
             const value = values[hoveredIndex];

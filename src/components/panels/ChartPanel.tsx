@@ -73,7 +73,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
   const hovered = hoveredIndex === null ? null : klines[hoveredIndex];
 
   return (
-    <div className="relative overflow-x-auto rounded-lg border bg-white p-3">
+    <div className="relative overflow-x-auto tech-panel tech-lift p-3">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="min-w-[720px]"
@@ -87,7 +87,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
               x2={width - paddingRight}
               y1={tick.y}
               y2={tick.y}
-              stroke="#e5e7eb"
+              stroke="var(--chart-grid)"
               strokeDasharray="3 3"
             />
             <text
@@ -95,7 +95,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
               y={tick.y + 4}
               textAnchor="end"
               fontSize="11"
-              fill="#737373"
+              fill="var(--chart-text)"
             >
               {tick.price.toFixed(2)}
             </text>
@@ -106,7 +106,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
           x2={width - paddingRight}
           y1={plotBottom}
           y2={plotBottom}
-          stroke="#e5e7eb"
+          stroke="var(--chart-grid)"
         />
         {klines.map((item, index) => {
           const center = xCenter(index);
@@ -166,9 +166,9 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
               width={144}
               height={94}
               rx={6}
-              fill="#ffffff"
+              fill="var(--chart-tooltip-bg)"
               fillOpacity={0.96}
-              stroke="#cbd5e1"
+              stroke="var(--chart-tooltip-border)"
             />
             <text
               x={Math.min(
@@ -177,7 +177,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
               )}
               y={paddingTop + 20}
               fontSize="12"
-              fill="#334155"
+              fill="var(--chart-tooltip-text)"
             >
               时间：{new Date(hovered.ts).toLocaleString("zh-CN", { hour12: false })}
             </text>
@@ -188,7 +188,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
               )}
               y={paddingTop + 38}
               fontSize="12"
-              fill="#334155"
+              fill="var(--chart-tooltip-text)"
             >
               开：{hovered.open.toFixed(2)}  高：{hovered.high.toFixed(2)}
             </text>
@@ -199,7 +199,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
               )}
               y={paddingTop + 56}
               fontSize="12"
-              fill="#334155"
+              fill="var(--chart-tooltip-text)"
             >
               低：{hovered.low.toFixed(2)}  收：{hovered.close.toFixed(2)}
             </text>
@@ -210,13 +210,13 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
               )}
               y={paddingTop + 74}
               fontSize="12"
-              fill="#64748b"
+              fill="#94a3b8"
             >
               量：{(hovered.volume / 10000).toFixed(1)} 万
             </text>
           </g>
         ) : null}
-        <text x={paddingLeft} y={height - 4} fontSize="11" fill="#737373">
+        <text x={paddingLeft} y={height - 4} fontSize="11" fill="var(--chart-text)">
           {klines[0]?.ts.slice(0, 10)}
         </text>
         <text
@@ -224,7 +224,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
           y={height - 4}
           textAnchor="end"
           fontSize="11"
-          fill="#737373"
+          fill="var(--chart-text)"
         >
           {klines.at(-1)?.ts.slice(0, 10)}
         </text>
@@ -233,7 +233,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
           y={height - 4}
           textAnchor="middle"
           fontSize="11"
-          fill="#737373"
+          fill="var(--chart-text)"
         >
           {klines[Math.floor((klines.length - 1) / 2)]?.ts.slice(0, 10)}
         </text>
@@ -242,7 +242,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
           y={paddingTop - 6}
           textAnchor="end"
           fontSize="11"
-          fill="#64748b"
+          fill="#94a3b8"
         >
           价格
         </text>
@@ -251,7 +251,7 @@ function CandlestickChart({ klines }: { klines: Kline[] }) {
           y={height - paddingBottom + 10}
           textAnchor="end"
           fontSize="11"
-          fill="#64748b"
+          fill="#94a3b8"
         >
           成交量
         </text>
@@ -272,7 +272,7 @@ export function ChartPanel({
   onAdjustChange,
 }: ChartPanelProps) {
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{stock.name}（{stock.code}）盘面</h2>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -764,7 +764,7 @@ export default function StockWorkbench() {
         >
           <div
             className={
-              "sticky top-[var(--app-header-h)] h-[calc(100vh_-_var(--app-header-h))] overflow-hidden border-r border-border bg-white transition-[width] duration-300 ease-out " +
+              "sticky top-[var(--app-header-h)] h-[calc(100vh_-_var(--app-header-h))] overflow-hidden border-r border-border bg-card/70 backdrop-blur-xl transition-[width] duration-300 ease-out " +
               (sidebarOpen || sidebarPeek ? "w-80" : "w-10")
             }
           >
@@ -803,7 +803,7 @@ export default function StockWorkbench() {
             {/* 标题改为紧凑单行，把纵向空间让给模块内容。 */}
             <div className="flex flex-wrap items-end justify-between gap-2">
               <div>
-                <h1 className="text-xl font-semibold tracking-tight">个股盘面分析与 AI 学习台</h1>
+                <h1 className="tech-title text-xl font-semibold tracking-tight">个股盘面分析与 AI 学习台</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
                   在顶部功能模块菜单中勾选模块，按需查看行情、资讯、AI 报告与多轮追问。
                 </p>
@@ -826,7 +826,7 @@ export default function StockWorkbench() {
             <RealtimeQuoteBar target="stock" />
 
             {error ? (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                 {error}
               </div>
             ) : null}
@@ -838,7 +838,7 @@ export default function StockWorkbench() {
                 ))}
               </div>
             ) : (
-              <div className="flex min-h-[420px] items-center justify-center rounded-xl border border-dashed bg-white p-8 text-center shadow-sm">
+              <div className="flex min-h-[420px] items-center justify-center tech-panel tech-panel-dashed p-8 text-center">
                 <div>
                   <h2 className="text-lg font-semibold">请选择功能模块</h2>
                   <p className="mt-2 text-sm text-muted-foreground">

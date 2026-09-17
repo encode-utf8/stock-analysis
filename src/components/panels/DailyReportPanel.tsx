@@ -57,8 +57,8 @@ function emailNotice(
 
 /** A 股口径：红涨绿跌。 */
 const TONE_CLASS: Record<DailyReportMetric["tone"], string> = {
-  up: "text-red-600",
-  down: "text-green-600",
+  up: "text-red-400",
+  down: "text-emerald-400",
   flat: "text-muted-foreground",
 };
 
@@ -268,7 +268,7 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
   };
 
   return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm">
+    <div className="tech-panel tech-lift p-4 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-lg font-semibold">{KIND_LABELS[kind]}</h2>
@@ -342,12 +342,12 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
       </div>
 
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
         </div>
       ) : null}
       {notice ? (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
           {notice}
         </div>
       ) : null}
@@ -393,7 +393,7 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
                   onClick={() => void removeReport(item.date)}
                   disabled={busy}
                   title={`删除 ${item.date} 日报`}
-                  className="shrink-0 px-2 py-2 text-xs text-muted-foreground transition-colors hover:text-red-600 disabled:opacity-50"
+                  className="shrink-0 px-2 py-2 text-xs text-muted-foreground transition-colors hover:text-red-400 disabled:opacity-50"
                 >
                   删除
                 </button>
@@ -442,7 +442,7 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
               ) : null}
 
               {visibleDetail.data.missing.length > 0 ? (
-                <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <p className="mt-3 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
                   数据缺失：{visibleDetail.data.missing.join("；")}
                 </p>
               ) : null}

@@ -44,7 +44,7 @@ export function NewsPanel({
   const visibleNews = news.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
   return (
-    <div className="flex flex-col rounded-xl border bg-white p-4 shadow-sm">
+    <div className="flex flex-col tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold">资讯与影响周期</h2>
         <div className="flex items-center gap-2">

@@ -160,7 +160,7 @@ function trendClass(value: number | null): string {
   if (value === null || value === 0) {
     return "";
   }
-  return value > 0 ? "text-red-600" : "text-green-700";
+  return value > 0 ? "text-red-400" : "text-emerald-300";
 }
 
 function NavLineChart({
@@ -217,7 +217,7 @@ function NavLineChart({
   const hovered = hoveredIndex === null ? null : nav[hoveredIndex];
 
   return (
-    <div className="relative overflow-x-auto rounded-lg border bg-white p-3">
+    <div className="relative overflow-x-auto tech-panel tech-lift p-3">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="min-w-[720px]"
@@ -257,7 +257,7 @@ function NavLineChart({
               x2={width - paddingRight}
               y1={tick.y}
               y2={tick.y}
-              stroke="#e5e7eb"
+              stroke="var(--chart-grid)"
               strokeDasharray="3 3"
             />
             <text
@@ -265,7 +265,7 @@ function NavLineChart({
               y={tick.y + 4}
               textAnchor="end"
               fontSize="11"
-              fill="#737373"
+              fill="var(--chart-text)"
             >
               {tick.value.toFixed(3)}
             </text>
@@ -275,7 +275,7 @@ function NavLineChart({
         <path
           d={linePath}
           fill="none"
-          stroke="#2563eb"
+          stroke="#3b82f6"
           strokeWidth="2"
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -292,7 +292,7 @@ function NavLineChart({
             onMouseLeave={() => setHoveredIndex(null)}
           />
         ))}
-        <text x={paddingLeft} y={height - 6} fontSize="11" fill="#737373">
+        <text x={paddingLeft} y={height - 6} fontSize="11" fill="var(--chart-text)">
           {nav[0]?.nav_date}
         </text>
         <text
@@ -300,7 +300,7 @@ function NavLineChart({
           y={height - 6}
           textAnchor="end"
           fontSize="11"
-          fill="#737373"
+          fill="var(--chart-text)"
         >
           {nav.at(-1)?.nav_date}
         </text>
@@ -309,7 +309,7 @@ function NavLineChart({
           y={height - 6}
           textAnchor="middle"
           fontSize="11"
-          fill="#737373"
+          fill="var(--chart-text)"
         >
           {nav[Math.floor((nav.length - 1) / 2)]?.nav_date}
         </text>
@@ -329,18 +329,18 @@ function NavLineChart({
           <span className="text-muted-foreground">
             最大回撤：{chartMetrics.max_drawdown_start} 至 {chartMetrics.max_drawdown_end}
           </span>
-          <span className="font-semibold text-green-700">
+          <span className="font-semibold text-emerald-300">
             -{chartMetrics.max_drawdown_pct.toFixed(2)}%
           </span>
           <span className="text-muted-foreground">当前回撤</span>
-          <span className="font-semibold text-green-700">
+          <span className="font-semibold text-emerald-300">
             -{chartMetrics.current_drawdown_pct.toFixed(2)}%
           </span>
           <span className="text-muted-foreground">修复状态</span>
           <span
             className={
               chartMetrics.max_drawdown_recovery_complete
-                ? "font-semibold text-red-600"
+                ? "font-semibold text-red-400"
                 : "font-semibold text-foreground"
             }
           >
@@ -349,7 +349,7 @@ function NavLineChart({
         </div>
       ) : null}
       {hovered ? (
-        <div className="pointer-events-none absolute left-[70px] top-[26px] rounded-md border bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm">
+        <div className="pointer-events-none absolute left-[70px] top-[26px] rounded-md border bg-card/80 px-3 py-2 text-xs text-foreground/85 shadow-sm">
           <div>{hovered.nav_date}</div>
           <div>
             {navType === "unit" ? "单位净值" : "累计净值"}：
@@ -390,7 +390,7 @@ export function FundNavChartPanel({
       : null;
 
   return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
+    <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">历史净值走势</h2>

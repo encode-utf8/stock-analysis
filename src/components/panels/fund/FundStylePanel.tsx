@@ -54,16 +54,16 @@ function formatPercent(value: number | null): string {
 
 function returnTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return value > 0 ? "text-red-700" : "text-green-700";
+  return value > 0 ? "text-red-300" : "text-emerald-300";
 }
 
 function drawdownTone(value: number | null): string {
   if (value === null || value === 0) {
-    return "text-slate-900";
+    return "text-foreground";
   }
-  return "text-green-700";
+  return "text-emerald-300";
 }
 
 function rangeLabel(range: string): string {
@@ -101,7 +101,7 @@ export function FundStylePanel() {
   };
 
   return (
-    <section className="rounded-xl border bg-white p-5 shadow-sm">
+    <section className="tech-panel tech-lift p-5 shadow-sm">
       <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-base font-semibold">基金风格因子分析</h2>
@@ -109,7 +109,7 @@ export function FundStylePanel() {
             基于真实持仓与风险指标归纳基金风格特征，仅供学习参考。
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 rounded-lg border bg-slate-50 p-3">
+        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/50 p-3">
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             基金代码
             <input
@@ -142,13 +142,13 @@ export function FundStylePanel() {
       </div>
 
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
         </div>
       ) : null}
 
       {snapshot && !snapshot.available ? (
-        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
           {snapshot.reason ?? "当前无法进行风格因子分析。"}
         </div>
       ) : null}
@@ -165,7 +165,7 @@ export function FundStylePanel() {
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <MetricCard label="年化收益" value={formatPercent(snapshot.risk_return.annualized_return_pct)} tone={returnTone(snapshot.risk_return.annualized_return_pct)} />
-            <MetricCard label="年化波动" value={formatPercent(snapshot.risk_return.annualized_volatility_pct)} tone="text-slate-900" />
+            <MetricCard label="年化波动" value={formatPercent(snapshot.risk_return.annualized_volatility_pct)} tone="text-foreground" />
             <MetricCard label="夏普比率" value={formatNumber(snapshot.risk_return.sharpe)} tone={returnTone(snapshot.risk_return.sharpe)} />
             <MetricCard label="索提诺比率" value={formatNumber(snapshot.risk_return.sortino)} tone={returnTone(snapshot.risk_return.sortino)} />
             <MetricCard label="卡玛比率" value={formatNumber(snapshot.risk_return.calmar)} tone={returnTone(snapshot.risk_return.calmar)} />
@@ -181,7 +181,7 @@ export function FundStylePanel() {
             />
           </div>
 
-          <div className="rounded-lg border bg-slate-50 p-4">
+          <div className="rounded-lg border bg-muted/50 p-4">
             <h3 className="text-sm font-semibold">持仓集中度</h3>
             <div className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between">
@@ -195,7 +195,7 @@ export function FundStylePanel() {
             </div>
           </div>
 
-          <div className="rounded-lg border bg-slate-50 p-4">
+          <div className="rounded-lg border bg-muted/50 p-4">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold">
                 {snapshot.analysis_source === "ai" ? "AI 风格归纳" : "本地风格归纳"}
@@ -204,7 +204,7 @@ export function FundStylePanel() {
                 {snapshot.analysis_source === "ai" ? "AI 生成，仅供学习" : "本地规则归纳"}
               </span>
             </div>
-            <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+            <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/85">
               {snapshot.narrative ?? "暂无分析说明。"}
             </p>
           </div>
@@ -228,7 +228,7 @@ function MetricCard({
   tone: string;
 }) {
   return (
-    <div className="rounded-lg border bg-slate-50 px-3 py-3">
+    <div className="rounded-lg border bg-muted/50 px-3 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`mt-1 text-lg font-semibold ${tone}`}>{value}</div>
     </div>

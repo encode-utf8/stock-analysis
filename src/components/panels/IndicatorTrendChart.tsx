@@ -94,7 +94,7 @@ function MacdChart({ klines }: { klines: Kline[] }) {
     <div>
       <Legend
         items={[
-          { color: "#2563eb", label: "DIF" },
+          { color: "#3b82f6", label: "DIF" },
           { color: "#f59e0b", label: "DEA" },
           { color: "#ef4444", label: "金叉" },
           { color: "#22c55e", label: "死叉" },
@@ -102,7 +102,7 @@ function MacdChart({ klines }: { klines: Kline[] }) {
       />
       <div className="overflow-x-auto">
         <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="min-w-[720px]" aria-label="MACD 指标图">
-          <line x1={PADDING_LEFT} x2={WIDTH - PADDING_RIGHT} y1={lineBottom} y2={lineBottom} stroke="#e5e7eb" />
+          <line x1={PADDING_LEFT} x2={WIDTH - PADDING_RIGHT} y1={lineBottom} y2={lineBottom} stroke="var(--chart-grid)" />
           <line x1={PADDING_LEFT} x2={WIDTH - PADDING_RIGHT} y1={histZeroY} y2={histZeroY} stroke="#94a3b8" strokeDasharray="3 3" />
           {points.map((point, index) => {
             const color = point.histogram >= 0 ? "#ef4444" : "#22c55e";
@@ -122,7 +122,7 @@ function MacdChart({ klines }: { klines: Kline[] }) {
           <polyline
             points={points.map((point, index) => `${xFor(index, points.length)},${yLine(point.dif)}`).join(" ")}
             fill="none"
-            stroke="#2563eb"
+            stroke="#3b82f6"
             strokeWidth="1.8"
           />
           <polyline
@@ -150,16 +150,16 @@ function MacdChart({ klines }: { klines: Kline[] }) {
               </g>
             );
           })}
-          <text x={PADDING_LEFT} y={HEIGHT - 4} fontSize="11" fill="#737373">
+          <text x={PADDING_LEFT} y={HEIGHT - 4} fontSize="11" fill="var(--chart-text)">
             {dateText(klines, points[0]?.index)}
           </text>
-          <text x={WIDTH - PADDING_RIGHT} y={HEIGHT - 4} textAnchor="end" fontSize="11" fill="#737373">
+          <text x={WIDTH - PADDING_RIGHT} y={HEIGHT - 4} textAnchor="end" fontSize="11" fill="var(--chart-text)">
             {dateText(klines, points.at(-1)?.index)}
           </text>
-          <text x={PADDING_LEFT - 6} y={PADDING_TOP + 10} textAnchor="end" fontSize="11" fill="#64748b">
+          <text x={PADDING_LEFT - 6} y={PADDING_TOP + 10} textAnchor="end" fontSize="11" fill="#94a3b8">
             DIF/DEA
           </text>
-          <text x={PADDING_LEFT - 6} y={histZeroY + 4} textAnchor="end" fontSize="11" fill="#64748b">
+          <text x={PADDING_LEFT - 6} y={histZeroY + 4} textAnchor="end" fontSize="11" fill="#94a3b8">
             MACD 柱
           </text>
         </svg>
@@ -185,7 +185,7 @@ function KdjChart({ klines }: { klines: Kline[] }) {
     <div>
       <Legend
         items={[
-          { color: "#2563eb", label: "K" },
+          { color: "#3b82f6", label: "K" },
           { color: "#f59e0b", label: "D" },
           { color: "#9333ea", label: "J" },
         ]}
@@ -194,19 +194,19 @@ function KdjChart({ klines }: { klines: Kline[] }) {
         <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="min-w-[720px]" aria-label="KDJ 指标图">
           {[20, 50, 80].map((level) => (
             <g key={level}>
-              <line x1={PADDING_LEFT} x2={WIDTH - PADDING_RIGHT} y1={y(level)} y2={y(level)} stroke="#e5e7eb" strokeDasharray="3 3" />
+              <line x1={PADDING_LEFT} x2={WIDTH - PADDING_RIGHT} y1={y(level)} y2={y(level)} stroke="var(--chart-grid)" strokeDasharray="3 3" />
               <text x={PADDING_LEFT - 8} y={y(level) + 4} textAnchor="end" fontSize="10" fill="#94a3b8">
                 {level}
               </text>
             </g>
           ))}
-          <polyline points={points.map((point, index) => `${xFor(index, points.length)},${y(point.k)}`).join(" ")} fill="none" stroke="#2563eb" strokeWidth="1.8" />
+          <polyline points={points.map((point, index) => `${xFor(index, points.length)},${y(point.k)}`).join(" ")} fill="none" stroke="#3b82f6" strokeWidth="1.8" />
           <polyline points={points.map((point, index) => `${xFor(index, points.length)},${y(point.d)}`).join(" ")} fill="none" stroke="#f59e0b" strokeWidth="1.8" />
           <polyline points={points.map((point, index) => `${xFor(index, points.length)},${y(point.j)}`).join(" ")} fill="none" stroke="#9333ea" strokeWidth="1.8" />
-          <text x={PADDING_LEFT} y={HEIGHT - 4} fontSize="11" fill="#737373">
+          <text x={PADDING_LEFT} y={HEIGHT - 4} fontSize="11" fill="var(--chart-text)">
             {dateText(klines, points[0]?.index)}
           </text>
-          <text x={WIDTH - PADDING_RIGHT} y={HEIGHT - 4} textAnchor="end" fontSize="11" fill="#737373">
+          <text x={WIDTH - PADDING_RIGHT} y={HEIGHT - 4} textAnchor="end" fontSize="11" fill="var(--chart-text)">
             {dateText(klines, points.at(-1)?.index)}
           </text>
         </svg>
@@ -241,7 +241,7 @@ function RsiChart({ klines }: { klines: Kline[] }) {
     <div>
       <Legend
         items={[
-          { color: "#2563eb", label: "RSI6" },
+          { color: "#3b82f6", label: "RSI6" },
           { color: "#f59e0b", label: "RSI12" },
           { color: "#9333ea", label: "RSI24" },
         ]}
@@ -250,19 +250,19 @@ function RsiChart({ klines }: { klines: Kline[] }) {
         <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="min-w-[720px]" aria-label="RSI 指标图">
           {[30, 70].map((level) => (
             <g key={level}>
-              <line x1={PADDING_LEFT} x2={WIDTH - PADDING_RIGHT} y1={y(level)} y2={y(level)} stroke="#e5e7eb" strokeDasharray="3 3" />
+              <line x1={PADDING_LEFT} x2={WIDTH - PADDING_RIGHT} y1={y(level)} y2={y(level)} stroke="var(--chart-grid)" strokeDasharray="3 3" />
               <text x={PADDING_LEFT - 8} y={y(level) + 4} textAnchor="end" fontSize="10" fill="#94a3b8">
                 {level}
               </text>
             </g>
           ))}
-          <polyline points={linePoints(rsi6)} fill="none" stroke="#2563eb" strokeWidth="1.8" />
+          <polyline points={linePoints(rsi6)} fill="none" stroke="#3b82f6" strokeWidth="1.8" />
           <polyline points={linePoints(rsi12)} fill="none" stroke="#f59e0b" strokeWidth="1.8" />
           <polyline points={linePoints(rsi24)} fill="none" stroke="#9333ea" strokeWidth="1.8" />
-          <text x={PADDING_LEFT} y={HEIGHT - 4} fontSize="11" fill="#737373">
+          <text x={PADDING_LEFT} y={HEIGHT - 4} fontSize="11" fill="var(--chart-text)">
             {klines[0]?.ts.slice(0, 10)}
           </text>
-          <text x={WIDTH - PADDING_RIGHT} y={HEIGHT - 4} textAnchor="end" fontSize="11" fill="#737373">
+          <text x={WIDTH - PADDING_RIGHT} y={HEIGHT - 4} textAnchor="end" fontSize="11" fill="var(--chart-text)">
             {klines.at(-1)?.ts.slice(0, 10)}
           </text>
         </svg>
@@ -295,27 +295,27 @@ function BollChart({ klines }: { klines: Kline[] }) {
     <div>
       <Legend
         items={[
-          { color: "#2563eb", label: "收盘价" },
+          { color: "#3b82f6", label: "收盘价" },
           { color: "#f59e0b", label: "上轨" },
-          { color: "#64748b", label: "中轨" },
+          { color: "#94a3b8", label: "中轨" },
           { color: "#22c55e", label: "下轨" },
         ]}
       />
       <div className="overflow-x-auto">
         <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="min-w-[720px]" aria-label="BOLL 指标图">
           <polyline points={points.map((point, index) => `${xFor(index, points.length)},${y(point.upper)}`).join(" ")} fill="none" stroke="#f59e0b" strokeWidth="1.5" />
-          <polyline points={points.map((point, index) => `${xFor(index, points.length)},${y(point.middle)}`).join(" ")} fill="none" stroke="#64748b" strokeWidth="1.5" />
+          <polyline points={points.map((point, index) => `${xFor(index, points.length)},${y(point.middle)}`).join(" ")} fill="none" stroke="#94a3b8" strokeWidth="1.5" />
           <polyline points={points.map((point, index) => `${xFor(index, points.length)},${y(point.lower)}`).join(" ")} fill="none" stroke="#22c55e" strokeWidth="1.5" />
           <polyline
             points={points.map((point, index) => `${xFor(index, points.length)},${y(klines[point.index]?.close ?? point.middle)}`).join(" ")}
             fill="none"
-            stroke="#2563eb"
+            stroke="#3b82f6"
             strokeWidth="2"
           />
-          <text x={PADDING_LEFT} y={HEIGHT - 4} fontSize="11" fill="#737373">
+          <text x={PADDING_LEFT} y={HEIGHT - 4} fontSize="11" fill="var(--chart-text)">
             {dateText(klines, points[0]?.index)}
           </text>
-          <text x={WIDTH - PADDING_RIGHT} y={HEIGHT - 4} textAnchor="end" fontSize="11" fill="#737373">
+          <text x={WIDTH - PADDING_RIGHT} y={HEIGHT - 4} textAnchor="end" fontSize="11" fill="var(--chart-text)">
             {dateText(klines, points.at(-1)?.index)}
           </text>
         </svg>
@@ -334,7 +334,7 @@ export function IndicatorTrendChart({ klines }: { klines: Kline[] }) {
   const [mode, setMode] = useState<ChartMode>("macd");
 
   return (
-    <div className="rounded-lg border bg-white p-3">
+    <div className="tech-panel tech-lift p-3">
       <div className="mb-2 flex justify-center gap-1 rounded-md bg-muted/40 p-1">
         {CHART_OPTIONS.map((option) => (
           <button
@@ -342,7 +342,7 @@ export function IndicatorTrendChart({ klines }: { klines: Kline[] }) {
             type="button"
             onClick={() => setMode(option.key)}
             className={`rounded px-3 py-1 text-xs font-medium transition ${
-              mode === option.key ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+              mode === option.key ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {option.label}
