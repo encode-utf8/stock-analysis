@@ -22,6 +22,8 @@ warn() {
 SKIP_INSTALL="${SKIP_INSTALL:-0}"
 FORCE_INSTALL="${FORCE_INSTALL:-0}"
 NO_BROWSER="${NO_BROWSER:-0}"
+DOCKER_MODE="${DOCKER_MODE:-0}"
+NO_BUILD="${NO_BUILD:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,11 +39,21 @@ while [[ $# -gt 0 ]]; do
       NO_BROWSER=1
       shift
       ;;
+    --docker)
+      DOCKER_MODE=1
+      shift
+      ;;
+    --no-build)
+      NO_BUILD=1
+      shift
+      ;;
     -h|--help)
-      echo "用法：./start.sh [--skip-install] [--install] [--no-browser]"
+      echo "用法：./start.sh [--skip-install] [--install] [--no-browser] [--docker]"
       echo "  --skip-install  跳过前端依赖安装检查"
       echo "  --install       强制重新安装/校验前端依赖"
       echo "  --no-browser    启动后不自动打开浏览器"
+      echo "  --docker        用 docker compose 启动全栈（postgres + 行情侧车 + Web）"
+      echo "  --no-build      --docker 时跳过镜像构建（镜像已存在时更快）"
       exit 0
       ;;
     *)
@@ -50,6 +62,83 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# --docker：全栈容器启动（postgres + 行情侧车 + Web），不依赖本机 Node / Python 环境。
+if [[ "$DOCKER_MODE" == "1" ]]; then
+  DOCKER_BIN="${DOCKER_BIN:-docker}"
+  if ! command -v "${DOCKER_BIN##* }" >/dev/null 2>&1; then
+    echo "未检测到 docker 命令：Linux 可执行 ./deploy.sh --install-docker 自动安装，Windows / macOS 请安装并启动 Docker Desktop。" >&2
+    exit 1
+  fi
+
+  # compose 命令自动探测：优先 compose v2 插件，回退 v1 的 docker-compose
+  COMPOSE_CMD="${COMPOSE_CMD:-}"
+  if [[ -z "$COMPOSE_CMD" ]]; then
+    if $DOCKER_BIN compose version >/dev/null 2>&1; then
+      COMPOSE_CMD="$DOCKER_BIN compose"
+    elif command -v docker-compose >/dev/null 2>&1; then
+      COMPOSE_CMD="docker-compose"
+    else
+      echo "未检测到 compose：请安装 docker-compose-plugin 后重试。" >&2
+      exit 1
+    fi
+  fi
+
+  if [[ "$NO_BUILD" == "1" ]]; then
+    step "启动全栈容器（跳过镜像构建）..."
+    $COMPOSE_CMD up -d
+  else
+    step "构建并启动全栈容器（首次构建约 5 到 10 分钟）..."
+    $COMPOSE_CMD up -d --build
+  fi
+
+  # 健康检查：curl → wget → python3 逐级回退，都没有时跳过等待
+  HTTP_GET=""
+  if command -v curl >/dev/null 2>&1; then
+    HTTP_GET="curl"
+  elif command -v wget >/dev/null 2>&1; then
+    HTTP_GET="wget"
+  elif command -v python3 >/dev/null 2>&1; then
+    HTTP_GET="python3"
+  fi
+
+  http_ok() {
+    case "$HTTP_GET" in
+      curl) curl -fsS "$1" >/dev/null 2>&1 ;;
+      wget) wget -qO- "$1" >/dev/null 2>&1 ;;
+      python3) python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=3)' "$1" >/dev/null 2>&1 ;;
+      *) return 0 ;;
+    esac
+  }
+
+  step "等待 Web 健康检查 http://127.0.0.1:3000/api/health ..."
+  if [[ -z "$HTTP_GET" ]]; then
+    warn "未检测到 curl / wget / python3，跳过健康检查等待，请自行访问 http://127.0.0.1:3000"
+  else
+    HEALTHY=0
+    for _ in $(seq 1 90); do
+      if http_ok http://127.0.0.1:3000/api/health; then
+        HEALTHY=1
+        break
+      fi
+      sleep 2
+    done
+
+    if [[ "$HEALTHY" != "1" ]]; then
+      echo "Web 健康检查超时，请查看日志：$COMPOSE_CMD logs web" >&2
+      exit 1
+    fi
+  fi
+
+  printf '\n'
+  printf '  Web  前端：%s\n' 'http://127.0.0.1:3000'
+  printf '  行情/基金数据侧车：%s\n' 'http://127.0.0.1:8000'
+  printf '  数据库：%s\n' 'postgresql://postgres:postgres@localhost:5432/stock_analysis'
+  printf '  查看状态：%s ps\n' "$COMPOSE_CMD"
+  printf '  停止全栈：./stop.sh --docker\n'
+  printf '\n'
+  exit 0
+fi
 
 step "检查 Node.js 版本..."
 if ! command -v node >/dev/null 2>&1; then
@@ -83,8 +172,13 @@ run_pnpm() {
 
 step "准备环境变量文件..."
 if [[ ! -f .env ]]; then
-  cp .env.example .env
-  warn "已复制 .env.example 为 .env。未填写外部密钥时，系统会自动使用降级/演示数据。"
+  if [[ -f .env.export ]]; then
+    cp .env.export .env
+    warn "已从迁移导出文件 .env.export 复制出 .env（如需调整请直接编辑 .env）。"
+  else
+    cp .env.example .env
+    warn "已复制 .env.example 为 .env。未填写外部密钥时，系统会自动使用降级/演示数据。"
+  fi
 fi
 
 if [[ "$SKIP_INSTALL" == "1" ]]; then

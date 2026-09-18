@@ -1,3 +1,8 @@
+# 全栈编排：postgres（数据库）+ data-service（行情侧车）+ migrate（一次性迁移）+ web（前端）。
+# 只起数据库：docker compose up -d postgres（scripts/db-up.ps1 仍是这个行为）。
+# 起全栈：docker compose up -d --build，或 start.ps1 -Docker / start.sh --docker / start.bat --docker。
+# 停止全栈：docker compose down（保留命名卷），或 stop.* --docker。
+# 密钥：Compose 自动读取项目根的 .env 做变量插值，缺省为空即走降级路径；容器内的连接地址一律用服务名。
 services:
   postgres:
     image: postgres:16-alpine
@@ -17,5 +22,105 @@ services:
       timeout: 5s
       retries: 10
 
+
+  data-service:
+    build:
+      context: ./data-service
+    image: stock-analysis-data-service:local
+    container_name: stock-analysis-data-service
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # 一次性数据库迁移：执行完即退出，web 会等它成功后再启动。
+  migrate:
+    build:
+      context: .
+      target: source
+    image: stock-analysis-migrate:local
+    command: pnpm db:migrate
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/stock_analysis
+      TZ: Asia/Shanghai
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      target: runner
+    image: stock-analysis-web:local
+    container_name: stock-analysis-web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      data-service:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    volumes:
+      - stock_analysis_appdata:/app/data
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Shanghai
+      # 容器内一律用服务名互联，宿主 .env 里的 localhost 地址不会带进来。
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/stock_analysis
+      DATA_SERVICE_URL: http://data-service:8000
+      DATA_ROOT: /app/data
+      SCHEDULER_BASE_URL: http://127.0.0.1:3000
+      SCHEDULER_TIMEZONE: "${SCHEDULER_TIMEZONE:-Asia/Shanghai}"
+      # 单容器默认跑进程内 cron；多实例部署时设为 1 并另行启动 pnpm scheduler:worker。
+      SKIP_INPROCESS_SCHEDULER: "${SKIP_INPROCESS_SCHEDULER:-}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      DEEPSEEK_BASE_URL: "${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+      DEEPSEEK_MODEL: "${DEEPSEEK_MODEL:-deepseek-chat}"
+      DEEPSEEK_ANALYSIS_TIMEOUT_MS: "${DEEPSEEK_ANALYSIS_TIMEOUT_MS:-45000}"
+      TAVILY_API_KEY: "${TAVILY_API_KEY:-}"
+      R2_ACCOUNT_ID: "${R2_ACCOUNT_ID:-}"
+      R2_ACCESS_KEY_ID: "${R2_ACCESS_KEY_ID:-}"
+      R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY:-}"
+      R2_BUCKET_NAME: "${R2_BUCKET_NAME:-}"
+      R2_PUBLIC_URL: "${R2_PUBLIC_URL:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-465}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      ALERT_EMAIL_TO: "${ALERT_EMAIL_TO:-}"
+      ALERT_MAX_TARGETS: "${ALERT_MAX_TARGETS:-10}"
+      ALERT_CRON: "${ALERT_CRON:-*/30 9-15 * * 1-5}"
+      CLEANUP_CRON: "${CLEANUP_CRON:-0 3 * * *}"
+      REFRESH_CRON: "${REFRESH_CRON:-30 3 * * *}"
+      FUND_REFRESH_CRON: "${FUND_REFRESH_CRON:-45 3 * * *}"
+      FUND_SETTLE_CRON: "${FUND_SETTLE_CRON:-30 21 * * 1-5}"
+      DAILY_STOCK_REPORT_CRON: "${DAILY_STOCK_REPORT_CRON:-*/10 15-16 * * 1-5}"
+      DAILY_FUND_REPORT_CRON: "${DAILY_FUND_REPORT_CRON:-*/20 20-23 * * 1-5}"
+      DAILY_REPORT_TIMEOUT_MS: "${DAILY_REPORT_TIMEOUT_MS:-60000}"
+      DAILY_REPORT_EMAIL_TO: "${DAILY_REPORT_EMAIL_TO:-}"
+      SCHEDULER_TOKEN: "${SCHEDULER_TOKEN:-}"
+      QUOTE_STREAM_INTERVAL_MS: "${QUOTE_STREAM_INTERVAL_MS:-5000}"
+      QUOTE_STREAM_IDLE_INTERVAL_MS: "${QUOTE_STREAM_IDLE_INTERVAL_MS:-60000}"
+      QUOTE_STREAM_MAX_CODES: "${QUOTE_STREAM_MAX_CODES:-50}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
 volumes:
   stock_analysis_pgdata:
+  stock_analysis_appdata:

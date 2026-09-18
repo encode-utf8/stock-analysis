@@ -6,6 +6,7 @@
   "scripts": {
     "scheduler:worker": "node scripts/scheduler-worker.mjs",
     "scheduler:once": "node scripts/scheduler-worker.mjs --once",
+    "export:config": "node scripts/export-config.mjs",
     "dev": "next dev",
     "dev:data": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-data.ps1",
     "dev:all": "concurrently -n web,data -c cyan,green \"pnpm dev\" \"pnpm dev:data\"",

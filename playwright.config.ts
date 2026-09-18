@@ -26,6 +26,8 @@ for (const [key, value] of Object.entries(process.env)) {
 }
 Object.assign(serverEnv, {
   DATA_ROOT: dataRoot,
+  // 关闭迁移配置加载：即使本机存在 .env.export，也不能把真实数据库地址补回来。
+  SKIP_ENV_EXPORT: "1",
   DATABASE_URL: "",
   SMTP_HOST: "",
   SMTP_USER: "",

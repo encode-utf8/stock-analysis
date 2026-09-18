@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# 迁移导出配置（含明文密钥，勿入库；由 export-config.ps1 / export-config.sh 生成）
+.env.export
 
 # 本地配置与证书
 config.local.*

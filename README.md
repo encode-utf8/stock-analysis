@@ -43,6 +43,7 @@
 - pnpm，或可用的 `corepack`
 - Python 3.12+（一键启动脚本会优先使用 `stock-analysis` conda 环境或项目 `.venv`）
 - 推荐本地服务：Docker Desktop（PostgreSQL 16）
+- 全栈容器部署：Windows / macOS 用 Docker Desktop，Linux 用 Docker Engine（无需 Docker Desktop，见「Linux 一键部署」），需要 `docker compose` v2
 - 可选外部服务：DeepSeek、Tavily、Cloudflare R2
 
 ## 快速开始
@@ -80,6 +81,18 @@ chmod +x start.sh
 ./start.sh
 ```
 
+也可以直接用 Docker 跑全栈（PostgreSQL + 行情侧车 + Web）：
+
+```bash
+docker compose up -d --build
+```
+
+Linux 还会自动体检并安装 Docker 环境（不需要 Docker Desktop）：
+
+```bash
+bash deploy.sh --install-docker
+```
+
 启动后访问：
 
 - Web 前端：http://127.0.0.1:3000
@@ -94,6 +107,8 @@ chmod +x start.sh
 | `--skip-install` | 跳过前端依赖安装检查 |
 | `--install` | 强制重新安装/校验前端依赖 |
 | `--no-browser` | 启动后不自动打开浏览器 |
+| `--docker` | 用 `docker compose` 启动全栈（PostgreSQL + 行情侧车 + Web），不依赖本机 Node / Python |
+| `--no-build` | `--docker` 时跳过镜像构建（镜像已存在时更快；当前由 `start.sh` 与 `deploy.sh` 支持） |
 
 Windows `start.ps1` 使用 PowerShell 参数风格：
 
@@ -123,6 +138,87 @@ chmod +x stop.sh
 ```
 
 终止脚本会按端口 `3000`、`8000` 以及项目进程命令行特征停止完整进程树，包括 `next dev`、`uvicorn --reload` 的子进程，并回收定时任务守护进程（`.logs/scheduler-worker.pid`）。
+
+## Docker 全栈部署
+
+一条命令拉起 PostgreSQL、行情侧车与 Web 前端（首次构建约 5 到 10 分钟）：
+
+```bash
+docker compose up -d --build
+```
+
+Windows 也可以用脚本参数启动（等价命令，并会自动等待健康检查）：
+
+```powershell
+./start.ps1 -Docker
+```
+
+Linux/macOS：
+
+```bash
+./start.sh --docker
+```
+
+- 数据库迁移由 `migrate` 服务在 Web 启动前自动执行（一次性容器，跑完即退出）；`web` 会等它成功退出后再启动。
+- 访问地址与本地一致：Web http://127.0.0.1:3000，行情侧车 http://127.0.0.1:8000。
+- 数据持久化：`stock_analysis_pgdata` 存数据库，`stock_analysis_appdata` 存本地降级数据与自定义背景图（容器内 `DATA_ROOT=/app/data`）；`docker compose down` 不会删除数据卷。
+- 密钥与开关：Compose 自动读取项目根的 `.env` 做变量插值，缺失或为空即走降级路径；容器内的 `DATABASE_URL` 与 `DATA_SERVICE_URL` 固定指向服务名，与 `.env` 里的 localhost 地址无关。
+- 只起数据库：`docker compose up -d postgres`（`./scripts/db-up.ps1` 仍是这个行为）。
+- 停止全栈：`./stop.ps1 -Docker`、`./stop.bat --docker`、`./stop.sh --docker` 或 `docker compose down`；`./scripts/db-down.ps1` 只停 PostgreSQL。
+- 排查：`docker compose ps` 看健康状态，`docker compose logs -f web`（或 `data-service`、`migrate`）看日志；端口冲突时先停掉本机的 `pnpm dev` 或本机 PostgreSQL。
+- 镜像与编排细节见 `docs/deploy-plan.md`。
+
+## Linux 一键部署（含 Docker 环境自检）
+
+Linux 上不需要 Docker Desktop：`deploy.sh` 先做环境体检（发行版、架构、权限、内存、磁盘、端口占用），再按需安装 Docker Engine 与 compose 插件，最后起全栈并等待健康检查。
+
+```bash
+# 只体检，不改动任何东西（只读，退出码 0 表示环境就绪）
+bash deploy.sh --check
+
+# 体检 + 自动安装缺失的 Docker / compose（需要 root 权限，会先征求确认，-y 跳过确认）
+bash deploy.sh --install-docker
+
+# Docker 已就绪时直接起全栈（等价于 ./start.sh --docker，另加体检环节）
+bash deploy.sh
+
+# 镜像已存在，跳过构建更快
+bash deploy.sh --no-build
+```
+
+- 安装策略：Debian / Ubuntu 系走 docker-ce apt 源，Fedora 与 CentOS / RHEL / Rocky / AlmaLinux 走 dnf 或 yum，Alpine 走 apk，openSUSE 走 zypper，其他发行版回退 `https://get.docker.com` 便捷脚本；加 `--mirror` 改用阿里云 docker-ce 源。
+- 权限处理：当前用户不在 `docker` 组时，脚本给出 `sudo usermod -aG docker $USER` 指引并提示重新登录生效；本次执行会自动退化为 `sudo docker` 继续。
+- 只装了 Docker 没装 compose：脚本会提示补装 `docker-compose-plugin`（`--install-docker` 时自动补齐）。
+- 退出码：`0` 成功；`1` 参数错误或执行失败；`3` 环境未就绪（缺 Docker、无权限、缺 compose）。
+- 停止：`bash stop.sh --docker`（保留数据卷）。
+- 完整体检项、安装分支与实测记录见 `docs/deploy-linux-plan.md`。
+
+> 服务器提示：compose 会把 3000 / 8000 / 5432 发布到 `0.0.0.0`，公网机器请用防火墙或安全组限制来源；脚本会在起栈前打印可用的远程访问地址。
+
+## 配置迁移（导出与自动加载）
+
+换机器或把本机部署搬到云服务器时，不必再逐条抄 `.env`：导出一次、粘贴一次即可。
+
+```bash
+# Windows：双击 export-config.bat，或在终端执行
+./export-config.ps1
+
+# Linux / macOS
+./export-config.sh
+
+# 任意平台等价写法（三个入口都走同一套实现）
+corepack pnpm export:config
+```
+
+生成 `.env.export`（明文密钥，已被 `.gitignore` 忽略）→ 复制到目标环境的项目根目录 → 启动项目时自动加载。
+
+- 加载时机：`next dev` / `next start` / standalone 容器（`src/instrumentation.ts`、`next.config.ts`）、`drizzle-kit`（`drizzle.config.ts`）、一键启动脚本（`.env` 缺失时直接复制 `.env.export`）、`docker compose` 变量插值。
+- 优先级：真实环境变量 > 目标机 `.env` > `.env.export`；导出文件只补空缺，不会覆盖目标机已有配置。
+- 导出内容：按 `.env.example` 的键位顺序与分组注释生成；取值优先本机 `.env`，缺失或仍是占位值时回退模板默认值；文件头带导出时间 / 来源主机 / 安全提示，并列出来填写键与自定义键。
+- 常用参数：`-Output` / `--output`（默认 `.env.export`）、`-EnvPath` / `--env`、`-TemplatePath` / `--template`、`-Force` / `--force`（覆盖已存在的导出文件）、`-Help` / `--help`。
+- 关闭开关：`SKIP_ENV_EXPORT=1` 时完全不加载导出文件（`test:e2e` 用它保证用例不会连上真实数据库）。
+- 安全：导出文件等同于明文密钥，勿提交、勿外发；Linux / macOS 下权限自动收紧为 `600`；迁移完成后请妥善保管或删除。本地执行 `NEXT_OUTPUT=standalone` 构建时，`.next/standalone` 可能带上 `.env` / `.data`（Next 既有行为），分发构建产物前请先确认。
+- 不在此范围：运行数据（自选股 / 持仓 / `.data`）与数据库数据卷，方案与取舍见 `docs/config-export-plan.md`。
 
 ## 手动开发启动
 

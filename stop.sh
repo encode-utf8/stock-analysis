@@ -4,6 +4,32 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+DOCKER_MODE=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --docker)
+      DOCKER_MODE=1
+      shift
+      ;;
+    -h|--help)
+      echo "用法：./stop.sh [--docker]"
+      echo "  --docker  停止 docker compose 全栈（保留数据卷），不做本机端口回收"
+      exit 0
+      ;;
+    *)
+      echo "未知参数：$1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$DOCKER_MODE" == "1" ]]; then
+  printf '[终止] 停止全栈容器（数据卷保留）...\n'
+  docker compose down
+  printf '\n[完成] 全栈容器已停止。\n'
+  exit 0
+fi
+
 stop_port() {
   local port="$1"
   local name="$2"
