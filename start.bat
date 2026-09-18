@@ -6,15 +6,19 @@ cd /d "%~dp0"
 set "SKIP_INSTALL="
 set "FORCE_INSTALL="
 set "NO_BROWSER="
+set "DOCKER="
 
 :parse_args
 if "%~1"=="" goto args_done
 if /i "%~1"=="--skip-install" set "SKIP_INSTALL=1"
 if /i "%~1"=="--install" set "FORCE_INSTALL=1"
 if /i "%~1"=="--no-browser" set "NO_BROWSER=1"
+if /i "%~1"=="--docker" set "DOCKER=1"
 shift
 goto parse_args
 :args_done
+
+if defined DOCKER goto docker_mode
 
 if not exist ".logs" mkdir ".logs"
 
@@ -46,10 +50,17 @@ if not defined PNPM_RUNNER (
   set "PNPM_RUNNER=corepack pnpm"
 )
 
-if not exist ".env" (
-  copy ".env.example" ".env" >nul
-  echo [提示] 已复制 .env.example 为 .env；未填写外部密钥时会使用降级数据。
-)
+if exist ".env" goto env_ready
+if exist ".env.export" goto env_from_export
+copy ".env.example" ".env" >nul
+echo [提示] 已复制 .env.example 为 .env；未填写外部密钥时会使用降级数据。
+goto env_ready
+
+:env_from_export
+copy ".env.export" ".env" >nul
+echo [提示] 已从迁移导出文件 .env.export 复制出 .env。
+
+:env_ready
 
 if defined SKIP_INSTALL goto install_done
 if defined FORCE_INSTALL goto install_run
@@ -124,3 +135,38 @@ echo [启动] 正在停止行情/基金数据侧车...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-data.ps1" -Stop
 
 exit /b %FRONTEND_EXIT%
+
+:docker_mode
+echo [启动] 构建并启动全栈容器（首次构建约 5 到 10 分钟）...
+docker compose up -d --build
+if errorlevel 1 (
+  echo docker compose 启动失败，请确认 Docker Desktop 正在运行。
+  pause
+  exit /b 1
+)
+
+echo [启动] 等待 Web 健康检查 http://127.0.0.1:3000/api/health ...
+set "WEB_HEALTHY="
+for /l %%i in (1,1,90) do (
+  curl.exe -fsS http://127.0.0.1:3000/api/health >nul 2>nul
+  if not errorlevel 1 (
+    set "WEB_HEALTHY=1"
+    goto docker_ready
+  )
+  ping -n 3 127.0.0.1 >nul
+)
+:docker_ready
+if not defined WEB_HEALTHY (
+  echo Web 健康检查超时，请查看日志：docker compose logs web
+  pause
+  exit /b 1
+)
+
+echo.
+echo   Web 前端：http://127.0.0.1:3000
+echo   行情/基金数据侧车：http://127.0.0.1:8000
+echo   数据库：postgresql://postgres:postgres@localhost:5432/stock_analysis
+echo   查看状态：docker compose ps
+echo   停止全栈：stop.bat --docker
+echo.
+exit /b 0

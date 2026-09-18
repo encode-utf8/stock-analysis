@@ -2523,3 +2523,186 @@ corepack pnpm build
 - 首次需要在本地安装 Chromium（约 150MB，本机走 npmmirror 镜像下载）；CI 每次运行都要下载浏览器并重跑一次生产构建，流水线时间会变长。
 - 首版只有 5 例，基金工作台、数据一致性清理对话框、多分组自选等场景尚未覆盖。
 - 用例串行执行以换取稳定；后续用例变多时需要评估并行策略（例如每例独立数据根目录）。
+
+## Docker 全栈一键部署（2026-09-17）
+
+需求来源：降低换机成本——把 Web 前端、行情侧车与数据库一起容器化，配合 `start.*` 与 `stop.*` 脚本一键起停。
+
+- 关联方案：`docs/deploy-plan.md`
+- 分支：`feature/docker-fullstack`
+
+### 任务目标与范围
+
+- 目标：`docker compose up -d --build` 一条命令拉起 postgres + data-service + web（含一次性迁移），数据用命名卷持久化；`start.*` 与 `stop.*` 增加 `--docker` 开关。
+- 范围：`docker-compose.yml`、根 `Dockerfile`、`data-service/Dockerfile`、两个 `.dockerignore`、`next.config.ts` 的可选 standalone 输出、`scripts/db-down.ps1`、`start.*` 与 `stop.*`、`README.md`、`docs/deploy-plan.md`、`checklist.md`。
+- 非目标：不改业务代码与数据库结构、不改 CI、不做镜像发布、不做开发模式热更新容器。
+
+### 验收项
+
+- [x] `docker-compose.yml` 扩展为 postgres + data-service + migrate + web，含健康检查与依赖条件
+- [x] `docker compose up -d postgres` 仍只启动数据库（`scripts/db-up.ps1` 不受影响）
+- [x] 根 `Dockerfile` 多阶段构建，`NEXT_OUTPUT=standalone` 仅在构建时生效
+- [x] `next.config.ts` 默认输出不变（本地 build / start、CI、端到端测试不受影响）
+- [x] `data-service/Dockerfile` 安装必需依赖，akshare 容错安装
+- [x] 新增 `.dockerignore` 与 `data-service/.dockerignore`，排除 node_modules、.venv、.data、.env 等
+- [x] 容器内 `DATA_ROOT=/app/data` 挂命名卷 `stock_analysis_appdata`
+- [x] 容器内 `DATABASE_URL` 与 `DATA_SERVICE_URL` 指向服务名，不受宿主 `.env` 的 localhost 地址影响
+- [x] `start.ps1 -Docker` / `start.sh --docker` / `start.bat --docker` 一键起栈并等待健康检查
+- [x] `stop.ps1` / `stop.sh` / `stop.bat` 支持 `--docker` 停止全栈（保留数据卷）
+- [x] `scripts/db-down.ps1` 只停 postgres，不再误停全栈
+- [x] `docs/deploy-plan.md` 与 `README.md` 同步说明
+- [x] 本地回归：typecheck、lint、test、build、test:e2e 全绿
+
+### 验证方式
+
+- 配置：`docker compose config` 解析并检查服务、依赖、卷与健康检查
+- 起栈与健康：`docker compose up -d --build`、`docker compose ps`、`GET /api/health`、`GET /health`
+- 迁移：`docker compose logs migrate`，对比迁移前后的数据库表清单
+- 持久化：容器内写入自选股后 `docker compose restart web` 复查；`down` 后再 `up` 复查
+- 回归：`corepack pnpm typecheck`、`lint`、`test`、`build`、`test:e2e`
+- 收尾：`docker compose down` 与本次构建的镜像清理
+
+### 实测结果（2026-09-17）
+
+- 环境：Docker 29.6.1 / Docker Compose v5.2.0（Docker Desktop，linux 容器）、Windows + PowerShell 5.1。
+- 配置解析：`docker compose config` 通过，识别到 `postgres`、`data-service`、`migrate`、`web` 四个服务。
+- 镜像构建：`docker compose build` 退出码 0；体积为 `stock-analysis-web:local` 303MB、`stock-analysis-data-service:local` 609MB、`stock-analysis-migrate:local` 1.71GB；侧车镜像内 akshare 安装成功。
+- 起栈：`docker compose up -d` 后 postgres / data-service / web 全部 healthy，`migrate` 退出码 0 且日志为建表与迁移索引的幂等提示；宿主 `GET /api/health` 返回 `{"success":true,"data":{"status":"ok"}}` 信封，`GET /health` 返回 `akshare: available`，首页 `GET /` 返回 200 且标题为「个股盘面分析」。
+- 持久化：`PUT /api/ui/background` 写入落到容器 `/app/data/.data/ui-background.json`；`docker compose restart web` 与 `docker compose up -d --force-recreate web` 后读取值不变（卷 `stock-analysis_stock_analysis_appdata`），验收后已删除该测试文件。
+- 脚本实测：`start.ps1 -Docker`、`start.bat --docker`、`stop.bat --docker`、`scripts/stop.ps1 -Docker` 退出码均为 0；`scripts/db-down.ps1` 只移除 postgres，web 与侧车保持 healthy；`start.sh` 与 `stop.sh` 因本机无可用 bash 未实跑，改为把两份脚本转成 LF 后放进 `python:3.12-slim` 容器执行 `bash -n` 语法校验，两者均通过（分支与 ps1 / bat 同构）。
+- 回归：`typecheck` 退出码 0；`lint` 退出码 0；`test` 47 个文件 / 574 例通过；`build` 退出码 0 且未生成 `.next/standalone`（默认输出未变）；`test:e2e` 5 例通过。
+- 实施中修掉的两个缺陷：① `start.ps1` 首版按顶层 `status` 判定健康，而接口是 `{success, data:{status}}` 信封，导致等待超时；② `scripts/stop.ps1` 与 `scripts/db-down.ps1` 缺 UTF-8 BOM，PowerShell 5.1 按 GBK 解析含中文的字符串会直接报错（db-down 属既有缺陷）。已补 BOM，并把本次改动的 `.bat` / `.ps1` 统一为 CRLF（`.bat` 混用 LF 会让 cmd 解析错位）。
+- 环境复原：验收结束执行 `docker compose down`（保留数据卷与镜像），并把原本就在运行的 `postgres` 容器重新拉起，当前无容器进程残留。
+- 静态检查：ShellCheck（koalaman/shellcheck:stable）扫描 `deploy.sh`、`start.sh` 无告警；`stop.sh` 仅剩既有的 SC2164（第 5 行 `cd "$ROOT"` 未加 `|| exit`，本次未改动，留作后续整理）。
+
+### 风险与遗留
+
+- `migrate` 镜像 1.71GB（含 devDependencies，drizzle-kit 需要），是当前最重的产物；若在意体积，可改为宿主机执行迁移或单独裁剪依赖。
+- 首次构建约 5 到 10 分钟且依赖外网；本次首次构建遇到 Docker Hub 鉴权走 IPv6 超时，重试后成功，网络受限时建议先预拉 `node:22-alpine` 与 `python:3.12-slim`。
+- 端口固定 3000 / 8000 / 5432，宿主已有同类服务时需先停掉，暂未提供端口可配置化。
+- 容器内跑生产构建，没有热更新；日常开发仍走 `start.*` 的本地 dev 流程。
+- `start.sh --docker` 与 Linux / macOS 全流程未实机验证（仅在 `python:3.12-slim` 容器内通过 `bash -n` 语法校验），脚本分支需在对应平台复验。
+- 镜像构建与 `docker compose config` 未纳入 CI，公共 runner 的构建时间与体积成本待评估。
+## Linux 一键部署（含 Docker 环境自检与安装）（2026-09-17）
+
+需求来源：`start.sh --docker` 隐含「机器上已装 Docker Desktop」；Linux 服务器与发行版上安装 Docker、socket 权限、compose 插件差异很大，需要一个 Linux 优先的一键部署入口。
+
+- 关联方案：`docs/deploy-linux-plan.md`
+- 分支：`feature/docker-fullstack`
+
+### 任务目标与范围
+
+- 目标：一条命令在 Linux 上完成「环境体检 → 按需安装 Docker → 起全栈容器 → 健康检查 → 输出访问信息」。
+- 范围：新增 `deploy.sh`、`docs/deploy-linux-plan.md`、`.gitattributes`；修改 `start.sh`（docker 分支跨平台化）、`README.md`、`checklist.md`、`docs/deploy-plan.md`（交叉引用）。
+- 非目标：不改容器编排与镜像、不改业务代码、不把部署测试纳入 CI、不覆盖 macOS 的包管理安装。
+
+### 验收项
+
+- [x] `deploy.sh` 支持 `--check` / `--install-docker` / `-y|--yes` / `--mirror` / `--no-build` / `-h|--help`
+- [x] 体检覆盖：发行版、架构、容器内环境、root/sudo、systemd、内存、磁盘、3000/8000/5432 端口占用
+- [x] Docker 检测区分三种情况：命令缺失、守护进程未启动、socket 权限不足，并各自给出可执行指引
+- [x] compose 检测：`docker compose` 优先，回退 `docker-compose`，都缺失时给出安装指引
+- [x] `--install-docker` 覆盖 debian / fedora / centos 系、alpine、opensuse 分支，未知发行版回退官方便捷脚本
+- [x] 安装后启用守护进程并按需把当前用户加入 docker 组；无 systemd 时不调用 `systemctl`
+- [x] 权限不足时本次执行可用 `sudo docker` 继续，并在结尾提示重新登录生效
+- [x] `--check` 只读：不安装、不复制 `.env`、不起栈
+- [x] 起栈复用 `start.sh --docker`，通过 `DOCKER_BIN` / `COMPOSE_CMD` 传参，`--no-build` 可跳过构建
+- [x] 退出码规范：`0` 成功、`1` 执行失败、`3` 环境未就绪
+- [x] `start.sh --docker` 提示跨平台化，原有 Windows / macOS 行为不变
+- [x] 新增 `.gitattributes` 声明 shell 脚本用 LF，避免 Windows 检出把 CRLF 带进 Linux 脚本
+- [x] 回归：typecheck / lint / test / build / test:e2e 全绿
+
+### 验证方式
+
+- 语法：`python:3.12-slim` 容器内对 LF 副本执行 `bash -n`
+- 缺 Docker：不含 docker CLI 的镜像内执行 `./deploy.sh --check`，期望提示明确、退出码 3
+- 无权限：以非 root 用户执行 `--check`，期望识别为 socket 权限问题
+- 正常：`docker:cli` 容器内挂载仓库与 `docker.sock` 执行 `./deploy.sh`，宿主复查 `/api/health` 与 `/health`
+- 端口占用：容器内先占用 3000 再 `--check`，期望报出占用
+- 只读性：`--check` 前后 `git status` 与容器列表无变化
+
+### 实测结果（2026-09-17）
+
+- 环境：Windows + Docker Desktop（linux 容器，Docker 29.6.1 / Compose v5.5.1）；Linux 侧用 `python:3.12-slim` 容器挂载宿主 `//var/run/docker.sock` 与仓库、`--network host` 实跑真实 bash 与真实 Docker 引擎（docker CLI 与 compose 插件取自 `docker:cli` 镜像）。
+- 语法：`bash -n` 校验 `deploy.sh`、`start.sh`、`stop.sh`（LF 副本）全部通过。
+- 只读体检：`--check` 退出码 0，正确识别 Debian 13 / x86_64 / root / 无 systemd / 容器内环境 / 内存 6853MB / 磁盘 70467MB / 端口 3000、8000 空闲 / 5432 被占用，并识别 Docker 29.6.1 与 compose 5.5.1。
+- 只读性：`--check` 前后 `git status --porcelain` 与 `docker ps -a` 完全一致（无文件改动、无容器创建）。
+- 异常分支：缺 docker CLI → 退出码 3 并给出安装指引；非 root 且不在 docker 组 → 权限指引 + 退出码 3（且不再误报缺 compose）；容器内占用 3000 → 正确报出占用。
+- 安装分发（桩函数校验，未触碰真实系统）：debian / ubuntu（apt + 官方源，`--mirror` 切阿里云源）、fedora 与 centos 系（dnf / yum，缺失则回退便捷脚本）、alpine（apk）、suse（zypper）、未知 ID（便捷脚本）均按预期触发，并统一执行守护进程启用与 docker 组处理。
+- 端到端：`deploy.sh -y` 退出码 0；postgres / data-service / web healthy、migrate 退出码 0；宿主 `GET /api/health` 与 `GET /health` 正常，首页 200 且标题为「个股盘面分析」；容器内无 curl / wget 时健康检查自动走 python3 回退。
+- 参数：`--help` 退出码 0；未知参数退出码 1；`--no-build` 跳过构建起栈并正常通过健康检查。
+- `.env` 分支：隔离目录下缺 `.env` 时自动复制 `.env.example`（内容一致）并提示降级，退出码 0，用户真实 `.env` 未改动。
+- 回归：`typecheck` 退出码 0；`lint` 退出码 0；`test` 47 文件 / 574 例通过；`build` 退出码 0（未生成 `.next/standalone`）；`test:e2e` 5 例通过。
+- 开发中修掉的缺陷：① 漏写安装实现函数，`--install-docker` 会 command not found；② 守护进程不可用时误报「缺少 compose」（引入 `DAEMON_OK`）；③ 无名 uid 下 `id -un` 报错（改用 `CURRENT_USER` 兜底）；④ Windows 工作区 CRLF 导致 Linux 上执行 `start.sh` 报 `set: pipefail: invalid option name`（新增 `.gitattributes` 并把 shell 脚本规范为 LF）。
+- 环境复原：`docker compose down`（保留数据卷）后仅重新拉起 postgres，当前仅 `stock-analysis-postgres` running（healthy）。
+- 已知副作用：compose 项目名取自仓库目录名，若把仓库放进不同目录名且机器上已有旧容器，`container_name: stock-analysis-postgres` 会冲突，需先 `./stop.sh --docker`；换目录名还会生成新的数据卷（旧卷仍在）。
+
+### 风险与遗留
+
+- 真实发行版的安装分支（apt / dnf / apk / zypper）无法在容器内安全实跑，只做了语法与逻辑校验，需在目标系统复验一次。
+- 公网服务器需自行加防火墙或安全组：compose 把 3000 / 8000 / 5432 发布到 `0.0.0.0`。
+## 配置导出与自动加载（迁移部署）（2026-09-18）
+
+需求来源：本机部署迁到云服务器时，密钥 / 地址 / cron 需要一条条从 `.env` 抄进新环境，重复且易漏；期望「导出一次 → 粘一次 → 新环境自动生效」。
+
+- 关联方案：`docs/config-export-plan.md`
+- 分支：`feature/docker-fullstack`
+
+### 任务目标与范围
+
+- 目标：提供配置导出脚本；导出文件（`.env.export`）落在项目内即被自动加载，覆盖运行时、工具链、启动脚本与 Compose 四条链路。
+- 范围：新增 `scripts/export-config.mjs`、`export-config.ps1` / `export-config.bat` / `export-config.sh`、`src/lib/env-export.ts`、`tests/env-export.test.ts`、`tests/env-export-script.test.ts`、方案文档；修改 `src/instrumentation.ts`、`next.config.ts`、`drizzle.config.ts`、`start.ps1`、`start.bat`、`start.sh`、`deploy.sh`、`playwright.config.ts`、`.gitignore`、`package.json`、`.env.example`、`README.md`、本文件。
+- 非目标：不改业务逻辑与数据库结构、不做运行数据（自选股 / 持仓 / `.data`）迁移、不做加密或云端配置中心。
+
+### 验收项
+
+- [x] `export-config.ps1` / `export-config.sh` 生成 `.env.export`：按 `.env.example` 顺序输出，取值优先 `.env`、缺失回退模板默认值
+- [x] 导出文件包含元信息、未填写键清单与「自定义键」段落
+- [x] 两个平台的导出脚本正文一致（忽略时间 / 主机元信息）
+- [x] `.env.export` 被 `.gitignore` 显式忽略并带说明
+- [x] 运行时自动加载：`src/lib/env-export.ts` + `src/instrumentation.ts` + `next.config.ts`
+- [x] 合并语义：真实环境变量 > `.env` > `.env.export`（导出文件只补空缺，不覆盖本机配置）
+- [x] 工具链自动加载：`drizzle.config.ts`；只有 `.env.export` 时 `pnpm db:migrate` 仍能取到 `DATABASE_URL`
+- [x] 脚本落地：`start.ps1` / `start.bat` / `start.sh` / `deploy.sh` 在 `.env` 缺失时优先复制 `.env.export`
+- [x] 解析健壮性：注释 / 空行 / 单双引号 / `export` 前缀 / CRLF / BOM / 非法行 / 空值
+- [x] 端到端隔离：`SKIP_ENV_EXPORT=1` 时不加载导出文件（`playwright.config.ts` 用它保证用例不碰真实数据库）
+- [x] 单测覆盖解析与合并语义，`test` / `typecheck` / `lint` 全绿
+- [x] 文档同步：README 章节 + 方案文档 + 本小节实测结果
+
+### 验证方式
+
+- 单测：`corepack pnpm test`（新增 `tests/env-export.test.ts`）
+- 脚本：临时目录跑 `export-config.ps1` 与 `export-config.sh` 并比对正文
+- 集成：项目根放置 `.env.export` 后启动 `pnpm dev`，确认日志出现加载提示；只有 `.env.export` 时验证 `pnpm db:migrate` 取到 `DATABASE_URL`
+- 脚本落地：隔离目录（无 `.env`）验证 `start.*` 与 `deploy.sh` 优先复制 `.env.export`
+- 回归：`typecheck` / `lint` / `test` / `build` / `test:e2e`
+
+### 实测结果（2026-09-18）
+
+- 环境：Windows 11 + Node 22.22.1 + pnpm 11.24.0；Linux 侧用 `node:22-alpine`（`apk add bash`）与 `python:3.12-slim`（挂宿主 docker CLI、compose 插件与 `/var/run/docker.sock`，`--network host`）实跑真实 bash 与真实 Docker。
+- 单测：`corepack pnpm test` → 49 文件 / 609 例全部通过（新增 `tests/env-export.test.ts` 12 例、`tests/env-export-script.test.ts` 23 例）。
+- 解析对齐：`tests/env-export-script.test.ts` 用 20 组边界写法逐例断言 `parseEnvText` 与 `dotenv.parse` 结果相同（行内注释、前后空格、单/双/反引号、未闭合引号、`KEY: value`、`export` 前缀、`\n` 转义、中文非法键名、空行、纯注释行等）；`formatValue` 对 7 类取值做 `parse(formatValue(v)) === v` 无损回读。
+- 导出结构：按 `.env.example` 键位顺序输出，取值优先 `.env`、缺失或占位回退模板默认值；含导出时间 / 来源主机 / 用法与安全提示、未填写键清单、自定义键段落；含 `#` 的值自动加引号（`SMTP_PASS="p#ss-word"`），`DATA_ROOT=C:\Users\86159\Desktop\stock-analysis` 这类反斜杠值不额外转义、回读一致。
+- 跨平台一致：同一份 `.env` + `.env.example` 分别用 `export-config.ps1`（Windows）与 `export-config.sh`（容器内 bash + node）导出，忽略「导出时间 / 来源主机」两行后 `Compare-Object` 完全一致（各 30 行）；Linux 侧导出文件权限为 `600`（`ls -l` 显示 `-rw-------`）。
+- 入口与 CLI：`export-config.mjs --help` 在无 `node_modules` 的容器内可用（核心零依赖）；重复导出默认拒绝覆盖（退出码 1 并提示 `--force`）；未知参数退出码 1；模板缺失退出码 1；`--force` 可覆盖；自定义 `--template/--env/--output` 生效。
+- 运行时自动加载：项目根临时放入 `.env.export`（含 `MIGRATION_SMOKE_KEY` 与真实 `DATABASE_URL`）后 `pnpm dev`，首页返回 HTTP 200，日志出现 `[env] 已加载 .env.export：补全 0 项，保留本机已有配置 2 项，忽略空占位 0 项。`——计数为 0/2 正说明 `next.config.ts` 在配置求值阶段已先行补全，`instrumentation` 二次加载时判定为「本机已有」，两条链路都被验证到。
+- `SKIP_ENV_EXPORT` 隔离：同样放置 `.env.export` 并设 `SKIP_ENV_EXPORT=1` 启动 `pnpm dev`，日志为 `[env] SKIP_ENV_EXPORT=1，已跳过迁移配置加载。`，首页仍 200。
+- 工具链自动加载：把 `DOTENV_CONFIG_PATH` 指向不存在的文件（等价于目标机器没有 `.env`）后执行 `corepack pnpm db:migrate`，输出 `[✓] migrations applied successfully!`、退出码 0，说明 `DATABASE_URL` 来自 `.env.export`。
+- 脚本落地（隔离目录，实跑真实脚本，非模拟）：
+  - `start.ps1`：输出「已从迁移导出文件 .env.export 复制出 .env（如需调整请直接编辑 .env）。」，生成的 `.env` 内容为 `FROM=export`；
+  - `start.bat`（`cmd /c "start.bat < nul"`）：同上，`.env` 为 `FROM=export`；
+  - `start.sh`（容器内 bash）：有 `.env.export` 时提示「已从迁移导出文件 .env.export 复制出 .env」且 `.env` = `FROM=export`；无 `.env.export` 时回退提示「已复制 .env.example 为 .env」且 `.env` = `FROM=example`；
+  - `deploy.sh`（容器内 + 真实 Docker 引擎）：`3/5 检查 compose` 通过后进入 `5/5 启动全栈容器`，提示「已从迁移导出文件 .env.export 复制出 .env：迁移过来的配置会直接生效」，`.env` = `FROM=export`；因隔离目录没有 `docker-compose.yml`，随后以 `no configuration file provided: not found` 退出 1（预期，跑完未新建任何容器，`docker ps -a` 仍只有 `stock-analysis-postgres`）。
+- 缺陷与修复（3 处）：
+  1) 导出核心最初 `import dotenv`，未执行 `pnpm install` 时连 `--help` 都报 `ERR_MODULE_NOT_FOUND`；改为零依赖解析器，并用 20 组用例与 `dotenv.parse` 逐例对齐。
+  2) `src/lib/env-export.ts` 直接调用 `node:fs`（动态路径）触发 Turbopack 警告 `Dynamic filesystem access causes tracing of the whole project`：实测 `NEXT_OUTPUT=standalone` 的 `.next/standalone` 会把整个项目（含 `tests/`、`docs/`、根目录脚本，本地还含 `.env`、`.data`）一起打包，产物 33.8 MB。改为通过 `config({ path, processEnv: {} })` 借用 dotenv 读取，警告消失、产物回落到 27.66 MB，且不再包含 `tests/`、`docs/`、根目录脚本；`src/`、`drizzle/` 等条目与改动前构建的 `stock-analysis-web:local` 镜像一致，属 Next 既有行为（该镜像 `/app` 下无 `.env`，密钥靠 `.dockerignore` + compose 注入隔离）。
+  3) 端到端测试会刻意清空 `DATABASE_URL` 等变量来隔离真实数据，而 `.env.export` 会把它们「补回来」；新增 `SKIP_ENV_EXPORT=1` 开关并在 `playwright.config.ts` 里设置（含单测）。
+- 回归：`typecheck` 退出码 0；`lint` 退出码 0；`test` 49 文件 / 609 例通过；`build` 退出码 0、0 条警告、未生成 `.next/standalone`；`test:e2e` 5 例通过；`shellcheck -x`（`export-config.sh`、`deploy.sh`、`start.sh`）零告警；`bash -n` 对 `export-config.sh`、`start.sh`、`deploy.sh`（LF 副本）通过。
+- 环境复原：临时 `.env.export` 已删除；`pnpm dev` 进程与 3000 端口已释放；`docker ps -a` 仅 `stock-analysis-postgres`（healthy）；`.env` 未被修改或替换。
+
+### 风险与遗留
+
+- 导出文件是明文密钥，需要提醒用户勿提交、勿外发
+- 脚本侧解析只覆盖常见 dotenv 写法，复杂转义以运行时 `dotenv` 为准
+- 值里同时含单引号与双引号时无法无损回读（dotenv 不还原 `\"`），这类取值需人工确认
+- 本地执行 `NEXT_OUTPUT=standalone` 构建时，`.next/standalone` 仍可能带上 `.env` / `.data`（Next 既有行为）；Docker 路径不受影响，因为 `.dockerignore` 已把它们挡在构建上下文之外

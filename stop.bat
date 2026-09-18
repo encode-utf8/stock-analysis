@@ -2,6 +2,8 @@
 setlocal
 cd /d "%~dp0"
 
+if /i "%~1"=="--docker" goto docker_stop
+
 echo [stop] stopping project processes...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop.ps1"
 
@@ -10,6 +12,13 @@ call :stop_port 3000 "web-frontend"
 
 echo.
 echo [done] web frontend, data service and scheduler worker stopped.
+exit /b 0
+
+:docker_stop
+echo [stop] stopping full stack containers...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop.ps1" -Docker
+echo.
+echo [done] containers stopped; data volumes are kept.
 exit /b 0
 
 :stop_port

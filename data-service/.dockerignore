@@ -1,0 +1,8 @@
+# 侧车镜像构建上下文排除清单。
+.venv
+__pycache__
+*.py[cod]
+*.log
+checklist.md
+README.md
+
