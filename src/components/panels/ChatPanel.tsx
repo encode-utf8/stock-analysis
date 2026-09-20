@@ -1,10 +1,13 @@
 "use client";
 
+import { AgentTracePanel } from "@/components/panels/AgentTracePanel";
 import { Button } from "@/components/ui/button";
 import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { IDLE_TRACE_STATE, isTraceVisible, type AgentTraceViewState } from "@/lib/agent-trace-client";
 import { sanitizeChatText } from "@/lib/format";
+import type { AgentTracePolicy } from "@/lib/shared/types";
 
 /** 前端对话消息展示结构。 */
 export interface ChatViewMessage {
@@ -26,6 +29,10 @@ interface ChatPanelProps {
   onInputChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onStop: () => void;
+  /** 运行期执行轨迹；缺省时不渲染。 */
+  trace?: AgentTraceViewState;
+  /** 轨迹留存策略，默认结束后清除。 */
+  tracePolicy?: AgentTracePolicy;
 }
 
 /** 对话助手面板。 */
@@ -38,7 +45,12 @@ export function ChatPanel({
   onInputChange,
   onSubmit,
   onStop,
+  trace,
+  tracePolicy,
 }: ChatPanelProps) {
+  const traceState = trace ?? IDLE_TRACE_STATE;
+  const policy = tracePolicy ?? "ephemeral";
+
   return (
     <section className="tech-panel tech-lift p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
@@ -47,6 +59,11 @@ export function ChatPanel({
           {conversationId ? `会话 ${conversationId.slice(0, 12)}...` : "新会话"}
         </span>
       </div>
+      {isTraceVisible(traceState) ? (
+        <div className="mb-3">
+          <AgentTracePanel state={traceState} policy={policy} />
+        </div>
+      ) : null}
       <div className="mb-4 max-h-[420px] space-y-3 overflow-y-auto rounded-lg border bg-muted/20 p-3">
         {messages.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">

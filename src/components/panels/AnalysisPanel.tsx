@@ -4,15 +4,21 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { AgentTracePanel } from "@/components/panels/AgentTracePanel";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { IDLE_TRACE_STATE, isTraceVisible, type AgentTraceViewState } from "@/lib/agent-trace-client";
 import { formatDateTime } from "@/lib/format";
-import type { AnalysisReport } from "@/lib/shared/types";
+import type { AgentTracePolicy, AnalysisReport } from "@/lib/shared/types";
 
 interface AnalysisPanelProps {
   reports: AnalysisReport[];
   loading: boolean;
   onDelete: (reportId: string) => void;
+  /** 生成期的执行轨迹；缺省时不渲染。 */
+  trace?: AgentTraceViewState;
+  /** 轨迹留存策略，默认结束后清除。 */
+  tracePolicy?: AgentTracePolicy;
 }
 
 /** Markdown 渲染容器。 */
@@ -29,10 +35,14 @@ export function AnalysisPanel({
   reports,
   loading,
   onDelete,
+  trace,
+  tracePolicy,
 }: AnalysisPanelProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const latestReport = reports[0] ?? null;
   const hasReport = Boolean(latestReport);
+  const traceState = trace ?? IDLE_TRACE_STATE;
+  const policy = tracePolicy ?? "ephemeral";
 
   return (
     <div className="tech-panel tech-lift p-4 shadow-sm">
@@ -49,6 +59,12 @@ export function AnalysisPanel({
           </Button>
         ) : null}
       </div>
+
+      {isTraceVisible(traceState) ? (
+        <div className="mt-3">
+          <AgentTracePanel state={traceState} policy={policy} />
+        </div>
+      ) : null}
 
       <div className={hasReport ? "mt-3 max-h-[560px] overflow-y-auto pr-1" : "mt-3"}>
         {loading && !hasReport ? (

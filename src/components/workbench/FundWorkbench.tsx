@@ -33,6 +33,15 @@ import {
 } from "@/components/panels/fund/FundOptionsSidebar";
 import { ModuleMenuBar } from "@/components/panels/ModuleMenuBar";
 import { Button } from "@/components/ui/button";
+import {
+  applyTraceSnapshot,
+  clearTrace,
+  finishTrace,
+  IDLE_TRACE_STATE,
+  useAgentTracePolicy,
+  useTraceAutoClear,
+  type AgentTraceViewState,
+} from "@/lib/agent-trace-client";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import type { FundMetricsRange } from "@/lib/fund-metrics";
 import { DEFAULT_FUND_CODE, normalizeFundCode } from "@/lib/fund-market";
@@ -150,6 +159,11 @@ export default function FundWorkbench() {
   const [fundMessages, setFundMessages] = useState<ChatViewMessage[]>([]);
   const [fundChatInput, setFundChatInput] = useState("");
   const [fundChatLoading, setFundChatLoading] = useState(false);
+  const [fundAnalysisTraceState, setFundAnalysisTraceState] =
+    useState<AgentTraceViewState>(IDLE_TRACE_STATE);
+  const [fundChatTraceState, setFundChatTraceState] =
+    useState<AgentTraceViewState>(IDLE_TRACE_STATE);
+  const [tracePolicy] = useAgentTracePolicy();
   const [queryVersion, setQueryVersion] = useState(0);
   const [replayRefreshToken, setReplayRefreshToken] = useState(0);
   const [lastDeletedReportId, setLastDeletedReportId] = useState<string | null>(null);
@@ -163,6 +177,12 @@ export default function FundWorkbench() {
   const fundAnalysisAbortRef = useRef<AbortController | null>(null);
   const fundChatAbortRef = useRef<AbortController | null>(null);
   const lastCompletedFundReportRef = useRef<FundAnalysisReport | null>(null);
+
+  // 轨迹结束后按留存策略清理：瞬时策略延时移除，保留策略折叠保留。
+  const clearFundAnalysisTrace = useCallback(() => setFundAnalysisTraceState(clearTrace), []);
+  const clearFundChatTrace = useCallback(() => setFundChatTraceState(clearTrace), []);
+  useTraceAutoClear(fundAnalysisTraceState, tracePolicy, clearFundAnalysisTrace);
+  useTraceAutoClear(fundChatTraceState, tracePolicy, clearFundChatTrace);
 
   const toggleModule = (key: FundModuleKey) => {
     setEnabledModules((previous) => ({ ...previous, [key]: !previous[key] }));
@@ -486,6 +506,7 @@ export default function FundWorkbench() {
     const draftId = `fund-analysis-stream-${Date.now()}`;
     fundAnalysisAbortRef.current = controller;
     setFundAnalysisLoading(true);
+    setFundAnalysisTraceState(IDLE_TRACE_STATE);
     setError(null);
     let completed = false;
     const draftReport: FundAnalysisReport = {
@@ -527,7 +548,10 @@ export default function FundWorkbench() {
           return;
         }
         const event = JSON.parse(dataLine.slice(6)) as FundAnalysisStreamEvent;
-        if (event.type === "delta" && event.content) {
+        if (event.type === "trace" && event.data?.trace) {
+          const snapshot = event.data.trace;
+          setFundAnalysisTraceState((previous) => applyTraceSnapshot(previous, snapshot));
+        } else if (event.type === "delta" && event.content) {
           setFundReports((previous) =>
             previous.map((item) =>
               item.id === draftId
@@ -541,7 +565,9 @@ export default function FundWorkbench() {
           setFundReports((previous) =>
             previous.map((item) => (item.id === draftId ? event.data?.report ?? item : item)),
           );
+          setFundAnalysisTraceState((previous) => finishTrace(previous, "done"));
         } else if (event.type === "error") {
+          setFundAnalysisTraceState((previous) => finishTrace(previous, "error"));
           throw new Error(event.data?.message ?? "基金分析生成失败。");
         }
       };
@@ -580,6 +606,7 @@ export default function FundWorkbench() {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
       }
+      setFundAnalysisTraceState((previous) => finishTrace(previous, "error"));
       setError(nextError instanceof Error ? nextError.message : "基金分析生成失败。");
       setFundReports((previous) => previous.filter((item) => item.id !== draftId));
     } finally {
@@ -601,6 +628,7 @@ export default function FundWorkbench() {
     fundChatAbortRef.current = controller;
     setFundChatInput("");
     setFundChatLoading(true);
+    setFundChatTraceState(IDLE_TRACE_STATE);
     const userId = `local-fund-user-${Date.now()}`;
     const assistantId = `local-fund-assistant-${Date.now()}`;
     setFundMessages((previous) => [
@@ -633,7 +661,10 @@ export default function FundWorkbench() {
           return;
         }
         const event = JSON.parse(dataLine.slice(6)) as ChatStreamEvent;
-        if (event.type === "meta" && event.data?.conversationId) {
+        if (event.type === "trace" && event.data?.trace) {
+          const snapshot = event.data.trace;
+          setFundChatTraceState((previous) => applyTraceSnapshot(previous, snapshot));
+        } else if (event.type === "meta" && event.data?.conversationId) {
           setFundConversationId(event.data.conversationId);
         } else if (event.type === "delta" && event.content) {
           setFundMessages((previous) =>
@@ -656,7 +687,9 @@ export default function FundWorkbench() {
                 : message,
             ),
           );
+          setFundChatTraceState((previous) => finishTrace(previous, "done"));
         } else if (event.type === "error") {
+          setFundChatTraceState((previous) => finishTrace(previous, "error"));
           throw new Error(event.data?.message ?? "基金对话生成失败。");
         }
       };
@@ -680,6 +713,7 @@ export default function FundWorkbench() {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
       }
+      setFundChatTraceState((previous) => finishTrace(previous, "error"));
       setError(nextError instanceof Error ? nextError.message : "基金对话生成失败。");
       setFundMessages((previous) => previous.filter((message) => message.id !== assistantId));
     } finally {
@@ -692,6 +726,7 @@ export default function FundWorkbench() {
 
   const stopFundChat = () => {
     fundChatAbortRef.current?.abort();
+    setFundChatTraceState(IDLE_TRACE_STATE);
     setFundChatLoading(false);
   };
 
@@ -808,6 +843,8 @@ export default function FundWorkbench() {
           code={code}
           reports={fundReports}
           loading={fundAnalysisLoading}
+          trace={fundAnalysisTraceState}
+          tracePolicy={tracePolicy}
           onGenerate={() => void handleFundAnalysis()}
           onDelete={async (reportId) => {
             try {
@@ -839,6 +876,8 @@ export default function FundWorkbench() {
           onInputChange={setFundChatInput}
           onSubmit={(event) => void handleFundChatSubmit(event)}
           onStop={stopFundChat}
+          trace={fundChatTraceState}
+          tracePolicy={tracePolicy}
         />
       );
     }

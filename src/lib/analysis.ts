@@ -1,4 +1,5 @@
 // AI 分析编排：读取行情/指标/资讯后生成教学式报告，并持久化到 store 与 R2 快照。
+import { createTraceRun, traceEvent } from "@/lib/agent-trace";
 import { recordExternalCall, recordTaskRun } from "@/lib/observability";
 import { getIndicators, getKlines, getMarketQuote, getStock } from "@/lib/market-data";
 import { saveAnalysisSnapshot } from "@/lib/r2";
@@ -568,12 +569,25 @@ export async function* streamAnalysis(
 ): AsyncGenerator<AnalysisStreamEvent> {
   recordTaskRun("analysis");
 
+  const trace = createTraceRun("stock-analysis", code);
+  const dataStep = trace.startStep({
+    kind: "data",
+    label: "装配行情与指标",
+    detail: "读取股票档案、行情快照、日线 K 线与技术指标",
+  });
+  // 先推送首帧，让轨迹面板在数据装配阶段即可见。
+  yield traceEvent(trace.snapshot());
+
   const [stock, quote, indicators, klines] = await Promise.all([
     getStock(code),
     getMarketQuote(code),
     getIndicators(code, "day"),
     getKlines(code, "day", "qfq", 120),
   ]);
+
+  dataStep.finish({
+    detail: `已装配 ${stock.name} 行情、${klines.length} 条日线 K 线与技术指标`,
+  });
 
   const reportId = buildReportId(code);
   const controller = new AbortController();
@@ -589,37 +603,84 @@ export async function* streamAnalysis(
 
   try {
     yield { type: "meta", data: { reportId } };
+    yield traceEvent(trace.snapshot());
 
     const fallbackContent = buildFallbackReport(code, stock.name, quote, indicators, news, klines);
     const messages = buildAnalysisMessages(stock, quote, indicators, news, klines, prompt ?? "");
     let llmContent: string | null = null;
     let streamedContent = "";
+    let streamError: string | null = null;
 
-    if (deepSeekConfigured()) {
+    const aiConfigured = deepSeekConfigured();
+    const thinkingStep = trace.startStep({
+      kind: "thinking",
+      label: "Thinking",
+      detail: aiConfigured
+        ? "结合行情、技术指标与资讯生成分析报告"
+        : "未配置 AI 密钥，改用本地模板报告",
+    });
+    yield traceEvent(trace.snapshot());
+
+    if (aiConfigured) {
       try {
         for await (const chunk of streamDeepSeekAnalysis(messages, controller.signal)) {
           streamedContent += chunk;
+          thinkingStep.markToken();
           yield { type: "delta", content: chunk };
         }
-        if (
-          streamedContent.trim() &&
-          !hasForbiddenPromise(streamedContent) &&
-          isConcreteAnalysis(streamedContent, stock.code, stock.name, quote, news)
-        ) {
-          llmContent = streamedContent;
-        }
-      } catch {
+      } catch (error) {
         llmContent = null;
+        streamError = error instanceof Error ? error.message : String(error);
       }
+      if (streamError) {
+        thinkingStep.finish({ error: streamError });
+      } else {
+        thinkingStep.finish(
+          streamedContent.trim()
+            ? { detail: "报告草稿生成完成，等待合规校验" }
+            : { status: "failed", detail: "模型未返回内容" },
+        );
+      }
+    } else {
+      thinkingStep.finish({ status: "skipped", detail: "未调用 AI（本地模板报告）" });
+    }
+
+    // 合规与事实性校验：与生成步骤分离计时，便于定位被拦截的报告。
+    const guardStep = trace.startStep({
+      kind: "guard",
+      label: "合规与事实性校验",
+      detail: "检查确定性收益承诺与行情数据一致性",
+    });
+    if (!aiConfigured) {
+      guardStep.finish({ status: "skipped", detail: "未调用 AI，跳过校验" });
+    } else if (streamError || !streamedContent.trim()) {
+      llmContent = null;
+      guardStep.finish({ status: "skipped", detail: "无可用模型输出，改用本地模板报告" });
+    } else {
+      const passed =
+        !hasForbiddenPromise(streamedContent) &&
+        isConcreteAnalysis(streamedContent, stock.code, stock.name, quote, news);
+      if (passed) {
+        llmContent = streamedContent;
+      }
+      guardStep.finish({
+        status: passed ? "success" : "skipped",
+        detail: passed ? "通过：无收益承诺，且与当前行情一致" : "未通过：改用本地模板报告",
+      });
     }
 
     if (controller.signal.aborted) {
       if (active.persistOnAbort && streamedContent.trim()) {
         const content = finalizeContent(streamedContent, news);
-        const report = await persistReport(
-          buildReport(code, quote, indicators, klines, news, content, reportId),
+        const report = await trace.measure(
+          { kind: "persist", label: "保存分析报告", detail: "用户中断，保存已生成内容" },
+          () => persistReport(buildReport(code, quote, indicators, klines, news, content, reportId)),
+          (saved) => `已保存中断前内容：报告 ${saved.id}`,
         );
+        yield traceEvent(trace.finish("aborted"));
         yield { type: "done", data: { report } };
+      } else {
+        yield traceEvent(trace.finish("aborted"));
       }
       return;
     }
@@ -631,9 +692,12 @@ export async function* streamAnalysis(
       yield { type: "delta", content: content };
     }
 
-    const report = await persistReport(
-      buildReport(code, quote, indicators, klines, news, content, reportId),
+    const report = await trace.measure(
+      { kind: "persist", label: "保存分析报告" },
+      () => persistReport(buildReport(code, quote, indicators, klines, news, content, reportId)),
+      (saved) => `报告 ${saved.id} 已保存，引用 ${saved.news_refs.length} 条资讯`,
     );
+    yield traceEvent(trace.finish(signal?.aborted ? "aborted" : "success"));
     yield { type: "done", data: { report } };
   } finally {
     activeAnalysisStreams.delete(reportId);

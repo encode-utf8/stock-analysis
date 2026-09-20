@@ -1,4 +1,5 @@
 // 对话助手编排：多轮上下文 + DeepSeek 流式输出 + function calling。
+import { createTraceRun, traceEvent, type TraceRunRecorder } from "@/lib/agent-trace";
 import { runAnalysis } from "@/lib/analysis";
 import { getIndicators, getKlines, getMarketQuote, getStock } from "@/lib/market-data";
 import { getNews } from "@/lib/news";
@@ -238,6 +239,53 @@ const CHAT_TOOLS = [
 ] as const;
 
 type ChatToolName = (typeof CHAT_TOOLS)[number]["function"]["name"];
+
+/** 工具到中文可读名的映射，用于执行轨迹展示。 */
+const TOOL_STEP_LABELS: Record<ChatToolName, string> = {
+  get_quote: "读取行情快照",
+  get_kline: "读取 K 线数据",
+  get_indicators: "计算技术指标",
+  search_news: "检索相关资讯",
+  get_report: "读取历史报告",
+  save_report: "生成并保存分析报告",
+};
+
+/** 把工具入参压缩成一行摘要，供轨迹展示；不含密钥等敏感信息。 */
+function describeToolArguments(argumentsObject: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const key of ["code", "period", "adjust", "limit", "query", "prompt"]) {
+    const value = argumentsObject[key];
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+    parts.push(`${key}=${String(value)}`);
+  }
+  return parts.length > 0 ? parts.join("，") : "使用当前上下文参数";
+}
+
+/** 执行一次工具并把起止状态写入执行轨迹；未传轨迹时等价于直接执行。 */
+async function runTracedTool(
+  trace: TraceRunRecorder | undefined,
+  name: ChatToolName,
+  rawArguments: string,
+  request: ChatRequest,
+  round: number,
+): Promise<ToolExecution> {
+  const handle = trace?.startStep({
+    kind: "tool",
+    label: TOOL_STEP_LABELS[name],
+    detail: describeToolArguments(parseToolArguments(rawArguments)),
+    round,
+  });
+  try {
+    const execution = await executeTool(name, rawArguments, request);
+    handle?.finish({ detail: execution.summary });
+    return execution;
+  } catch (error) {
+    handle?.finish({ error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
+}
 
 /** 根据股票代码返回对应交易所官网链接，作为数据来源入口。 */
 function exchangeSourceUrl(code: string): string {
@@ -575,17 +623,29 @@ function collectSources(executions: ToolExecution[]): ChatReply["sources"] {
 }
 
 /** 兜底回答：无 DeepSeek 密钥或调用失败时仍基于真实工具数据作答。 */
-async function buildFallbackReply(request: ChatRequest): Promise<{
+async function buildFallbackReply(
+  request: ChatRequest,
+  trace?: TraceRunRecorder,
+): Promise<{
   content: string;
   executions: ToolExecution[];
 }> {
   const executions: ToolExecution[] = [];
   const toolNames: ChatToolName[] = ["get_quote", "get_kline", "get_indicators", "search_news", "get_report"];
+  const fallbackThinking = trace?.startStep({
+    kind: "thinking",
+    label: "Thinking",
+    detail: "未调用 AI（本地兜底）",
+    round: 1,
+  });
+  fallbackThinking?.finish({ status: "skipped" });
   for (const name of toolNames) {
-    executions.push(await executeTool(name, "{}", request));
+    executions.push(await runTracedTool(trace, name, "{}", request, 1));
   }
   if (/保存报告|生成报告|再分析|分析一下/.test(request.message)) {
-    executions.push(await executeTool("save_report", JSON.stringify({ prompt: request.message }), request));
+    executions.push(
+      await runTracedTool(trace, "save_report", JSON.stringify({ prompt: request.message }), request, 1),
+    );
   }
 
   const quote = await getMarketQuote(request.code);
@@ -651,22 +711,32 @@ export async function* streamChat(request: ChatRequest, signal?: AbortSignal): A
   const executions: ToolExecution[] = [];
   const toolCalls: ChatReply["toolCalls"] = [];
   let content = "";
+  const trace = createTraceRun("stock-chat", request.code);
   let aiInvoked = false;
 
   if (!deepSeekEnabled()) {
-    const fallback = await buildFallbackReply(request);
+    const fallback = await buildFallbackReply(request, trace);
+    yield traceEvent(trace.snapshot());
     executions.push(...fallback.executions);
     content = sanitizeForbiddenPromises(fallback.content);
     yield { type: "delta", content };
   } else {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const roundToolCalls: OpenAiToolCall[] = [];
+      const thinkingStep = trace.startStep({
+        kind: "thinking",
+        label: "Thinking",
+        detail: `第 ${round + 1} 轮：理解问题并规划工具调用`,
+        round: round + 1,
+      });
+      yield traceEvent(trace.snapshot());
       let roundContent = "";
 
       try {
         for await (const chunk of streamDeepSeekCompletion(llmMessages, signal)) {
           if (chunk.type === "delta") {
             roundContent += chunk.content;
+            thinkingStep.markToken();
             content += chunk.content;
             yield { type: "delta", content: chunk.content };
           } else if (chunk.type === "tool_calls") {
@@ -692,6 +762,13 @@ export async function* streamChat(request: ChatRequest, signal?: AbortSignal): A
         throw error;
       }
 
+      thinkingStep.finish({
+        detail:
+          roundToolCalls.length > 0
+            ? `决定调用 ${roundToolCalls.length} 个工具`
+            : "直接生成回答",
+      });
+
       if (roundToolCalls.length === 0) {
         break;
       }
@@ -703,13 +780,16 @@ export async function* streamChat(request: ChatRequest, signal?: AbortSignal): A
       });
 
       for (const call of roundToolCalls) {
-        const execution = await executeTool(
+        const execution = await runTracedTool(
+          trace,
           call.function.name as ChatToolName,
           call.function.arguments,
           request,
+          round + 1,
         );
         executions.push(execution);
         toolCalls.push({ name: execution.name, summary: execution.summary });
+        yield traceEvent(trace.snapshot());
         llmMessages.push({
           role: "tool",
           content: execution.resultText,
@@ -724,15 +804,17 @@ export async function* streamChat(request: ChatRequest, signal?: AbortSignal): A
     content = sanitizeForbiddenPromises(content);
     if (!content.trim()) {
       aiInvoked = false;
-      const fallback = await buildFallbackReply(request);
+      const fallback = await buildFallbackReply(request, trace);
       content = sanitizeForbiddenPromises(fallback.content);
       if (!executions.length) {
+        yield traceEvent(trace.snapshot());
         executions.push(...fallback.executions);
       }
     }
   }
 
   if (signal?.aborted && !content.trim()) {
+    trace.finish("aborted");
     return;
   }
   const assistantMessage: Message = {
@@ -744,6 +826,8 @@ export async function* streamChat(request: ChatRequest, signal?: AbortSignal): A
     created_at: new Date().toISOString(),
   };
   await store.messages.insert(assistantMessage);
+
+  yield traceEvent(trace.finish(signal?.aborted ? "aborted" : "success"));
 
   const sources = collectSources(executions);
   yield {

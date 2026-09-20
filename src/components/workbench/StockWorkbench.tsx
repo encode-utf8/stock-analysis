@@ -8,6 +8,15 @@ import { AnalysisPanel } from "@/components/panels/AnalysisPanel";
 import { ChartPanel } from "@/components/panels/ChartPanel";
 import { ChatPanel, type ChatViewMessage } from "@/components/panels/ChatPanel";
 import {
+  applyTraceSnapshot,
+  clearTrace,
+  finishTrace,
+  IDLE_TRACE_STATE,
+  useAgentTracePolicy,
+  useTraceAutoClear,
+  type AgentTraceViewState,
+} from "@/lib/agent-trace-client";
+import {
   isUnusableConversationTitle,
   sanitizeChatText,
 } from "@/lib/format";
@@ -113,6 +122,16 @@ export default function StockWorkbench() {
   const [chartLoading, setChartLoading] = useState(false);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
+  const [traceState, setTraceState] = useState<AgentTraceViewState>(IDLE_TRACE_STATE);
+  const [analysisTraceState, setAnalysisTraceState] =
+    useState<AgentTraceViewState>(IDLE_TRACE_STATE);
+  const [tracePolicy] = useAgentTracePolicy();
+
+  // 轨迹结束后按留存策略清理：瞬时策略延时移除，保留策略折叠保留。
+  const clearChatTrace = useCallback(() => setTraceState(clearTrace), []);
+  const clearAnalysisTrace = useCallback(() => setAnalysisTraceState(clearTrace), []);
+  useTraceAutoClear(traceState, tracePolicy, clearChatTrace);
+  useTraceAutoClear(analysisTraceState, tracePolicy, clearAnalysisTrace);
   const [chatInput, setChatInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<string | null>(null);
@@ -346,6 +365,7 @@ export default function StockWorkbench() {
     analysisDraftIdRef.current = draftId;
     analysisRealReportIdRef.current = null;
     setAnalysisLoading(true);
+    setAnalysisTraceState(IDLE_TRACE_STATE);
     let completed = false;
     setError(null);
     const draftReport: AnalysisReport = {
@@ -392,12 +412,17 @@ export default function StockWorkbench() {
                 : item,
             ),
           );
+        } else if (event.type === "trace" && event.data?.trace) {
+          const snapshot = event.data.trace;
+          setAnalysisTraceState((previous) => applyTraceSnapshot(previous, snapshot));
         } else if (event.type === "done" && event.data?.report) {
           completed = true;
           setReports((previous) =>
             previous.map((item) => (item.id === draftId ? event.data?.report ?? item : item)),
           );
+          setAnalysisTraceState((previous) => finishTrace(previous, "done"));
         } else if (event.type === "error") {
+          setAnalysisTraceState((previous) => finishTrace(previous, "error"));
           throw new Error(event.data?.message ?? "分析生成失败。");
         }
       };
@@ -426,6 +451,7 @@ export default function StockWorkbench() {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
       }
+      setAnalysisTraceState((previous) => finishTrace(previous, "error"));
       setError(nextError instanceof Error ? nextError.message : "分析生成失败。");
       setReports((previous) => previous.filter((item) => item.id !== draftId));
     } finally {
@@ -462,6 +488,7 @@ export default function StockWorkbench() {
       }
     }
     analysisAbortRef.current?.abort();
+    setAnalysisTraceState(IDLE_TRACE_STATE);
     setAnalysisLoading(false);
   };
 
@@ -472,6 +499,7 @@ export default function StockWorkbench() {
 
     if (analysisDraftIdRef.current === reportId) {
       analysisAbortRef.current?.abort();
+      setAnalysisTraceState(IDLE_TRACE_STATE);
       setReports((previous) => previous.filter((report) => report.id !== reportId));
       setAnalysisLoading(false);
       return;
@@ -537,6 +565,7 @@ export default function StockWorkbench() {
     chatAbortRef.current = controller;
     setChatInput("");
     setChatLoading(true);
+    setTraceState(IDLE_TRACE_STATE);
     const localUserId = `local-user-${Date.now()}`;
     const assistantId = `local-assistant-${Date.now()}`;
     setMessages((previous) => [
@@ -585,6 +614,9 @@ export default function StockWorkbench() {
                 : message,
             ),
           );
+        } else if (event.type === "trace" && event.data?.trace) {
+          const snapshot = event.data.trace;
+          setTraceState((previous) => applyTraceSnapshot(previous, snapshot));
         } else if (event.type === "done" && event.data) {
           setMessages((previous) =>
             previous.map((message) =>
@@ -598,7 +630,9 @@ export default function StockWorkbench() {
                 : message,
             ),
           );
+          setTraceState((previous) => finishTrace(previous, "done"));
         } else if (event.type === "error") {
+          setTraceState((previous) => finishTrace(previous, "error"));
           throw new Error(event.data?.message ?? "对话生成失败。");
         }
       };
@@ -624,6 +658,7 @@ export default function StockWorkbench() {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
       }
+      setTraceState((previous) => finishTrace(previous, "error"));
       setError(nextError instanceof Error ? nextError.message : "对话生成失败。");
       setMessages((previous) => previous.filter((message) => message.id !== assistantId));
     } finally {
@@ -636,6 +671,7 @@ export default function StockWorkbench() {
 
   const stopChat = () => {
     chatAbortRef.current?.abort();
+    setTraceState(IDLE_TRACE_STATE);
     setChatLoading(false);
   };
 
@@ -692,7 +728,13 @@ export default function StockWorkbench() {
     }
     if (key === "analysis") {
       return enabledModules.analysis && stock && quote ? (
-        <AnalysisPanel reports={reports} loading={reportsLoading} onDelete={handleDeleteReport} />
+        <AnalysisPanel
+          reports={reports}
+          loading={reportsLoading}
+          onDelete={handleDeleteReport}
+          trace={analysisTraceState}
+          tracePolicy={tracePolicy}
+        />
       ) : null;
     }
     if (key === "chat") {
@@ -706,6 +748,8 @@ export default function StockWorkbench() {
           onInputChange={(value) => setChatInput(value)}
           onSubmit={handleChatSubmit}
           onStop={stopChat}
+          trace={traceState}
+          tracePolicy={tracePolicy}
         />
       ) : null;
     }

@@ -1,10 +1,12 @@
 "use client";
 
+import { AgentTracePanel } from "@/components/panels/AgentTracePanel";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { IDLE_TRACE_STATE, isTraceVisible, type AgentTraceViewState } from "@/lib/agent-trace-client";
 import { formatDateTime } from "@/lib/format";
-import type { FundAnalysisReport } from "@/lib/shared/types";
+import type { AgentTracePolicy, FundAnalysisReport } from "@/lib/shared/types";
 
 interface FundAnalysisPanelProps {
   code: string | null;
@@ -12,6 +14,10 @@ interface FundAnalysisPanelProps {
   loading: boolean;
   onGenerate: () => void;
   onDelete: (reportId: string) => void;
+  /** 生成期的执行轨迹；缺省时不渲染。 */
+  trace?: AgentTraceViewState;
+  /** 轨迹留存策略，默认结束后清除。 */
+  tracePolicy?: AgentTracePolicy;
 }
 
 /** 基金 AI 报告面板：生成、展示与删除基金分析结果。 */
@@ -21,8 +27,12 @@ export function FundAnalysisPanel({
   loading,
   onGenerate,
   onDelete,
+  trace,
+  tracePolicy,
 }: FundAnalysisPanelProps) {
   const latestReport = reports[0] ?? null;
+  const traceState = trace ?? IDLE_TRACE_STATE;
+  const policy = tracePolicy ?? "ephemeral";
 
   return (
     <section className="tech-panel tech-lift p-4 shadow-sm">
@@ -37,6 +47,12 @@ export function FundAnalysisPanel({
           {loading ? "生成中..." : "生成基金 AI 分析"}
         </Button>
       </div>
+
+      {isTraceVisible(traceState) ? (
+        <div className="mb-3">
+          <AgentTracePanel state={traceState} policy={policy} />
+        </div>
+      ) : null}
 
       {loading && !latestReport ? (
         <p className="py-12 text-center text-sm text-muted-foreground">正在聚合基金数据并生成报告...</p>
