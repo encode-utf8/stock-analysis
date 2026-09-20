@@ -1,4 +1,5 @@
 ﻿// 基金对话助手编排：围绕当前基金数据做多轮中文问答，并持久化到基金内存仓库。
+import { createTraceRun, traceEvent } from "@/lib/agent-trace";
 import { getFundProfile } from "@/lib/fund-data";
 import { getFundIntraday } from "@/lib/fund-intraday";
 import { getFundHoldings } from "@/lib/fund-holdings";
@@ -236,9 +237,22 @@ export async function* streamFundChat(
   signal?: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent> {
   recordTaskRun("chat");
+
+  const trace = createTraceRun("fund-chat", request.code);
+  const dataStep = trace.startStep({
+    kind: "data",
+    label: "装配基金上下文",
+    detail: "读取档案、盘中行情/估算、持仓与风险指标",
+  });
+  // 先推送首帧，让轨迹面板在上下文装配阶段即可见。
+  yield traceEvent(trace.snapshot());
+
   const conversation = await resolveConversation(request.code, request.conversationId);
   const history = await fundAiStore.messages.listByConversation(conversation.id);
   const context = await buildFundContext(request.code);
+  dataStep.finish({
+    detail: `已装配 ${history.length} 条历史消息与当前基金数据`,
+  });
 
   const userMessage: FundMessage = {
     id: shortId("fund-msg"),
@@ -251,21 +265,43 @@ export async function* streamFundChat(
   await fundAiStore.messages.insert(userMessage);
 
   yield { type: "meta", data: { conversationId: conversation.id, messageId: userMessage.id } };
+  yield traceEvent(trace.snapshot());
 
   let content = "";
   let aiInvoked = false;
-  if (deepSeekEnabled()) {
+  const aiConfigured = deepSeekEnabled();
+  const thinkingStep = trace.startStep({
+    kind: "thinking",
+    label: "Thinking",
+    detail: aiConfigured
+      ? "结合基金上下文生成回答"
+      : "未配置 AI 密钥，改用本地数据摘要",
+  });
+  yield traceEvent(trace.snapshot());
+
+  if (aiConfigured) {
     try {
       const messages = buildUserMessage(context, buildHistoryMessages(history), request.message);
       for await (const chunk of streamDeepSeekFundChat(messages, signal)) {
         content += chunk;
+        thinkingStep.markToken();
         yield { type: "delta", content: chunk };
       }
       aiInvoked = content.trim().length > 0;
-    } catch {
+      thinkingStep.finish(
+        aiInvoked
+          ? { detail: "回答生成完成" }
+          : { status: "failed", detail: "模型未返回内容，改用本地数据摘要" },
+      );
+    } catch (error) {
       content = "";
       aiInvoked = false;
+      thinkingStep.finish({
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
+  } else {
+    thinkingStep.finish({ status: "skipped", detail: "未调用 AI（本地数据摘要）" });
   }
 
   if (!content.trim()) {
@@ -283,6 +319,8 @@ export async function* streamFundChat(
     created_at: new Date().toISOString(),
   };
   await fundAiStore.messages.insert(assistantMessage);
+
+  yield traceEvent(trace.finish(signal?.aborted ? "aborted" : "success"));
 
   yield {
     type: "done",

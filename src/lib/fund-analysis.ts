@@ -1,4 +1,5 @@
 ﻿// 基金 AI 分析编排：聚合基金档案、净值、行情/估算、持仓与风险指标后生成教学式报告。
+import { createTraceRun, traceEvent } from "@/lib/agent-trace";
 import { getFundProfile } from "@/lib/fund-data";
 import { getFundIntraday } from "@/lib/fund-intraday";
 import { getFundHoldings } from "@/lib/fund-holdings";
@@ -377,31 +378,87 @@ export async function* streamFundAnalysis(
   signal?: AbortSignal,
 ): AsyncGenerator<FundAnalysisStreamEvent> {
   recordTaskRun("analysis");
+
+  const trace = createTraceRun("fund-analysis", code);
+  const dataStep = trace.startStep({
+    kind: "data",
+    label: "装配基金数据",
+    detail: "读取档案、净值、盘中行情/估算、持仓与风险指标",
+  });
+  // 先推送首帧，让轨迹面板在数据装配阶段即可见。
+  yield traceEvent(trace.snapshot());
+
   const context = await buildAnalysisContext(code);
+  dataStep.finish({
+    detail: `已装配 ${context.profile.name}：${context.holdings.top_holdings.length} 项重仓持仓与 ${context.source_refs.length} 项数据来源`,
+  });
+
   const reportId = buildReportId(code);
   yield { type: "meta", data: { reportId } };
+  yield traceEvent(trace.snapshot());
 
   const fallback = buildFallbackReport(context, prompt ?? "");
   const messages = buildAnalysisMessages(context, prompt ?? "");
   let llmContent: string | null = null;
   let streamedContent = "";
+  let streamError: string | null = null;
 
-  if (deepSeekConfigured()) {
+  const aiConfigured = deepSeekConfigured();
+  const thinkingStep = trace.startStep({
+    kind: "thinking",
+    label: "Thinking",
+    detail: aiConfigured
+      ? "结合基金档案、净值与风险指标生成分析报告"
+      : "未配置 AI 密钥，改用本地模板报告",
+  });
+  yield traceEvent(trace.snapshot());
+
+  if (aiConfigured) {
     try {
       for await (const chunk of streamDeepSeekFundAnalysis(messages, signal)) {
         streamedContent += chunk;
+        thinkingStep.markToken();
         yield { type: "delta", content: chunk };
       }
-      if (
-        streamedContent.trim() &&
-        !hasForbiddenPromise(streamedContent) &&
-        isConcreteFundAnalysis(streamedContent, context.profile, context.allMetrics)
-      ) {
-        llmContent = streamedContent;
-      }
-    } catch {
+    } catch (error) {
       llmContent = null;
+      streamError = error instanceof Error ? error.message : String(error);
     }
+    if (streamError) {
+      thinkingStep.finish({ error: streamError });
+    } else {
+      thinkingStep.finish(
+        streamedContent.trim()
+          ? { detail: "报告草稿生成完成，等待合规校验" }
+          : { status: "failed", detail: "模型未返回内容" },
+      );
+    }
+  } else {
+    thinkingStep.finish({ status: "skipped", detail: "未调用 AI（本地模板报告）" });
+  }
+
+  // 合规与事实性校验：与生成步骤分离计时，便于定位被拦截的报告。
+  const guardStep = trace.startStep({
+    kind: "guard",
+    label: "合规与事实性校验",
+    detail: "检查确定性收益承诺与净值数据一致性",
+  });
+  if (!aiConfigured) {
+    guardStep.finish({ status: "skipped", detail: "未调用 AI，跳过校验" });
+  } else if (streamError || !streamedContent.trim()) {
+    llmContent = null;
+    guardStep.finish({ status: "skipped", detail: "无可用模型输出，改用本地模板报告" });
+  } else {
+    const passed =
+      !hasForbiddenPromise(streamedContent) &&
+      isConcreteFundAnalysis(streamedContent, context.profile, context.allMetrics);
+    if (passed) {
+      llmContent = streamedContent;
+    }
+    guardStep.finish({
+      status: passed ? "success" : "skipped",
+      detail: passed ? "通过：无收益承诺，且与净值数据一致" : "未通过：改用本地模板报告",
+    });
   }
 
   const baseContent = llmContent ?? fallback;
@@ -409,7 +466,12 @@ export async function* streamFundAnalysis(
   if (!llmContent) {
     yield { type: "delta", content };
   }
-  const report = await persistReport(buildReport(context, content, reportId));
+  const report = await trace.measure(
+    { kind: "persist", label: "保存分析报告" },
+    () => persistReport(buildReport(context, content, reportId)),
+    (saved) => `报告 ${saved.id} 已保存，含 ${saved.source_refs.length} 项数据来源`,
+  );
+  yield traceEvent(trace.finish(signal?.aborted ? "aborted" : "success"));
   yield { type: "done", data: { report } };
 }
 

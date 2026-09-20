@@ -2523,3 +2523,57 @@ corepack pnpm build
 - 首次需要在本地安装 Chromium（约 150MB，本机走 npmmirror 镜像下载）；CI 每次运行都要下载浏览器并重跑一次生产构建，流水线时间会变长。
 - 首版只有 5 例，基金工作台、数据一致性清理对话框、多分组自选等场景尚未覆盖。
 - 用例串行执行以换取稳定；后续用例变多时需要评估并行策略（例如每例独立数据根目录）。
+
+## Agent 执行轨迹可视化与步骤耗时（2026-09-20，开发完成，自测通过，待用户验收）
+
+需求来源：系统内 AI 能力由「编排层 + 大模型 + 本地工具 / 数据源」构成，但执行过程对用户不可见——对话提交后只有「回复中…」与逐字正文，单次回答耗时长时分不清「卡住」与「正在工作」；希望仿照 Codex、Claude 等成熟代码 Agent，把执行轨迹与每步耗时可视化，并在执行结束后自动清除轨迹、只保留最终结果。
+
+- 关联方案：`docs/agent-trace-plan.md`
+- 关联验收：`docs/checklists/09-feature-agent-trace.md`
+- 分支：`feature/agent-trace`（基于 `main` 新建）
+
+### 任务目标与范围
+
+- 目标：R1 对所有 Agent 编排链路（T1 个股对话 / T2 个股分析 / T3 基金分析 / T4 基金对话）在运行期可视化执行轨迹；R2 展示每步耗时、步骤数与整轮总耗时、模型首字时延；R3 执行结束后轨迹自动清理，仅保留未引入本功能时的最终结果呈现，中断不残留。
+- 范围：新增 `src/lib/shared/types/agent-trace.ts`、`src/lib/agent-trace.ts`、`src/lib/agent-trace-client.ts`、`src/components/panels/AgentTracePanel.tsx`、`src/components/panels/AgentTraceSettingsEntry.tsx`、`tests/agent-trace.test.ts`、`tests/agent-trace-client.test.ts`、`tests/e2e/agent-trace.spec.ts`、方案与验收文档；只增修改 `src/lib/shared/types/next-phase.ts`、`src/lib/shared/types/funds.ts`、`src/lib/shared/types/index.ts`；埋点修改 `src/lib/chat.ts`、`src/lib/analysis.ts`、`src/lib/fund-analysis.ts`、`src/lib/fund-chat.ts`；接入修改 `ChatPanel.tsx`、`AnalysisPanel.tsx`、`FundAnalysisPanel.tsx`、`StockWorkbench.tsx`、`FundWorkbench.tsx`、`src/app/page.tsx`；四条 SSE 路由原本即通用透传，经实测无需改动，样式复用既有设计令牌（未改 `globals.css`）。
+- 非目标：日报生成（T5）进度通道、数据一致性巡检 / 调度器 / 数据源健康 / 预警扫描等确定性批处理、轨迹持久化与回放、数据库结构变更、模型原始思维链与原始提示词展示。
+
+### 已确认决策（2026-09-20）
+
+- 自清理严格度取 **C**：默认结束后完全移除，另提供设置项切换到「结束后折叠保留」。
+- 本期**不含**日报生成（T5）。
+- 分支策略：从 `main` **新建** `feature/agent-trace`。
+- 思考步骤命名使用 **thinking**（界面标签 `Thinking`，摘要仍为中文）。
+
+### 验收项
+
+- [x] 契约：新增 `agent-trace.ts` 类型；三个流式事件类型各新增 `trace` 与可选 `trace` 字段，既有字段语义未变
+- [x] 记录器：`createTraceRun()` 支持注入时钟；`startStep()` / `measure()` / `snapshot()` / `finish()` 计时与状态正确
+- [x] 记录器护栏：步骤上限 24、`detail` 截断 180 字、纯内存不落库
+- [x] T1 个股对话：每轮 `thinking` 步骤 + 每个工具 `tool` 步骤，六类工具中文名映射完整，兜底链路标注「未调用 AI（本地兜底）」
+- [x] T2 / T3 分析：`data` / `thinking` / `guard` / `persist` 四类阶段步骤齐全
+- [x] T4 基金对话：`data` / `thinking` 步骤齐全
+- [x] 四条 SSE 路由透传 `trace` 事件（路由为通用透传，实测无需改动）；生成器中断 / 报错时由前端 `error` 分支收尾清理
+- [x] 前端状态机：快照覆盖幂等、重复与乱序事件不产生重复步骤
+- [x] 自清理（策略 C）：默认 `done` / `error` 后轨迹收敛并移除，仅保留正文、来源、风险提示与既有「工具调用」摘要块；中断不残留
+- [x] 设置项：可切换「结束后折叠保留（`keep-collapsed`）」，选择持久化并在刷新后生效
+- [x] 呈现：轨迹面板含状态圆点、步骤计数、累计耗时、每步耗时与模型首字时延；可折叠、键盘可达
+- [x] 无障碍：`prefers-reduced-motion` 下停用脉冲动画与实时计时采样
+- [x] 历史回看：历史会话与历史报告不渲染轨迹（轨迹只来自运行期 SSE），消息与报告结构未变
+- [x] 回归：`typecheck` / `lint` / `test`（49 文件 / 598 例）/ `build` / `test:e2e`（9 例）全绿，既有行情、K 线、指标、资讯、分析、对话功能表现一致
+- [x] 文档：README 能力说明、方案文档实测结果（`docs/agent-trace-plan.md` 第 9 节）、验收清单勾选，代码注释为中文且未提交真实密钥
+
+### 验证方式
+
+- 单测：`corepack pnpm test`（新增 `tests/agent-trace.test.ts`、`tests/agent-trace-client.test.ts`）
+- 端到端：`corepack pnpm test:e2e`（新增 `tests/e2e/agent-trace.spec.ts`；利用无密钥兜底链路稳定断言「轨迹出现 → 结束后消失 → 仅剩最终结果 → 中断不残留」）
+- 手工：`corepack pnpm dev` 后在配置密钥与未配置密钥两种环境下验证轨迹、耗时与自动清理，并验证设置项切换后刷新仍生效
+- 回归：`corepack pnpm typecheck`、`corepack pnpm lint`、`corepack pnpm test`、`corepack pnpm build`、`corepack pnpm test:e2e`
+
+### 风险与遗留
+
+- 不展示模型私有思维链与原始提示词，仅展示编排层可观测阶段，避免外泄内部上下文
+- 并发工具步骤各自计时，整轮总耗时不等于分步之和，前端分别展示、不做求和
+- 既有 `messages.tool_calls` 落库结构本期保持不变，属「未开发本功能时」的既有呈现
+- T5 日报生成进度通道、轨迹调试留痕开关留待二期评估
+- 轨迹不落库，事后排查依赖既有 `recordTaskRun()` 计数

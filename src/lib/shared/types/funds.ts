@@ -1,6 +1,7 @@
 // 基金工作台共享类型：冻结自 docs/fund-workbench-design.md 第 6.1 节。
 // 后续分支如需扩展，先在本模块新增并注明 TODO，不得破坏已冻结字段语义。
 
+import type { AgentTraceRun } from "./agent-trace";
 import type { MessageRole, NewsItem } from "./models";
 
 /** 基金类型。 */
@@ -144,8 +145,8 @@ export interface FundMessage {
   created_at: string;
 }
 
-/** 基金 AI 分析流式事件类型。 */
-export type FundAnalysisStreamEventType = "meta" | "delta" | "done" | "error";
+/** 基金 AI 分析流式事件类型；trace 为运行期轨迹快照，属只增字段。 */
+export type FundAnalysisStreamEventType = "meta" | "delta" | "trace" | "done" | "error";
 
 /** 基金 AI 分析流式响应事件。 */
 export interface FundAnalysisStreamEvent {
@@ -155,6 +156,8 @@ export interface FundAnalysisStreamEvent {
     reportId?: string;
     message?: string;
     report?: FundAnalysisReport;
+    /** 运行期执行轨迹快照；仅运行中出现，不随报告落库。 */
+    trace?: AgentTraceRun;
   };
 }
 

@@ -1,6 +1,7 @@
 // 下一阶段 MVP 底座契约：只新增，不改变既有字段语义。
 // 供数据源状态、调度任务与对话流式事件等后续功能分支引用。
 
+import type { AgentTraceRun } from "./agent-trace";
 import type { AnalysisReport } from "./models";
 
 /** 数据源可用状态。 */
@@ -34,8 +35,8 @@ export interface SchedulerJob {
   next_run_at: string | null;
 }
 
-/** 对话流式事件类型。 */
-export type ChatStreamEventType = "meta" | "delta" | "tool" | "done" | "error";
+/** 对话流式事件类型；trace 为运行期轨迹快照，属只增字段。 */
+export type ChatStreamEventType = "meta" | "delta" | "tool" | "trace" | "done" | "error";
 
 /** 对话流式事件中的工具调用摘要。 */
 export interface ChatStreamToolCall {
@@ -55,11 +56,13 @@ export interface ChatStreamEvent {
     riskNote?: string;
     toolCalls?: ChatStreamToolCall[];
     aiInvoked?: boolean;
+    /** 运行期执行轨迹快照；仅运行中出现，不随消息落库。 */
+    trace?: AgentTraceRun;
   };
 }
 
-/** AI 分析流式事件类型。 */
-export type AnalysisStreamEventType = "meta" | "delta" | "done" | "error";
+/** AI 分析流式事件类型；trace 为运行期轨迹快照，属只增字段。 */
+export type AnalysisStreamEventType = "meta" | "delta" | "trace" | "done" | "error";
 
 /** AI 分析流式响应事件，用于前后端约定 SSE data 字段结构。 */
 export interface AnalysisStreamEvent {
@@ -69,5 +72,7 @@ export interface AnalysisStreamEvent {
     reportId?: string;
     message?: string;
     report?: AnalysisReport;
+    /** 运行期执行轨迹快照；仅运行中出现，不随报告落库。 */
+    trace?: AgentTraceRun;
   };
 }
