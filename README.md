@@ -22,7 +22,7 @@
 | 自选与预警 | 自选股 / 自选基金增删改与上游代码校验；条件预警（单条件或 2–4 条件 AND/OR），交易日盘中扫描 + 实时行情秒级判定，事件流与邮件摘要 |
 | 实时行情 | 自选池 SSE 秒级推送（服务端单例轮询、多订阅合并去重、失败指数退避），顶部行情条展示价格、连接状态与更新时间 |
 | 数据一致性 | 断连期间的降级数据回填数据库 / R2，模板垃圾清理进 `.data/quarantine/` 并可人工回滚 |
-| 界面 | 暗色科技风；5 种背景预设与自定义图片、光标光效与粒子联动，均可在「背景与光效」中调节 |
+| 界面 | 暗色科技风；功能模块按「当前标的」与「持仓与全局工具」分组切换、分组内独立勾选与拖拽排序；5 种背景预设与自定义图片、光标光效与粒子联动，均可在「背景与光效」中调节 |
 
 ## 技术栈
 
@@ -120,7 +120,7 @@ Linux / macOS 单独启动侧车：`python -m uvicorn app.main:app --app-dir dat
 | 类型 | 运行方式 | 说明 |
 | --- | --- | --- |
 | 单元测试 | `corepack pnpm test` | Vitest，纯本地、无外部依赖 |
-| 端到端 | `corepack pnpm build && corepack pnpm test:e2e` | Playwright，自动拉起行情侧车替身与 `next start`（端口 3100），覆盖首页外壳、工作台切换、自选股、持仓点击切换、背景设置、执行轨迹与数据源故障 |
+| 端到端 | `corepack pnpm build && corepack pnpm test:e2e` | Playwright，自动拉起行情侧车替身与 `next start`（端口 3100），覆盖首页外壳、工作台切换、模块分组、自选股、持仓点击切换、背景设置、执行轨迹与数据源故障 |
 | 持续集成 | push / PR 自动触发 | `install → typecheck → lint → test → build`，侧车仅做 Python 语法检查 |
 
 - 端到端用例的数据隔离：`DATA_ROOT` 指向临时目录，数据库、SMTP 与外部密钥一律置空，不会读写本机 `.data`；行情侧车由 `tests/e2e/mock-sidecar.mjs` 以官方来源（`akshare`）替身提供，`DATA_SERVICE_URL` 指向该替身（端口 `E2E_SIDECAR_PORT`，默认 3199）。

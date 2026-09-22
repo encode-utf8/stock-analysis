@@ -30,15 +30,23 @@ import {
 import { DailyReportPanel } from "@/components/panels/DailyReportPanel";
 import { DataSourcePanel } from "@/components/panels/DataSourcePanel";
 import { DisclaimerFooter } from "@/components/panels/DisclaimerFooter";
+import { Button } from "@/components/ui/button";
 import {
-  ALL_MODULE_VISIBILITY,
   DEFAULT_MODULE_VISIBILITY,
   FunctionOptionsSidebar,
   MODULE_OPTIONS,
+  MODULE_SCOPES,
   type ModuleKey,
 } from "@/components/panels/FunctionOptionsSidebar";
 import { IndicatorsPanel } from "@/components/panels/IndicatorsPanel";
 import { ModuleMenuBar } from "@/components/panels/ModuleMenuBar";
+import {
+  hasEnabledInScope,
+  moduleOptionsForScope,
+  moduleVisibilityForScope,
+  primaryModuleForScope,
+  type ModuleScope,
+} from "@/components/panels/module-scope";
 import { NewsPanel } from "@/components/panels/NewsPanel";
 import {
   ObservabilityPanel,
@@ -110,6 +118,8 @@ export default function StockWorkbench() {
   const [moduleOrder, setModuleOrder] = useState<ModuleKey[]>(
     MODULE_OPTIONS.map((option) => option.key),
   );
+  // 模块分组：默认展示「当前标的」，账户级工具收在「持仓与全局工具」分组里。
+  const [activeScope, setActiveScope] = useState<ModuleScope>("target");
   const [code, setCode] = useState<string | null>(null);
   const [stock, setStock] = useState<Stock | null>(null);
   const [quote, setQuote] = useState<MarketQuote | null>(null);
@@ -157,13 +167,36 @@ export default function StockWorkbench() {
     setEnabledModules((previous) => ({ ...previous, [key]: !previous[key] }));
   };
 
+  // 全选 / 清空只作用于当前分组，另一分组的勾选状态原样保留。
   const selectAllModules = () => {
-    setEnabledModules(ALL_MODULE_VISIBILITY);
+    setEnabledModules((previous) => ({
+      ...previous,
+      ...moduleVisibilityForScope(MODULE_OPTIONS, activeScope, true),
+    }));
   };
 
   const clearAllModules = () => {
-    setEnabledModules(DEFAULT_MODULE_VISIBILITY);
+    setEnabledModules((previous) => ({
+      ...previous,
+      ...moduleVisibilityForScope(MODULE_OPTIONS, activeScope, false),
+    }));
   };
+
+  /**
+   * 看某只票就等于看「当前标的」分组：切换标的时回到该分组，
+   * 并在该分组从未勾选时启用默认模块（行情概览），避免切过去一片空白。
+   */
+  const focusTargetScope = useCallback(() => {
+    setActiveScope("target");
+    setEnabledModules((previous) =>
+      hasEnabledInScope(MODULE_OPTIONS, "target", previous)
+        ? previous
+        : {
+            ...previous,
+            [primaryModuleForScope(MODULE_OPTIONS, "target")?.key ?? "quote"]: true,
+          },
+    );
+  }, []);
 
   const reorderModule = (fromKey: ModuleKey, toKey: ModuleKey) => {
     setModuleOrder((previous) => {
@@ -324,13 +357,14 @@ export default function StockWorkbench() {
     [loadConversations, loadReports, loadObservability],
   );
 
-  /** 自选股切换：直接复用主查询链路，确保盘面、资讯、对话全链路一致。 */
+  /** 自选股切换：直接复用主查询链路，确保盘面、资讯、对话全链路一致，并回到标的视图。 */
   const handleWatchlistSelect = useCallback(
     (nextCode: string) => {
       setInput(nextCode);
+      focusTargetScope();
       void refreshStock(nextCode);
     },
-    [refreshStock],
+    [focusTargetScope, refreshStock],
   );
 
   /** 删除当前自选股时清空已选盘面，避免继续展示已移除股票。 */
@@ -375,6 +409,8 @@ export default function StockWorkbench() {
       return;
     }
     setInput(nextInput);
+    // 查询新代码即为「看这只票」：切回当前标的分组，结果立即可见。
+    focusTargetScope();
     void refreshStock(nextInput);
   };
 
@@ -732,6 +768,30 @@ export default function StockWorkbench() {
     }
   };
 
+  // 分组视图：只渲染当前分组已勾选的模块，两类内容不再混排。
+  const scopedOptions = moduleOptionsForScope(MODULE_OPTIONS, activeScope);
+  const visibleModuleKeys = moduleOrder.filter(
+    (key) => enabledModules[key] && scopedOptions.some((option) => option.key === key),
+  );
+  const scopeStats: Record<ModuleScope, { enabled: number; total: number }> = {
+    target: { enabled: 0, total: 0 },
+    global: { enabled: 0, total: 0 },
+  };
+  for (const option of MODULE_OPTIONS) {
+    scopeStats[option.scope].total += 1;
+    if (enabledModules[option.key]) {
+      scopeStats[option.scope].enabled += 1;
+    }
+  }
+  const primaryModule = primaryModuleForScope(MODULE_OPTIONS, activeScope);
+  /** 分组说明：标的组直接给出当前股票，工具组说明与标的无关。 */
+  const scopeNote =
+    activeScope === "target"
+      ? stock
+        ? `当前标的：${stock.name}（${code}）· 本组模块随标的切换`
+        : "本组模块随当前标的切换"
+      : "本组与当前股票无关：账户级工具与自带代码输入的独立工具";
+
   const renderStockModule = (key: ModuleKey) => {
     if (key === "quote") {
       return enabledModules.quote && stock && quote ? <QuotePanel stock={stock} quote={quote} /> : null;
@@ -897,7 +957,7 @@ export default function StockWorkbench() {
               <div>
                 <h1 className="tech-title text-xl font-semibold tracking-tight">个股盘面分析与 AI 学习台</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  在顶部功能模块菜单中勾选模块，按需查看行情、资讯、AI 报告与多轮追问。
+                  顶部模块菜单分两组：「当前标的」随股票切换，「持仓与全局工具」与标的无关（持仓、回测、预警、日报等）。
                 </p>
               </div>
               <div className="text-xs text-muted-foreground">
@@ -906,7 +966,12 @@ export default function StockWorkbench() {
             </div>
 
             <ModuleMenuBar
-              options={MODULE_OPTIONS}
+              scopes={MODULE_SCOPES}
+              activeScope={activeScope}
+              onScopeChange={setActiveScope}
+              scopeStats={scopeStats}
+              scopeNote={scopeNote}
+              options={scopedOptions}
               enabledModules={enabledModules}
               moduleOrder={moduleOrder}
               onToggleModule={toggleModule}
@@ -924,19 +989,36 @@ export default function StockWorkbench() {
             ) : null}
 
 
-            {Object.values(enabledModules).some(Boolean) ? (
+            {visibleModuleKeys.length > 0 ? (
               <div className="flex flex-col gap-6">
-                {moduleOrder.map((key) => (
+                {visibleModuleKeys.map((key) => (
                   <Fragment key={key}>{renderStockModule(key)}</Fragment>
                 ))}
               </div>
             ) : (
               <div className="flex min-h-[420px] items-center justify-center tech-panel tech-panel-dashed p-8 text-center">
                 <div>
-                  <h2 className="text-lg font-semibold">请选择功能模块</h2>
+                  <h2 className="text-lg font-semibold">
+                    {activeScope === "target"
+                      ? "「当前标的」分组还没有勾选模块"
+                      : "「持仓与全局工具」分组还没有勾选模块"}
+                  </h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    在顶部“功能模块”菜单中勾选需要展示的信息区；留空股票代码时默认展示 600519。
+                    {activeScope === "target"
+                      ? "本组模块随当前股票切换，勾选后即展示在当前代码下；留空代码时默认展示 600519。"
+                      : "本组与当前股票无关（账户级数据与自带代码输入的独立工具），可独立勾选、与标的互不影响。"}
                   </p>
+                  {primaryModule ? (
+                    <Button
+                      type="button"
+                      className="mt-4"
+                      onClick={() =>
+                        setEnabledModules((previous) => ({ ...previous, [primaryModule.key]: true }))
+                      }
+                    >
+                      启用「{primaryModule.label}」
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             )}

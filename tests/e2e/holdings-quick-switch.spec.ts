@@ -1,5 +1,5 @@
 // 持仓 / 持有列表点击切换：从「我的持仓组合」「我的持有基金」直接切换当前查询标的，
-// 验证侧栏代码输入框与面板「当前」反馈同步更新。样本名称由侧车替身提供，断言稳定。
+// 验证侧栏代码同步更新、并自动回到「当前标的」分组展示盘面对应的模块。
 import { expect, test, type Page } from "@playwright/test";
 
 /** 侧车替身端口：用例开始前恢复在线，避免受其它用例的故障开关影响。 */
@@ -19,6 +19,20 @@ async function enableModule(page: Page, label: string): Promise<void> {
     await button.click();
   }
   await expect(button).toHaveAttribute("aria-pressed", "true");
+}
+
+/** 分组内的模块 chip（按钮，带 aria-pressed）。 */
+function moduleChip(page: Page, label: string) {
+  return page.getByRole("button", { name: label, exact: true });
+}
+
+/** 持仓 / 持有模块属于「持仓与全局工具」分组：先切分组再勾选。 */
+async function openGlobalScope(page: Page): Promise<void> {
+  await page.getByRole("tab", { name: "持仓与全局工具" }).click();
+  await expect(page.getByRole("tab", { name: "持仓与全局工具" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 }
 
 /** 确保持仓列表里存在该股票：端到端数据目录每次独立，同时兼容复用已有服务的情况。 */
@@ -57,11 +71,15 @@ test.beforeEach(async () => {
 });
 
 test.describe("持仓列表点击切换", () => {
-  test("个股：点击持仓名称直接切换当前查询股票", async ({ page }) => {
+  test("个股：点击持仓名称切换当前查询股票并回到标的视图", async ({ page }) => {
     await ensureStockHolding(page, STOCK_CODE);
 
     await page.goto("/");
+    await openGlobalScope(page);
     await enableModule(page, "我的持仓组合");
+
+    // 未切换前提示行给出的是当前查询标的（默认 600519，不在持仓里时只显示代码）。
+    await expect(page.getByText("当前：600519")).toBeVisible();
 
     const switchButton = page.getByRole("button", {
       name: `切换到 ${STOCK_NAME}（${STOCK_CODE}）`,
@@ -69,16 +87,22 @@ test.describe("持仓列表点击切换", () => {
     await expect(switchButton).toBeVisible();
     await switchButton.click();
 
-    // 侧栏代码与面板「当前」反馈同步为新标的（按 id 定位侧栏输入，避开面板录入表单的同名标签）。
+    // 切换后自动回到「当前标的」分组，并启用默认模块，盘面同步为新代码。
+    await expect(page.getByRole("tab", { name: "当前标的" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await expect(page.locator("#stock-code-input")).toHaveValue(STOCK_CODE);
-    await expect(page.getByText(`当前：${STOCK_NAME}（${STOCK_CODE}）`)).toBeVisible();
+    await expect(moduleChip(page, "行情概览")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText(/数据时间：/).filter({ visible: true }).first()).toBeVisible();
   });
 
-  test("基金：点击持有基金名称直接切换当前查询基金", async ({ page }) => {
+  test("基金：点击持有基金名称切换当前查询基金并回到标的视图", async ({ page }) => {
     await ensureFundPosition(page, FUND_CODE);
 
     await page.goto("/");
     await page.getByRole("tab", { name: "基金工作台" }).click();
+    await openGlobalScope(page);
     await enableModule(page, "持有基金");
 
     const switchButton = page.getByRole("button", {
@@ -87,7 +111,14 @@ test.describe("持仓列表点击切换", () => {
     await expect(switchButton).toBeVisible();
     await switchButton.click();
 
+    // 切换后回到「当前标的」分组，默认模块「基金档案」自动启用。
+    await expect(page.getByRole("tab", { name: "当前标的" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await expect(page.locator("#fund-code-input")).toHaveValue(FUND_CODE);
-    await expect(page.getByText(`当前：${FUND_NAME}（${FUND_CODE}）`)).toBeVisible();
+    await expect(moduleChip(page, "基金档案")).toHaveAttribute("aria-pressed", "true");
+    // 档案面板已按新代码取数：标题带基金代码。
+    await expect(page.getByRole("heading", { name: /110022/ })).toBeVisible();
   });
 });

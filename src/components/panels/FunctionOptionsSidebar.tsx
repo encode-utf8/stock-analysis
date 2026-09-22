@@ -1,26 +1,37 @@
 "use client";
 
+import { createModuleScopes } from "@/components/panels/module-scope";
 import { Button } from "@/components/ui/button";
 import { WatchlistSidebar } from "@/components/panels/WatchlistSidebar";
 
+/**
+ * 个股工作台模块：`scope` 区分是否随当前股票切换。
+ * 顺序即默认展示顺序，各分组的第一个模块作为该组默认视图（行情概览 / 我的持仓组合）。
+ */
 export const MODULE_OPTIONS = [
-  { key: "quote", label: "行情概览" },
-  { key: "chart", label: "K 线走势" },
-  { key: "indicators", label: "技术指标" },
-  { key: "news", label: "资讯搜索" },
-  { key: "analysis", label: "周期内 AI 分析" },
-  { key: "chat", label: "对话助手" },
-  { key: "timeline", label: "历史会话时间线" },
-  { key: "observability", label: "系统可观测性" },
-  { key: "replay", label: "历史复盘" },
-  { key: "portfolio", label: "我的持仓组合" },
-  { key: "backtest", label: "策略回测" },
-  { key: "datasource", label: "数据源与调度" },
-  { key: "alerts", label: "预警中心" },
-  { key: "daily-report", label: "AI 股市日报" },
+  { key: "quote", label: "行情概览", scope: "target" },
+  { key: "chart", label: "K 线走势", scope: "target" },
+  { key: "indicators", label: "技术指标", scope: "target" },
+  { key: "news", label: "资讯搜索", scope: "target" },
+  { key: "analysis", label: "周期内 AI 分析", scope: "target" },
+  { key: "chat", label: "对话助手", scope: "target" },
+  { key: "timeline", label: "历史会话时间线", scope: "target" },
+  { key: "replay", label: "历史复盘", scope: "target" },
+  { key: "portfolio", label: "我的持仓组合", scope: "global" },
+  { key: "backtest", label: "策略回测", scope: "global" },
+  { key: "datasource", label: "数据源与调度", scope: "global" },
+  { key: "alerts", label: "预警中心", scope: "global" },
+  { key: "daily-report", label: "AI 股市日报", scope: "global" },
+  { key: "observability", label: "系统可观测性", scope: "global" },
 ] as const;
 
 export type ModuleKey = (typeof MODULE_OPTIONS)[number]["key"];
+
+/** 个股工作台的分组说明（tab 悬浮提示）。 */
+export const MODULE_SCOPES = createModuleScopes({
+  target: "随当前股票切换：行情、K 线、指标、资讯、AI 分析、对话与复盘",
+  global: "与当前股票无关：持仓、回测、预警、日报、数据源与可观测性",
+});
 
 const createModuleVisibility = (enabled: boolean) =>
   Object.fromEntries(MODULE_OPTIONS.map(({ key }) => [key, enabled])) as Record<
@@ -29,7 +40,6 @@ const createModuleVisibility = (enabled: boolean) =>
   >;
 
 export const DEFAULT_MODULE_VISIBILITY = createModuleVisibility(false);
-export const ALL_MODULE_VISIBILITY = createModuleVisibility(true);
 
 interface FunctionOptionsSidebarProps {
   input: string;
