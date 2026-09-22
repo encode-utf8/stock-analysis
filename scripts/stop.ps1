@@ -1,9 +1,22 @@
-[CmdletBinding()]
-param()
+﻿[CmdletBinding()]
+param(
+    [switch]$Docker
+)
 
 $ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
+
+# -Docker：停止全栈容器（数据卷保留），不再执行本机端口回收逻辑。
+if ($Docker) {
+    Write-Host "[stop] 停止全栈容器（数据卷保留）..." -ForegroundColor Cyan
+    & docker compose down
+    if ($LASTEXITCODE -ne 0) {
+        throw "docker compose down 执行失败，请确认 Docker Desktop 正在运行。"
+    }
+    Write-Host "[stop] 全栈容器已停止。" -ForegroundColor Cyan
+    exit 0
+}
 
 $currentPid = $PID
 $patterns = @(

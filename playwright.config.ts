@@ -32,6 +32,8 @@ Object.assign(serverEnv, {
   DATA_ROOT: dataRoot,
   // 指向端到端侧车替身：既有用例仍验证官方来源链路，故障用例通过开关构造 503。
   DATA_SERVICE_URL: SIDECAR_URL,
+  // 关闭迁移配置加载：即使本机存在 .env.export，也不能把真实数据库地址补回来。
+  SKIP_ENV_EXPORT: "1",
   DATABASE_URL: "",
   SMTP_HOST: "",
   SMTP_USER: "",

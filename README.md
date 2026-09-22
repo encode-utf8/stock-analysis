@@ -39,7 +39,7 @@
 
 - **Node.js** 20+（CI 使用 22）与 pnpm（可用 `corepack` 提供）
 - **Python** 3.12+（一键脚本优先复用 `stock-analysis` conda 环境或项目 `.venv`）
-- **Docker Desktop**（可选，用于本地 PostgreSQL 16）
+- **Docker Desktop**（可选：本地 PostgreSQL 16；全栈容器部署用 Docker Desktop，Linux 用 Docker Engine 即可）
 
 ```bash
 cp .env.example .env          # 按需填写密钥，留空即走降级路径
@@ -58,6 +58,7 @@ start.bat                     # Windows，也可用 corepack pnpm start:win
 
 - 启动参数：`--install` 强制校验依赖、`--skip-install` 跳过依赖检查、`--no-browser` 不自动打开浏览器（PowerShell 脚本使用 `-Install -NoBrowser`）。
 - 停止服务：`stop.bat` / `./stop.sh`，按端口 `3000`、`8000` 与进程特征停止完整进程树，并回收定时任务守护进程。
+- 全栈容器部署：`./start.ps1 -Docker` / `./start.sh --docker`，或直接 `docker compose up -d --build`（不依赖本机 Node / Python）。
 - 访问入口：Web `http://127.0.0.1:3000`（顶部切换个股 / 基金工作台，基金可试 `510300`、`000001`、`110022`），数据侧车健康检查 `http://127.0.0.1:8000/health`。
 
 手工启动：
@@ -70,6 +71,51 @@ corepack pnpm dev:all         # 同时启动 Web 与侧车（Windows）
 
 Linux / macOS 单独启动侧车：`python -m uvicorn app.main:app --app-dir data-service --host 127.0.0.1 --port 8000`。
 
+## 部署
+
+**Docker 全栈**（PostgreSQL + 行情侧车 + Web）
+
+```bash
+docker compose up -d --build     # 首次构建约 5–10 分钟
+./start.ps1 -Docker              # Windows 等价写法（自动等待健康检查）
+./start.sh --docker              # Linux / macOS 等价写法
+```
+
+- `migrate` 服务在 `web` 启动前自动执行数据库迁移，成功后一次性退出。
+- 数据持久化到卷 `stock_analysis_pgdata`（数据库）与 `stock_analysis_appdata`（`.data` 降级数据与自定义背景图），`docker compose down` 不删卷。
+- 密钥走项目根 `.env` 插值，缺失即走降级路径；容器内 `DATABASE_URL`、`DATA_SERVICE_URL` 固定指向服务名。
+- 停止：`./stop.ps1 -Docker`、`./stop.sh --docker` 或 `docker compose down`；只停数据库用 `./scripts/db-down.ps1`。
+- 排查：`docker compose ps` 看健康状态，`docker compose logs -f web`（或 `data-service`、`migrate`）看日志；端口冲突时先停本机 `pnpm dev`。详见 `docs/deploy-plan.md`。
+
+**Linux 一键部署**（不需要 Docker Desktop）
+
+```bash
+bash deploy.sh --check           # 只体检：发行版、架构、权限、内存、磁盘、端口（只读）
+bash deploy.sh --install-docker  # 体检 + 安装 Docker Engine 与 compose 插件（需 root，-y 跳过确认）
+bash deploy.sh                   # Docker 就绪时直接起全栈（等价 start.sh --docker，另加体检）
+bash deploy.sh --no-build        # 镜像已存在时跳过构建
+```
+
+- 退出码：`0` 成功、`1` 参数或执行失败、`3` 环境未就绪（缺 Docker / 无权限 / 缺 compose）。
+- 当前用户不在 `docker` 组时给出 `sudo usermod -aG docker $USER` 指引，本次执行退化为 `sudo docker`。详见 `docs/deploy-linux-plan.md`。
+
+> 公网机器注意：compose 会把 `3000` / `8000` / `5432` 发布到 `0.0.0.0`，请用防火墙或安全组限制来源。
+
+**配置迁移**（换机或上云时免逐条抄 `.env`）
+
+```bash
+./export-config.ps1              # Windows（或双击 export-config.bat）
+./export-config.sh               # Linux / macOS
+corepack pnpm export:config      # 三端等价实现，走同一套逻辑
+```
+
+生成 `.env.export`（明文密钥，已被 `.gitignore` 忽略）→ 复制到目标机项目根目录即可自动加载。
+
+- 加载优先级：真实环境变量 > 目标机 `.env` > `.env.export`，导出文件只补空缺，不覆盖已有配置。
+- 生效范围：`next dev` / `next start` / standalone 容器、`drizzle-kit`、一键启动脚本与 `docker compose` 插值。
+- `SKIP_ENV_EXPORT=1` 时不加载导出文件（`test:e2e` 依赖它避免连上真实数据库）。
+- 安全：导出文件等同于明文密钥，勿提交、勿外发；Linux / macOS 下自动收紧为 `600`。详见 `docs/config-export-plan.md`。
+
 ## 常用命令
 
 | 命令 | 说明 |
@@ -81,6 +127,8 @@ Linux / macOS 单独启动侧车：`python -m uvicorn app.main:app --app-dir dat
 | `corepack pnpm db:generate` / `db:migrate` / `db:studio` | Drizzle 迁移生成 / 执行 / 可视化（需 `DATABASE_URL`） |
 | `corepack pnpm scheduler:worker` / `scheduler:once` | 定时任务守护进程 / 单轮补跑 |
 | `corepack pnpm data:cleanup` | 数据一致性扫描（加 `--apply` 执行清理） |
+| `corepack pnpm start:win` / `start:linux` | 一键启动（等价 `start.bat` / `./start.sh`，含依赖校验、侧车与调度守护） |
+| `corepack pnpm export:config` | 导出 `.env.export` 供换机 / 上云迁移配置 |
 
 ## 配置
 
@@ -166,6 +214,7 @@ docs               设计、方案与验收文档
 | `docs/agent-trace-plan.md` | Agent 执行轨迹可视化方案与实测 |
 | `docs/daily-report-plan.md`、`docs/alert-center-plan.md`、`docs/realtime-quote-push-plan.md` | 日报、预警与实时行情 |
 | `docs/data-consistency-cleanup-plan.md`、`docs/ci-plan.md`、`docs/e2e-plan.md`、`docs/engineering-quality-plan.md` | 数据一致性、CI 与工程化 |
+| `docs/deploy-plan.md`、`docs/deploy-linux-plan.md`、`docs/config-export-plan.md` | 容器全栈部署、Linux 一键部署与配置迁移 |
 | `checklist.md`、`docs/checklists/` | 各功能验收清单 |
 
 ## 免责声明

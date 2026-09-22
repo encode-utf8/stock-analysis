@@ -3,6 +3,8 @@ param(
     [switch]$SkipInstall,
     [switch]$Install,
     [switch]$NoBrowser
+    ,
+    [switch]$Docker
 )
 
 $ErrorActionPreference = "Continue"
@@ -22,6 +24,51 @@ function Write-Step {
 function Test-Command {
     param([string]$Name)
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+# -Docker：全栈容器启动（postgres + 行情侧车 + Web），不依赖本机 Node / Python 环境。
+if ($Docker) {
+    if (-not (Test-Command "docker")) {
+        throw "未检测到 docker 命令，请先安装并启动 Docker Desktop。"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $root "docker-compose.yml"))) {
+        throw "未找到 docker-compose.yml，请在项目根目录运行本脚本。"
+    }
+
+    Write-Step "构建并启动全栈容器（首次构建约 5 到 10 分钟）..."
+    & docker compose up -d --build
+    if ($LASTEXITCODE -ne 0) {
+        throw "docker compose 启动失败，请确认 Docker Desktop 正在运行。"
+    }
+
+    Write-Step "等待 Web 健康检查 http://127.0.0.1:3000/api/health ..."
+    $healthy = $false
+    for ($index = 0; $index -lt 90; $index += 1) {
+        try {
+            $health = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/health" -TimeoutSec 3
+            if ($health.data.status -eq "ok") {
+                $healthy = $true
+                break
+            }
+        } catch {
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    if (-not $healthy) {
+        throw "Web 健康检查超时，请查看日志：docker compose logs web"
+    }
+
+    Write-Host ""
+    Write-Host "  Web  前端：http://127.0.0.1:3000" -ForegroundColor Green
+    Write-Host "  行情/基金数据侧车：http://127.0.0.1:8000" -ForegroundColor Green
+    Write-Host "  数据库：postgresql://postgres:postgres@localhost:5432/stock_analysis" -ForegroundColor Green
+    Write-Host "  查看状态：docker compose ps" -ForegroundColor Green
+    Write-Host "  查看日志：docker compose logs -f web" -ForegroundColor Green
+    Write-Host "  停止全栈：./stop.ps1 -Docker" -ForegroundColor Green
+    Write-Host "  浏览器访问：http://127.0.0.1:3000（Docker 模式不自动打开）" -ForegroundColor Green
+    Write-Host ""
+    exit 0
 }
 
 Write-Step "检查 Node.js 版本..."
@@ -57,8 +104,13 @@ function Invoke-Pnpm {
 
 Write-Step "准备环境变量文件..."
 if (-not (Test-Path -LiteralPath ".env")) {
-    Copy-Item ".env.example" ".env"
-    Write-Host "  已复制 .env.example 为 .env。未填写外部密钥时，系统会自动使用降级/演示数据。" -ForegroundColor Yellow
+    if (Test-Path -LiteralPath ".env.export") {
+        Copy-Item ".env.export" ".env"
+        Write-Host "  已从迁移导出文件 .env.export 复制出 .env（如需调整请直接编辑 .env）。" -ForegroundColor Yellow
+    } else {
+        Copy-Item ".env.example" ".env"
+        Write-Host "  已复制 .env.example 为 .env。未填写外部密钥时，系统会自动使用降级/演示数据。" -ForegroundColor Yellow
+    }
 }
 
 $nodeModulesMarker = Join-Path $root "node_modules\.pnpm"
