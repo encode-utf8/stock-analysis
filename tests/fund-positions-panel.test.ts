@@ -20,4 +20,16 @@ describe("FundPositionsPanel 渲染冒烟", () => {
     expect(html).not.toContain("每期金额（元）");
     expect(html).toContain("还没有持有记录");
   });
+
+  it("提供切换入口时渲染点击提示，缺省时不出现该提示", () => {
+    const withSwitch = renderToStaticMarkup(
+      createElement(FundPositionsPanel, { activeCode: "110022", onSelectTarget: () => {} }),
+    );
+    expect(withSwitch).toContain("点击基金名称可直接切换当前查询。");
+    // 当前查询基金不在持有列表时，提示退化为只显示代码。
+    expect(withSwitch).toContain("当前：110022。");
+
+    const withoutSwitch = renderToStaticMarkup(createElement(FundPositionsPanel));
+    expect(withoutSwitch).not.toContain("点击基金名称可直接切换当前查询。");
+  });
 });

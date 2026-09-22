@@ -42,6 +42,13 @@ import {
   useTraceAutoClear,
   type AgentTraceViewState,
 } from "@/lib/agent-trace-client";
+import {
+  apiErrorFromPayload,
+  clearDatasourceFailure,
+  datasourceErrorFromStreamData,
+  guardDatasourceError,
+  useDatasourceGuard,
+} from "@/lib/datasource-guard-client";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import type { FundMetricsRange } from "@/lib/fund-metrics";
 import { DEFAULT_FUND_CODE, normalizeFundCode } from "@/lib/fund-market";
@@ -72,7 +79,8 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
       error?: { message?: string };
     } | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new Error(payload?.error?.message ?? "基金数据请求失败。");
+      // 数据源故障会被转换为可识别的专用错误，由守卫统一进入冷却。
+      throw apiErrorFromPayload(payload);
     }
     return payload.data;
   } catch (error) {
@@ -168,6 +176,8 @@ export default function FundWorkbench() {
   const [replayRefreshToken, setReplayRefreshToken] = useState(0);
   const [lastDeletedReportId, setLastDeletedReportId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 数据源故障守卫：统一提示并禁用触发按钮 10 秒。
+  const datasourceGuard = useDatasourceGuard();
   const activeProfileCodeRef = useRef<string | null>(null);
   const activeNavKeyRef = useRef<string | null>(null);
   const activeIntradayCodeRef = useRef<string | null>(null);
@@ -224,7 +234,10 @@ export default function FundWorkbench() {
     } catch (nextError) {
       if (activeNavKeyRef.current === navKey) {
         setNav([]);
-        setError(nextError instanceof Error ? nextError.message : "净值加载失败。");
+        // 数据源故障由守卫统一提示并进入 10 秒冷却。
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "净值加载失败。");
+        }
       }
     } finally {
       if (activeNavKeyRef.current === navKey) {
@@ -243,10 +256,12 @@ export default function FundWorkbench() {
       if (activeIntradayCodeRef.current === nextCode) {
         setIntraday(data);
       }
-    } catch {
+    } catch (nextError) {
       if (activeIntradayCodeRef.current === nextCode) {
         setIntraday(null);
       }
+      // 数据源故障由守卫统一提示并进入 10 秒冷却。
+      guardDatasourceError(nextError);
     } finally {
       if (activeIntradayCodeRef.current === nextCode) {
         setIntradayLoading(false);
@@ -264,10 +279,12 @@ export default function FundWorkbench() {
       if (activeHoldingsCodeRef.current === nextCode) {
         setHoldings(data);
       }
-    } catch {
+    } catch (nextError) {
       if (activeHoldingsCodeRef.current === nextCode) {
         setHoldings(null);
       }
+      // 数据源故障由守卫统一提示并进入 10 秒冷却。
+      guardDatasourceError(nextError);
     } finally {
       if (activeHoldingsCodeRef.current === nextCode) {
         setHoldingsLoading(false);
@@ -407,6 +424,8 @@ export default function FundWorkbench() {
         }
         setCode(nextCode);
         setProfile(profileData);
+        // 请求成功说明数据源已恢复，清除故障提示与冷却。
+        clearDatasourceFailure();
         setLoading(false);
         setRange("1y");
         setNavType("unit");
@@ -416,7 +435,10 @@ export default function FundWorkbench() {
         if (activeProfileCodeRef.current !== nextCode) {
           return false;
         }
-        setError(nextError instanceof Error ? nextError.message : "基金查询失败。");
+        // 数据源故障由守卫统一提示并进入 10 秒冷却。
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "基金查询失败。");
+        }
         setLoading(false);
         return false;
       }
@@ -568,7 +590,11 @@ export default function FundWorkbench() {
           setFundAnalysisTraceState((previous) => finishTrace(previous, "done"));
         } else if (event.type === "error") {
           setFundAnalysisTraceState((previous) => finishTrace(previous, "error"));
-          throw new Error(event.data?.message ?? "基金分析生成失败。");
+          // 数据源故障按冷却处理，其它错误按普通提示处理。
+          throw (
+            datasourceErrorFromStreamData(event.data) ??
+            new Error(event.data?.message ?? "基金分析生成失败。")
+          );
         }
       };
 
@@ -602,12 +628,16 @@ export default function FundWorkbench() {
         ]);
       }
       lastCompletedFundReportRef.current = null;
+      clearDatasourceFailure();
     } catch (nextError) {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
       }
       setFundAnalysisTraceState((previous) => finishTrace(previous, "error"));
-      setError(nextError instanceof Error ? nextError.message : "基金分析生成失败。");
+      // 数据源故障由守卫统一提示并进入 10 秒冷却。
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "基金分析生成失败。");
+      }
       setFundReports((previous) => previous.filter((item) => item.id !== draftId));
     } finally {
       if (fundAnalysisAbortRef.current === controller) {
@@ -690,7 +720,11 @@ export default function FundWorkbench() {
           setFundChatTraceState((previous) => finishTrace(previous, "done"));
         } else if (event.type === "error") {
           setFundChatTraceState((previous) => finishTrace(previous, "error"));
-          throw new Error(event.data?.message ?? "基金对话生成失败。");
+          // 数据源故障按冷却处理，其它错误按普通提示处理。
+          throw (
+            datasourceErrorFromStreamData(event.data) ??
+            new Error(event.data?.message ?? "基金对话生成失败。")
+          );
         }
       };
 
@@ -709,12 +743,17 @@ export default function FundWorkbench() {
       if (buffer.trim()) {
         handleEvent(buffer);
       }
+
+      clearDatasourceFailure();
     } catch (nextError) {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
       }
       setFundChatTraceState((previous) => finishTrace(previous, "error"));
-      setError(nextError instanceof Error ? nextError.message : "基金对话生成失败。");
+      // 数据源故障由守卫统一提示并进入 10 秒冷却。
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "基金对话生成失败。");
+      }
       setFundMessages((previous) => previous.filter((message) => message.id !== assistantId));
     } finally {
       if (fundChatAbortRef.current === controller) {
@@ -779,7 +818,8 @@ export default function FundWorkbench() {
       return null;
     }
     if (key === "positions") {
-      return <FundPositionsPanel />;
+      // 持有列表与自选共用切换入口：点击持有基金即复用主查询链路刷新全盘面。
+      return <FundPositionsPanel activeCode={code} onSelectTarget={handleWatchlistSelect} />;
     }
     if (key === "profile") {
       return profile ? (
@@ -805,6 +845,7 @@ export default function FundWorkbench() {
                 : chartMetrics
           }
           loading={navLoading}
+          blocked={datasourceGuard.blocked}
           onRangeChange={(value) => setRange(value)}
           onNavTypeChange={(value) => setNavType(value)}
         />
@@ -843,6 +884,7 @@ export default function FundWorkbench() {
           code={code}
           reports={fundReports}
           loading={fundAnalysisLoading}
+          blocked={datasourceGuard.blocked}
           trace={fundAnalysisTraceState}
           tracePolicy={tracePolicy}
           onGenerate={() => void handleFundAnalysis()}
@@ -873,6 +915,7 @@ export default function FundWorkbench() {
           messages={fundMessages}
           input={fundChatInput}
           loading={fundChatLoading}
+          blocked={datasourceGuard.blocked}
           onInputChange={setFundChatInput}
           onSubmit={(event) => void handleFundChatSubmit(event)}
           onStop={stopFundChat}
@@ -936,6 +979,7 @@ export default function FundWorkbench() {
               <FundOptionsSidebar
                 input={input}
                 loading={loading}
+                blocked={datasourceGuard.blocked}
                 code={code}
                 onInputChange={setInput}
                 onSearch={handleSearch}
@@ -986,6 +1030,7 @@ export default function FundWorkbench() {
                 {error}
               </div>
             ) : null}
+
 
             {Object.values(enabledModules).some(Boolean) ? (
               <div className="flex flex-col gap-6">

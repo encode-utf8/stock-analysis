@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+import {
+  datasourceErrorFromPayload,
+  guardDatasourceError,
+  useDatasourceGuard,
+} from "@/lib/datasource-guard-client";
+import { TargetSwitchCell } from "@/components/panels/TargetSwitchCell";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { NoticeDialog } from "@/components/ui/notice-dialog";
@@ -33,7 +39,11 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
       error?: { code?: string; message?: string };
     } | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new ApiError(payload?.error?.code ?? "INTERNAL_ERROR", payload?.error?.message ?? "请求失败。");
+      // 数据源故障优先映射为可识别错误，由守卫统一提示与冷却。
+      throw (
+        datasourceErrorFromPayload(payload) ??
+        new ApiError(payload?.error?.code ?? "INTERNAL_ERROR", payload?.error?.message ?? "请求失败。")
+      );
     }
     return payload.data;
   } catch (error) {
@@ -120,11 +130,20 @@ function WeightBar({
   );
 }
 
+interface StockPortfolioPanelProps {
+  /** 当前查询的股票代码：用于把该标的标记为「当前」。 */
+  activeCode?: string | null;
+  /** 点击持仓标的名称时切换当前查询股票（复用工作台主查询链路）。 */
+  onSelectTarget?: (code: string) => void;
+}
+
 /** 个股持仓组合面板：手动录入投入金额与当前收益，按最新行情估值汇总。 */
-export function StockPortfolioPanel() {
+export function StockPortfolioPanel({ activeCode = null, onSelectTarget }: StockPortfolioPanelProps) {
   const [snapshot, setSnapshot] = useState<StockPortfolioSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 数据源故障守卫：统一提示并禁用触发按钮 10 秒。
+  const datasourceGuard = useDatasourceGuard();
   const [notice, setNotice] = useState<string | null>(null);
 
   const [code, setCode] = useState("");
@@ -148,7 +167,9 @@ export function StockPortfolioPanel() {
     try {
       setSnapshot(await apiFetch<StockPortfolioSnapshot>("/api/stock-portfolio"));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "持仓加载失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "持仓加载失败。");
+      }
     } finally {
       setLoading(false);
     }
@@ -222,7 +243,9 @@ export function StockPortfolioPanel() {
       setDeleteTarget(null);
       await load();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "删除失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "删除失败。");
+      }
     } finally {
       setDeleting(false);
     }
@@ -230,6 +253,13 @@ export function StockPortfolioPanel() {
 
   const summary = snapshot?.summary ?? null;
   const holdings = snapshot?.holdings ?? [];
+  // 当前查询标的：命中持仓时用持仓名称标注，否则退化为只显示代码。
+  const activeHolding = holdings.find((valuation) => valuation.holding.code === activeCode) ?? null;
+  const activeLabel = activeCode
+    ? activeHolding
+      ? `${activeHolding.holding.name}（${activeCode}）`
+      : activeCode
+    : "";
 
   return (
     <section className="tech-panel tech-lift p-5 shadow-sm">
@@ -239,8 +269,13 @@ export function StockPortfolioPanel() {
           <p className="mt-1 text-xs text-muted-foreground">
             手动记录每只票的投入金额与当前持仓收益，市值与收益率自动推导，并结合最新行情估算当日盈亏。
           </p>
+          {onSelectTarget ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              点击标的名称可直接切换当前查询。{activeLabel ? `当前：${activeLabel}。` : ""}
+            </p>
+          ) : null}
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+        <Button type="button" variant="outline" size="sm" onClick={() => void load()} disabled={loading || datasourceGuard.blocked}>
           {loading ? "刷新中..." : "刷新行情"}
         </Button>
       </div>
@@ -295,7 +330,7 @@ export function StockPortfolioPanel() {
           />
         </label>
         <div className="flex items-end">
-          <Button type="submit" disabled={submitting} className="w-full">
+          <Button type="submit" disabled={submitting || datasourceGuard.blocked} className="w-full">
             {submitting ? "添加中..." : "添加持仓"}
           </Button>
         </div>
@@ -348,11 +383,17 @@ export function StockPortfolioPanel() {
               return (
                 <tr key={holding.id} className="border-b align-top">
                   <td className="py-2 pr-3">
-                    <div className="font-medium">{holding.name}</div>
-                    <div className="text-xs text-muted-foreground">{holding.code}</div>
-                    {holding.note ? (
-                      <div className="mt-0.5 text-xs text-muted-foreground">备注：{holding.note}</div>
-                    ) : null}
+                    <TargetSwitchCell
+                      code={holding.code}
+                      name={holding.name}
+                      active={activeCode === holding.code}
+                      onSelect={onSelectTarget}
+                      extra={
+                        holding.note ? (
+                          <div className="mt-0.5 text-xs text-muted-foreground">备注：{holding.note}</div>
+                        ) : null
+                      }
+                    />
                   </td>
                   <td className="py-2 pr-3">
                     {editing ? (

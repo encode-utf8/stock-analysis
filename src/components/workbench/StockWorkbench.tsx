@@ -17,6 +17,13 @@ import {
   type AgentTraceViewState,
 } from "@/lib/agent-trace-client";
 import {
+  apiErrorFromPayload,
+  clearDatasourceFailure,
+  datasourceErrorFromStreamData,
+  guardDatasourceError,
+  useDatasourceGuard,
+} from "@/lib/datasource-guard-client";
+import {
   isUnusableConversationTitle,
   sanitizeChatText,
 } from "@/lib/format";
@@ -79,7 +86,8 @@ async function apiFetch<T>(url: string, init?: RequestInit, timeoutMs = REQUEST_
       error?: { message?: string };
     } | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new Error(payload?.error?.message ?? "请求失败。");
+      // 数据源故障会被转换为可识别的专用错误，由守卫统一进入冷却。
+      throw apiErrorFromPayload(payload);
     }
     return payload.data;
   } catch (error) {
@@ -123,6 +131,8 @@ export default function StockWorkbench() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [traceState, setTraceState] = useState<AgentTraceViewState>(IDLE_TRACE_STATE);
+  // 数据源故障守卫：统一提示并禁用触发按钮 10 秒。
+  const datasourceGuard = useDatasourceGuard();
   const [analysisTraceState, setAnalysisTraceState] =
     useState<AgentTraceViewState>(IDLE_TRACE_STATE);
   const [tracePolicy] = useAgentTracePolicy();
@@ -227,10 +237,15 @@ export default function StockWorkbench() {
       if (activeCodeRef.current === nextCode) {
         setNews(data);
       }
+      // 请求成功说明数据源已恢复，清除故障提示与冷却。
+      clearDatasourceFailure();
     } catch (nextError) {
       if (activeCodeRef.current === nextCode) {
         setNews([]);
-        setError(nextError instanceof Error ? nextError.message : "资讯搜索失败。");
+        // 数据源故障由守卫统一提示并进入 10 秒冷却。
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "资讯搜索失败。");
+        }
       }
     } finally {
       if (activeCodeRef.current === nextCode) {
@@ -260,8 +275,12 @@ export default function StockWorkbench() {
         ]);
         setKlines(klineData);
         setIndicators(indicatorData);
+        clearDatasourceFailure();
       } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : "盘面数据加载失败。");
+        // 数据源故障由守卫统一提示并进入 10 秒冷却。
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "盘面数据加载失败。");
+        }
       } finally {
         setChartLoading(false);
       }
@@ -285,6 +304,7 @@ export default function StockWorkbench() {
         setCode(nextCode);
         setStock(stockData);
         setQuote(quoteData);
+        clearDatasourceFailure();
         setMessages([]);
         setConversationId(undefined);
         setConversations([]);
@@ -293,7 +313,10 @@ export default function StockWorkbench() {
         void loadObservability();
         void loadReports(nextCode);
       } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : "股票查询失败。");
+        // 数据源故障由守卫统一提示并进入 10 秒冷却。
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "股票查询失败。");
+        }
       } finally {
         setLoading(false);
       }
@@ -423,7 +446,11 @@ export default function StockWorkbench() {
           setAnalysisTraceState((previous) => finishTrace(previous, "done"));
         } else if (event.type === "error") {
           setAnalysisTraceState((previous) => finishTrace(previous, "error"));
-          throw new Error(event.data?.message ?? "分析生成失败。");
+          // 数据源故障按冷却处理，其它错误按普通提示处理。
+          throw (
+            datasourceErrorFromStreamData(event.data) ??
+            new Error(event.data?.message ?? "分析生成失败。")
+          );
         }
       };
 
@@ -446,13 +473,16 @@ export default function StockWorkbench() {
         throw new Error("分析生成中断，未收到完整报告。");
       }
 
+      clearDatasourceFailure();
       await loadObservability();
     } catch (nextError) {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
       }
       setAnalysisTraceState((previous) => finishTrace(previous, "error"));
-      setError(nextError instanceof Error ? nextError.message : "分析生成失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "分析生成失败。");
+      }
       setReports((previous) => previous.filter((item) => item.id !== draftId));
     } finally {
       if (analysisAbortRef.current === controller) {
@@ -528,9 +558,13 @@ export default function StockWorkbench() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),
       });
+      clearDatasourceFailure();
       await refreshStock(code);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "刷新失败。");
+      // 数据源故障由守卫统一提示并进入 10 秒冷却。
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "刷新失败。");
+      }
     }
   };
 
@@ -633,7 +667,11 @@ export default function StockWorkbench() {
           setTraceState((previous) => finishTrace(previous, "done"));
         } else if (event.type === "error") {
           setTraceState((previous) => finishTrace(previous, "error"));
-          throw new Error(event.data?.message ?? "对话生成失败。");
+          // 数据源故障按冷却处理，其它错误按普通提示处理。
+          throw (
+            datasourceErrorFromStreamData(event.data) ??
+            new Error(event.data?.message ?? "对话生成失败。")
+          );
         }
       };
 
@@ -653,13 +691,16 @@ export default function StockWorkbench() {
         handleEvent(buffer);
       }
 
+      clearDatasourceFailure();
       await Promise.all([loadObservability(), loadConversations(code)]);
     } catch (nextError) {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
       }
       setTraceState((previous) => finishTrace(previous, "error"));
-      setError(nextError instanceof Error ? nextError.message : "对话生成失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "对话生成失败。");
+      }
       setMessages((previous) => previous.filter((message) => message.id !== assistantId));
     } finally {
       if (chatAbortRef.current === controller) {
@@ -704,6 +745,7 @@ export default function StockWorkbench() {
           period={period}
           adjust={adjust}
           loading={chartLoading}
+          blocked={datasourceGuard.blocked}
           onPeriodChange={(value) => setPeriod(value)}
           onAdjustChange={(value) => setAdjust(value)}
         />
@@ -718,6 +760,7 @@ export default function StockWorkbench() {
           news={news}
           loading={newsLoading}
           analysisLoading={analysisLoading}
+          blocked={datasourceGuard.blocked}
           newsRangeDays={newsRangeDays}
           onRangeChange={setNewsRangeDays}
           onSearch={() => void handleNewsSearch()}
@@ -745,6 +788,7 @@ export default function StockWorkbench() {
           messages={messages}
           input={chatInput}
           loading={chatLoading}
+          blocked={datasourceGuard.blocked}
           onInputChange={(value) => setChatInput(value)}
           onSubmit={handleChatSubmit}
           onStop={stopChat}
@@ -781,7 +825,10 @@ export default function StockWorkbench() {
       ) : null;
     }
     if (key === "portfolio") {
-      return enabledModules.portfolio ? <StockPortfolioPanel /> : null;
+      // 持仓列表与自选共用切换入口：点击持仓标的即复用主查询链路刷新全盘面。
+      return enabledModules.portfolio ? (
+        <StockPortfolioPanel activeCode={code} onSelectTarget={handleWatchlistSelect} />
+      ) : null;
     }
     if (key === "backtest") {
       return enabledModules.backtest ? <StockBacktestPanel /> : null;
@@ -816,6 +863,7 @@ export default function StockWorkbench() {
               <FunctionOptionsSidebar
                 input={input}
                 loading={loading}
+                blocked={datasourceGuard.blocked}
                 code={code}
                 activeCode={code}
                 onInputChange={(value) => setInput(value)}
@@ -874,6 +922,7 @@ export default function StockWorkbench() {
                 {error}
               </div>
             ) : null}
+
 
             {Object.values(enabledModules).some(Boolean) ? (
               <div className="flex flex-col gap-6">
