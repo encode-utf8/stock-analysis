@@ -1,4 +1,4 @@
-import { apiFail, apiOk } from "@/lib/api-response";
+import { apiDatasource, apiFail } from "@/lib/api-response";
 import { normalizeStockCode } from "@/lib/market";
 import { searchNews } from "@/lib/news";
 
@@ -18,5 +18,5 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const rawDays = Number(request.nextUrl.searchParams.get("days") ?? 30);
   const allowedDays = [7, 14, 30, 90, 180, 365];
   const days = allowedDays.includes(rawDays) ? rawDays : 30;
-  return apiOk(await searchNews(code, days, forceRefresh));
+  return apiDatasource(() => searchNews(code, days, forceRefresh));
 }

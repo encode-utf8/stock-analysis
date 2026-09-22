@@ -1,28 +1,39 @@
 "use client";
 
+import { createModuleScopes } from "@/components/panels/module-scope";
 import { Button } from "@/components/ui/button";
 import { FundWatchlistPanel } from "@/components/panels/fund/FundWatchlistPanel";
 
+/**
+ * 基金工作台模块：`scope` 区分是否随当前基金切换。
+ * 顺序即默认展示顺序，各分组的第一个模块作为该组默认视图（基金档案 / 持有基金）。
+ */
 export const FUND_MODULE_OPTIONS = [
-  { key: "positions", label: "持有基金" },
-  { key: "profile", label: "基金档案" },
-  { key: "nav", label: "净值走势" },
-  { key: "intraday", label: "当日行情" },
-  { key: "holdings", label: "持仓分析" },
-  { key: "risk", label: "回撤与风险指标" },
-  { key: "analysis", label: "AI 分析" },
-  { key: "chat", label: "对话助手" },
-  { key: "replay", label: "历史复盘" },
-  { key: "comparison", label: "基金对比" },
-  { key: "portfolio", label: "基金组合分析" },
-  { key: "dca", label: "定投回测" },
-  { key: "news", label: "行业资讯" },
-  { key: "style", label: "风格因子分析" },
-  { key: "alerts", label: "预警中心" },
-  { key: "daily-report", label: "AI 基金日报" },
+  { key: "profile", label: "基金档案", scope: "target" },
+  { key: "nav", label: "净值走势", scope: "target" },
+  { key: "intraday", label: "当日行情", scope: "target" },
+  { key: "holdings", label: "持仓分析", scope: "target" },
+  { key: "news", label: "行业资讯", scope: "target" },
+  { key: "risk", label: "回撤与风险指标", scope: "target" },
+  { key: "analysis", label: "AI 分析", scope: "target" },
+  { key: "chat", label: "对话助手", scope: "target" },
+  { key: "replay", label: "历史复盘", scope: "target" },
+  { key: "positions", label: "持有基金", scope: "global" },
+  { key: "comparison", label: "基金对比", scope: "global" },
+  { key: "portfolio", label: "基金组合分析", scope: "global" },
+  { key: "dca", label: "定投回测", scope: "global" },
+  { key: "style", label: "风格因子分析", scope: "global" },
+  { key: "alerts", label: "预警中心", scope: "global" },
+  { key: "daily-report", label: "AI 基金日报", scope: "global" },
 ] as const;
 
 export type FundModuleKey = (typeof FUND_MODULE_OPTIONS)[number]["key"];
+
+/** 基金工作台的分组说明（tab 悬浮提示）。 */
+export const FUND_MODULE_SCOPES = createModuleScopes({
+  target: "随当前基金切换：档案、净值、当日行情、持仓、行业资讯、风险、AI 分析、对话与复盘",
+  global: "与当前基金无关：持有基金、对比 / 组合 / 定投 / 风格（自带代码输入）与预警、日报",
+});
 
 const createFundModuleVisibility = (enabled: boolean) =>
   Object.fromEntries(FUND_MODULE_OPTIONS.map(({ key }) => [key, enabled])) as Record<
@@ -31,7 +42,6 @@ const createFundModuleVisibility = (enabled: boolean) =>
   >;
 
 export const DEFAULT_FUND_MODULE_VISIBILITY = createFundModuleVisibility(false);
-export const ALL_FUND_MODULE_VISIBILITY = createFundModuleVisibility(true);
 
 interface FundOptionsSidebarProps {
   input: string;
@@ -41,6 +51,8 @@ interface FundOptionsSidebarProps {
   onSearch: () => void;
   onWatchlistSelect: (code: string) => void;
   onWatchlistClearActive: () => void;
+  /** 数据源故障冷却中：禁用查询按钮，避免连续点击。 */
+  blocked?: boolean;
   pinned: boolean;
   onToggle: () => void;
 }
@@ -57,6 +69,7 @@ export function FundOptionsSidebar({
   onSearch,
   onWatchlistSelect,
   onWatchlistClearActive,
+  blocked = false,
   pinned,
   onToggle,
 }: FundOptionsSidebarProps) {
@@ -102,7 +115,7 @@ export function FundOptionsSidebar({
               type="button"
               className="shrink-0"
               onClick={onSearch}
-              disabled={loading}
+              disabled={loading || blocked}
             >
               {loading ? "查询中..." : "查询"}
             </Button>

@@ -1,4 +1,4 @@
-import { apiFail, apiOk } from "@/lib/api-response";
+import { apiDatasource, apiFail } from "@/lib/api-response";
 import { getMarketQuote } from "@/lib/market-data";
 import { normalizeStockCode } from "@/lib/market";
 
@@ -15,5 +15,5 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   const forceRefresh = request.nextUrl.searchParams.get("refresh") === "1";
-  return apiOk(await getMarketQuote(code, forceRefresh));
+  return apiDatasource(() => getMarketQuote(code, forceRefresh));
 }

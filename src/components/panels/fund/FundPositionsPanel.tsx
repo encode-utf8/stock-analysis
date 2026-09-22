@@ -3,6 +3,12 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+import {
+  datasourceErrorFromPayload,
+  guardDatasourceError,
+  useDatasourceGuard,
+} from "@/lib/datasource-guard-client";
+import { TargetSwitchCell } from "@/components/panels/TargetSwitchCell";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { NoticeDialog } from "@/components/ui/notice-dialog";
@@ -45,9 +51,13 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
       error?: { code?: string; message?: string };
     } | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new ApiError(
-        payload?.error?.code ?? "INTERNAL_ERROR",
-        payload?.error?.message ?? "请求失败。",
+      // 数据源故障优先映射为可识别错误，由守卫统一提示与冷却。
+      throw (
+        datasourceErrorFromPayload(payload) ??
+        new ApiError(
+          payload?.error?.code ?? "INTERNAL_ERROR",
+          payload?.error?.message ?? "请求失败。",
+        )
       );
     }
     return payload.data;
@@ -199,11 +209,20 @@ function MetricCard({
   );
 }
 
+interface FundPositionsPanelProps {
+  /** 当前查询的基金代码：用于把该基金标记为「当前」。 */
+  activeCode?: string | null;
+  /** 点击持有基金名称时切换当前查询基金（复用工作台主查询链路）。 */
+  onSelectTarget?: (code: string) => void;
+}
+
 /** 持有基金面板：手动持仓与定投计划两种录入方式，同一基金代码自动合并为一条记录。 */
-export function FundPositionsPanel() {
+export function FundPositionsPanel({ activeCode = null, onSelectTarget }: FundPositionsPanelProps) {
   const [snapshot, setSnapshot] = useState<FundPositionSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 数据源故障守卫：统一提示并禁用触发按钮 10 秒。
+  const datasourceGuard = useDatasourceGuard();
   const [notice, setNotice] = useState<string | null>(null);
 
   const [code, setCode] = useState("");
@@ -244,7 +263,9 @@ export function FundPositionsPanel() {
     try {
       setSnapshot(await apiFetch<FundPositionSnapshot>("/api/fund-positions"));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "持有基金加载失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "持有基金加载失败。");
+      }
     } finally {
       setLoading(false);
     }
@@ -399,7 +420,9 @@ export function FundPositionsPanel() {
       setDeleteTarget(null);
       await load();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "删除失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "删除失败。");
+      }
     } finally {
       setDeleting(false);
     }
@@ -416,6 +439,13 @@ export function FundPositionsPanel() {
     existingMatch.position.plan === null &&
     !planEnabled &&
     normalizeFundProfitCaliber(existingMatch.position.profit_caliber) !== caliber;
+  // 当前查询标的：命中持有列表时用基金名称标注，否则退化为只显示代码。
+  const activePosition = holdings.find((item) => item.position.code === activeCode) ?? null;
+  const activeLabel = activeCode
+    ? activePosition
+      ? `${activePosition.position.name}（${activeCode}）`
+      : activeCode
+    : "";
 
   return (
     <section className="tech-panel tech-lift p-5 shadow-sm">
@@ -428,8 +458,13 @@ export function FundPositionsPanel() {
             定投只会更新原有的那一个计划；需要取消定投时在「修改」里操作。两者都满足
             「上一交易日累计收益 + 当日实时收益 = 当前累计收益」。
           </p>
+          {onSelectTarget ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              点击基金名称可直接切换当前查询。{activeLabel ? `当前：${activeLabel}。` : ""}
+            </p>
+          ) : null}
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+        <Button type="button" variant="outline" size="sm" onClick={() => void load()} disabled={loading || datasourceGuard.blocked}>
           {loading ? "刷新中..." : "刷新行情"}
         </Button>
       </div>
@@ -575,7 +610,7 @@ export function FundPositionsPanel() {
           />
         </label>
         <div className="flex items-end">
-          <Button type="submit" disabled={submitting} className="w-full">
+          <Button type="submit" disabled={submitting || datasourceGuard.blocked} className="w-full">
             {submitting ? "添加中..." : "添加持有基金"}
           </Button>
         </div>
@@ -669,23 +704,31 @@ export function FundPositionsPanel() {
                 <Fragment key={position.id}>
                   <tr className="border-b align-top">
                   <td className="py-2 pr-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium">{position.name}</span>
-                      {valuation.dca ? (
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          定投
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="text-xs text-muted-foreground">{position.code}</div>
-                    {valuation.dca ? (
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {describePlan(valuation.dca)}
-                      </div>
-                    ) : null}
-                    {position.note ? (
-                      <div className="mt-0.5 text-xs text-muted-foreground">备注：{position.note}</div>
-                    ) : null}
+                    <TargetSwitchCell
+                      code={position.code}
+                      name={position.name}
+                      active={activeCode === position.code}
+                      onSelect={onSelectTarget}
+                      badges={
+                        valuation.dca ? (
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            定投
+                          </span>
+                        ) : null
+                      }
+                      extra={
+                        <>
+                          {valuation.dca ? (
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {describePlan(valuation.dca)}
+                            </div>
+                          ) : null}
+                          {position.note ? (
+                            <div className="mt-0.5 text-xs text-muted-foreground">备注：{position.note}</div>
+                          ) : null}
+                        </>
+                      }
+                    />
                   </td>
                   <td className="py-2 pr-3">
                     {editing ? (

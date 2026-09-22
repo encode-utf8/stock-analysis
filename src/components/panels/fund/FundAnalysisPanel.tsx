@@ -14,6 +14,8 @@ interface FundAnalysisPanelProps {
   loading: boolean;
   onGenerate: () => void;
   onDelete: (reportId: string) => void;
+  /** 数据源故障冷却中：禁用生成按钮，避免连续点击。 */
+  blocked?: boolean;
   /** 生成期的执行轨迹；缺省时不渲染。 */
   trace?: AgentTraceViewState;
   /** 轨迹留存策略，默认结束后清除。 */
@@ -27,6 +29,7 @@ export function FundAnalysisPanel({
   loading,
   onGenerate,
   onDelete,
+  blocked = false,
   trace,
   tracePolicy,
 }: FundAnalysisPanelProps) {
@@ -43,7 +46,7 @@ export function FundAnalysisPanel({
             基于档案、净值、行情/估算、持仓与风险指标生成学习报告。
           </p>
         </div>
-        <Button type="button" disabled={!code || loading} onClick={onGenerate}>
+        <Button type="button" disabled={!code || loading || blocked} onClick={onGenerate}>
           {loading ? "生成中..." : "生成基金 AI 分析"}
         </Button>
       </div>

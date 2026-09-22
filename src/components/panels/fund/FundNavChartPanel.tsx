@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
-import { formatDateTime } from "@/lib/format";
+import { degradedSnapshotSuffix, formatDateTime } from "@/lib/format";
 import type { FundNavPoint, FundRiskMetrics } from "@/lib/shared/types";
 
 interface FundNavChartPanelProps {
@@ -12,6 +12,8 @@ interface FundNavChartPanelProps {
   navType: FundNavType;
   riskMetrics?: FundRiskMetrics | null;
   loading: boolean;
+  /** 数据源故障冷却中：禁用区间与口径切换，避免连续点击。 */
+  blocked?: boolean;
   onRangeChange: (range: FundNavRange) => void;
   onNavTypeChange: (navType: FundNavType) => void;
 }
@@ -376,6 +378,7 @@ export function FundNavChartPanel({
   navType,
   riskMetrics,
   loading,
+  blocked = false,
   onRangeChange,
   onNavTypeChange,
 }: FundNavChartPanelProps) {
@@ -396,7 +399,7 @@ export function FundNavChartPanel({
           <h2 className="text-lg font-semibold">历史净值走势</h2>
           <p className="text-xs text-muted-foreground">
             {latest
-              ? `最新净值日期：${latest.nav_date}，来源：${fundSourceLabel(latest.source)}，抓取时间：${formatDateTime(latest.fetched_at)}`
+              ? `最新净值日期：${latest.nav_date}，来源：${fundSourceLabel(latest.source)}${degradedSnapshotSuffix(latest.degraded_snapshot)}，抓取时间：${formatDateTime(latest.fetched_at)}`
               : "等待净值数据"}
           </p>
         </div>
@@ -404,6 +407,7 @@ export function FundNavChartPanel({
           <select
             value={range}
             onChange={(event) => onRangeChange(event.target.value as FundNavRange)}
+            disabled={blocked}
             className="rounded-md border px-2 py-1.5 text-sm"
             aria-label="净值区间"
           >
@@ -417,6 +421,7 @@ export function FundNavChartPanel({
           <select
             value={navType}
             onChange={(event) => onNavTypeChange(event.target.value as FundNavType)}
+            disabled={blocked}
             className="rounded-md border px-2 py-1.5 text-sm"
             aria-label="净值口径"
           >

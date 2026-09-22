@@ -1,4 +1,4 @@
-import { apiFail, apiOk } from "@/lib/api-response";
+import { apiDatasource, apiFail } from "@/lib/api-response";
 import { getFundIntraday } from "@/lib/fund-intraday";
 import { normalizeFundCode } from "@/lib/fund-market";
 
@@ -15,5 +15,5 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   const forceRefresh = request.nextUrl.searchParams.get("refresh") === "1";
-  return apiOk(await getFundIntraday(code, forceRefresh));
+  return apiDatasource(() => getFundIntraday(code, forceRefresh));
 }

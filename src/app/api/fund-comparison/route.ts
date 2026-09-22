@@ -1,4 +1,4 @@
-import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
+import { apiDatasource, apiFail } from "@/lib/api-response";
 import {
   getFundComparison,
   normalizeFundComparisonCodes,
@@ -16,9 +16,5 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   const range = normalizeFundComparisonRange(params.get("range"));
-  try {
-    return apiOk(await getFundComparison(codes, range));
-  } catch (error) {
-    return apiUnexpected(error);
-  }
+  return apiDatasource(() => getFundComparison(codes, range));
 }

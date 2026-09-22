@@ -1,4 +1,4 @@
-import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
+import { apiDatasourceFailure, apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
 import {
   fundPositionRepository,
   resolveCalibration,
@@ -78,7 +78,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     const [valuation] = await valueFundPositions([updated]);
     return apiOk(valuation);
   } catch (error) {
-    return apiUnexpected(error);
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }
 
@@ -92,6 +92,6 @@ export async function DELETE(_request: NextRequest, context: RouteContext): Prom
     await fundPositionRepository.remove(id);
     return apiOk({ id });
   } catch (error) {
-    return apiUnexpected(error);
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }

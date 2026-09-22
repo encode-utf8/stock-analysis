@@ -1,4 +1,4 @@
-﻿import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
+import { apiDatasourceFailure, apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
 import { stockPortfolioRepository, validateHoldingUpdate, valueHoldings } from "@/lib/stock-portfolio";
 import type { StockHoldingUpdateInput } from "@/lib/shared/types";
 
@@ -34,7 +34,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     const [valuation] = await valueHoldings([updated]);
     return apiOk(valuation);
   } catch (error) {
-    return apiUnexpected(error);
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }
 
@@ -48,6 +48,6 @@ export async function DELETE(_request: NextRequest, context: RouteContext): Prom
     await stockPortfolioRepository.remove(id);
     return apiOk({ id });
   } catch (error) {
-    return apiUnexpected(error);
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }

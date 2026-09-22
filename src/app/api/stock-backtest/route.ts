@@ -1,4 +1,4 @@
-﻿import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
+import { apiDatasourceFailure, apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
 import { getKlines } from "@/lib/market-data";
 import { MIN_BARS, normalizeBacktestRequest } from "@/lib/stock-backtest-request";
 import {
@@ -111,6 +111,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     return apiOk(result);
   } catch (error) {
-    return apiUnexpected(error);
+    // 数据源故障返回 503（含冷却时长），前端据此提示并禁用运行按钮。
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }

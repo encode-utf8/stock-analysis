@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  degradedSnapshotLabel,
+  degradedSnapshotSuffix,
   formatDateTime,
   freshnessText,
   isUnusableConversationTitle,
@@ -30,6 +32,31 @@ describe("freshnessText", () => {
   it("未来时间或非法时间返回占位文案", () => {
     expect(freshnessText(new Date(Date.now() + 60_000).toISOString())).toBe("时间未知");
     expect(freshnessText("not-a-date")).toBe("时间未知");
+  });
+});
+
+describe("degradedSnapshotLabel", () => {
+  it("降级快照展示抓取时间与原因", () => {
+    const label = degradedSnapshotLabel({
+      degraded: true,
+      degraded_at: "2024-01-02T03:04:05.000Z",
+    });
+
+    expect(label).toContain("降级快照");
+    expect(label).toContain("数据源故障");
+    expect(label).toContain("2024");
+  });
+
+  it("缺少时间时仍给出降级说明，非降级返回 null", () => {
+    expect(degradedSnapshotLabel({ degraded: true })).toBe("降级快照（数据源故障）");
+    expect(degradedSnapshotLabel(undefined)).toBeNull();
+    expect(degradedSnapshotLabel({ degraded: false })).toBeNull();
+  });
+
+  it("后缀只在降级时拼接来源文案", () => {
+    expect(degradedSnapshotSuffix({ degraded: true, degraded_at: "2024-01-02T03:04:05.000Z" }))
+      .toContain("· 降级快照");
+    expect(degradedSnapshotSuffix(null)).toBe("");
   });
 });
 

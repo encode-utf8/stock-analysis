@@ -1,9 +1,10 @@
-import { apiFail, apiOk } from "@/lib/api-response";
+import { apiDatasourceFailure, apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
 import {
   getFundMetrics,
   type FundMetricsRange,
 } from "@/lib/fund-metrics";
 import { normalizeFundCode } from "@/lib/fund-market";
+import type { FundRiskMetrics } from "@/lib/shared/types";
 
 import type { NextRequest } from "next/server";
 
@@ -25,7 +26,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
     : "1y";
   const forceRefresh = request.nextUrl.searchParams.get("refresh") === "1";
 
-  const metrics = await getFundMetrics(code, range, forceRefresh);
+  let metrics: FundRiskMetrics | null;
+  try {
+    metrics = await getFundMetrics(code, range, forceRefresh);
+  } catch (error) {
+    // 数据源故障返回 503（含冷却时长），其它异常按 500 处理。
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
+  }
+  // 返回 null 表示区间内样本不足，与数据源故障区分开。
   if (!metrics) {
     return apiFail("NOT_FOUND", "暂无可计算的基金风险指标。", 404);
   }

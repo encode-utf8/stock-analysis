@@ -28,10 +28,17 @@ import {
   FundOptionsSidebar,
   type FundModuleKey,
   DEFAULT_FUND_MODULE_VISIBILITY,
-  ALL_FUND_MODULE_VISIBILITY,
   FUND_MODULE_OPTIONS,
+  FUND_MODULE_SCOPES,
 } from "@/components/panels/fund/FundOptionsSidebar";
 import { ModuleMenuBar } from "@/components/panels/ModuleMenuBar";
+import {
+  hasEnabledInScope,
+  moduleOptionsForScope,
+  moduleVisibilityForScope,
+  primaryModuleForScope,
+  type ModuleScope,
+} from "@/components/panels/module-scope";
 import { Button } from "@/components/ui/button";
 import {
   applyTraceSnapshot,
@@ -42,6 +49,13 @@ import {
   useTraceAutoClear,
   type AgentTraceViewState,
 } from "@/lib/agent-trace-client";
+import {
+  apiErrorFromPayload,
+  clearDatasourceFailure,
+  datasourceErrorFromStreamData,
+  guardDatasourceError,
+  useDatasourceGuard,
+} from "@/lib/datasource-guard-client";
 import type { FundNavRange, FundNavType } from "@/lib/fund-data";
 import type { FundMetricsRange } from "@/lib/fund-metrics";
 import { DEFAULT_FUND_CODE, normalizeFundCode } from "@/lib/fund-market";
@@ -72,7 +86,8 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
       error?: { message?: string };
     } | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new Error(payload?.error?.message ?? "基金数据请求失败。");
+      // 数据源故障会被转换为可识别的专用错误，由守卫统一进入冷却。
+      throw apiErrorFromPayload(payload);
     }
     return payload.data;
   } catch (error) {
@@ -138,6 +153,8 @@ export default function FundWorkbench() {
   const [moduleOrder, setModuleOrder] = useState<FundModuleKey[]>(
     FUND_MODULE_OPTIONS.map((option) => option.key),
   );
+  // 模块分组：默认展示「当前标的」，账户级工具收在「持仓与全局工具」分组里。
+  const [activeScope, setActiveScope] = useState<ModuleScope>("target");
   const [code, setCode] = useState<string | null>(null);
   const [profile, setProfile] = useState<FundProfile | null>(null);
   const [nav, setNav] = useState<FundNavPoint[]>([]);
@@ -168,6 +185,8 @@ export default function FundWorkbench() {
   const [replayRefreshToken, setReplayRefreshToken] = useState(0);
   const [lastDeletedReportId, setLastDeletedReportId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 数据源故障守卫：统一提示并禁用触发按钮 10 秒。
+  const datasourceGuard = useDatasourceGuard();
   const activeProfileCodeRef = useRef<string | null>(null);
   const activeNavKeyRef = useRef<string | null>(null);
   const activeIntradayCodeRef = useRef<string | null>(null);
@@ -188,13 +207,36 @@ export default function FundWorkbench() {
     setEnabledModules((previous) => ({ ...previous, [key]: !previous[key] }));
   };
 
+  // 全选 / 清空只作用于当前分组，另一分组的勾选状态原样保留。
   const selectAllModules = () => {
-    setEnabledModules(ALL_FUND_MODULE_VISIBILITY);
+    setEnabledModules((previous) => ({
+      ...previous,
+      ...moduleVisibilityForScope(FUND_MODULE_OPTIONS, activeScope, true),
+    }));
   };
 
   const clearAllModules = () => {
-    setEnabledModules(DEFAULT_FUND_MODULE_VISIBILITY);
+    setEnabledModules((previous) => ({
+      ...previous,
+      ...moduleVisibilityForScope(FUND_MODULE_OPTIONS, activeScope, false),
+    }));
   };
+
+  /**
+   * 看某只基金就等于看「当前标的」分组：切换标的时回到该分组，
+   * 并在该分组从未勾选时启用默认模块（基金档案），避免切过去一片空白。
+   */
+  const focusTargetScope = useCallback(() => {
+    setActiveScope("target");
+    setEnabledModules((previous) =>
+      hasEnabledInScope(FUND_MODULE_OPTIONS, "target", previous)
+        ? previous
+        : {
+            ...previous,
+            [primaryModuleForScope(FUND_MODULE_OPTIONS, "target")?.key ?? "profile"]: true,
+          },
+    );
+  }, []);
 
   const reorderModule = (fromKey: FundModuleKey, toKey: FundModuleKey) => {
     setModuleOrder((previous) => {
@@ -224,7 +266,10 @@ export default function FundWorkbench() {
     } catch (nextError) {
       if (activeNavKeyRef.current === navKey) {
         setNav([]);
-        setError(nextError instanceof Error ? nextError.message : "净值加载失败。");
+        // 数据源故障由守卫统一提示并进入 10 秒冷却。
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "净值加载失败。");
+        }
       }
     } finally {
       if (activeNavKeyRef.current === navKey) {
@@ -243,10 +288,12 @@ export default function FundWorkbench() {
       if (activeIntradayCodeRef.current === nextCode) {
         setIntraday(data);
       }
-    } catch {
+    } catch (nextError) {
       if (activeIntradayCodeRef.current === nextCode) {
         setIntraday(null);
       }
+      // 数据源故障由守卫统一提示并进入 10 秒冷却。
+      guardDatasourceError(nextError);
     } finally {
       if (activeIntradayCodeRef.current === nextCode) {
         setIntradayLoading(false);
@@ -264,10 +311,12 @@ export default function FundWorkbench() {
       if (activeHoldingsCodeRef.current === nextCode) {
         setHoldings(data);
       }
-    } catch {
+    } catch (nextError) {
       if (activeHoldingsCodeRef.current === nextCode) {
         setHoldings(null);
       }
+      // 数据源故障由守卫统一提示并进入 10 秒冷却。
+      guardDatasourceError(nextError);
     } finally {
       if (activeHoldingsCodeRef.current === nextCode) {
         setHoldingsLoading(false);
@@ -407,6 +456,8 @@ export default function FundWorkbench() {
         }
         setCode(nextCode);
         setProfile(profileData);
+        // 请求成功说明数据源已恢复，清除故障提示与冷却。
+        clearDatasourceFailure();
         setLoading(false);
         setRange("1y");
         setNavType("unit");
@@ -416,7 +467,10 @@ export default function FundWorkbench() {
         if (activeProfileCodeRef.current !== nextCode) {
           return false;
         }
-        setError(nextError instanceof Error ? nextError.message : "基金查询失败。");
+        // 数据源故障由守卫统一提示并进入 10 秒冷却。
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "基金查询失败。");
+        }
         setLoading(false);
         return false;
       }
@@ -568,7 +622,11 @@ export default function FundWorkbench() {
           setFundAnalysisTraceState((previous) => finishTrace(previous, "done"));
         } else if (event.type === "error") {
           setFundAnalysisTraceState((previous) => finishTrace(previous, "error"));
-          throw new Error(event.data?.message ?? "基金分析生成失败。");
+          // 数据源故障按冷却处理，其它错误按普通提示处理。
+          throw (
+            datasourceErrorFromStreamData(event.data) ??
+            new Error(event.data?.message ?? "基金分析生成失败。")
+          );
         }
       };
 
@@ -602,12 +660,16 @@ export default function FundWorkbench() {
         ]);
       }
       lastCompletedFundReportRef.current = null;
+      clearDatasourceFailure();
     } catch (nextError) {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
       }
       setFundAnalysisTraceState((previous) => finishTrace(previous, "error"));
-      setError(nextError instanceof Error ? nextError.message : "基金分析生成失败。");
+      // 数据源故障由守卫统一提示并进入 10 秒冷却。
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "基金分析生成失败。");
+      }
       setFundReports((previous) => previous.filter((item) => item.id !== draftId));
     } finally {
       if (fundAnalysisAbortRef.current === controller) {
@@ -690,7 +752,11 @@ export default function FundWorkbench() {
           setFundChatTraceState((previous) => finishTrace(previous, "done"));
         } else if (event.type === "error") {
           setFundChatTraceState((previous) => finishTrace(previous, "error"));
-          throw new Error(event.data?.message ?? "基金对话生成失败。");
+          // 数据源故障按冷却处理，其它错误按普通提示处理。
+          throw (
+            datasourceErrorFromStreamData(event.data) ??
+            new Error(event.data?.message ?? "基金对话生成失败。")
+          );
         }
       };
 
@@ -709,12 +775,17 @@ export default function FundWorkbench() {
       if (buffer.trim()) {
         handleEvent(buffer);
       }
+
+      clearDatasourceFailure();
     } catch (nextError) {
       if (nextError instanceof Error && nextError.name === "AbortError") {
         return;
       }
       setFundChatTraceState((previous) => finishTrace(previous, "error"));
-      setError(nextError instanceof Error ? nextError.message : "基金对话生成失败。");
+      // 数据源故障由守卫统一提示并进入 10 秒冷却。
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "基金对话生成失败。");
+      }
       setFundMessages((previous) => previous.filter((message) => message.id !== assistantId));
     } finally {
       if (fundChatAbortRef.current === controller) {
@@ -733,12 +804,15 @@ export default function FundWorkbench() {
   const handleSearch = () => {
     const nextInput = input.trim() || DEFAULT_FUND_CODE;
     setInput(nextInput);
+    // 查询新代码即为「看这只基金」：切回当前标的分组，结果立即可见。
+    focusTargetScope();
     void loadFund(nextInput);
   };
 
-  /** 自选基金切换：直接复用主查询链路，确保档案、净值、风险、AI 与对话全链路一致。 */
+  /** 自选基金切换：直接复用主查询链路，确保档案、净值、风险、AI 与对话全链路一致，并回到标的视图。 */
   const handleWatchlistSelect = (nextCode: string) => {
     setInput(nextCode);
+    focusTargetScope();
     void loadFund(nextCode);
   };
 
@@ -774,12 +848,37 @@ export default function FundWorkbench() {
     />
   );
 
+  // 分组视图：只渲染当前分组已勾选的模块，两类内容不再混排。
+  const scopedOptions = moduleOptionsForScope(FUND_MODULE_OPTIONS, activeScope);
+  const visibleModuleKeys = moduleOrder.filter(
+    (key) => enabledModules[key] && scopedOptions.some((option) => option.key === key),
+  );
+  const scopeStats: Record<ModuleScope, { enabled: number; total: number }> = {
+    target: { enabled: 0, total: 0 },
+    global: { enabled: 0, total: 0 },
+  };
+  for (const option of FUND_MODULE_OPTIONS) {
+    scopeStats[option.scope].total += 1;
+    if (enabledModules[option.key]) {
+      scopeStats[option.scope].enabled += 1;
+    }
+  }
+  const primaryModule = primaryModuleForScope(FUND_MODULE_OPTIONS, activeScope);
+  /** 分组说明：标的组直接给出当前基金，工具组说明与标的无关。 */
+  const scopeNote =
+    activeScope === "target"
+      ? profile
+        ? `当前标的：${profile.name}（${code}）· 本组模块随标的切换`
+        : "本组模块随当前标的切换"
+      : "本组与当前基金无关：账户级工具与自带代码输入的独立工具";
+
   const renderFundModule = (key: FundModuleKey) => {
     if (!enabledModules[key]) {
       return null;
     }
     if (key === "positions") {
-      return <FundPositionsPanel />;
+      // 持有列表与自选共用切换入口：点击持有基金即复用主查询链路刷新全盘面。
+      return <FundPositionsPanel activeCode={code} onSelectTarget={handleWatchlistSelect} />;
     }
     if (key === "profile") {
       return profile ? (
@@ -805,6 +904,7 @@ export default function FundWorkbench() {
                 : chartMetrics
           }
           loading={navLoading}
+          blocked={datasourceGuard.blocked}
           onRangeChange={(value) => setRange(value)}
           onNavTypeChange={(value) => setNavType(value)}
         />
@@ -843,6 +943,7 @@ export default function FundWorkbench() {
           code={code}
           reports={fundReports}
           loading={fundAnalysisLoading}
+          blocked={datasourceGuard.blocked}
           trace={fundAnalysisTraceState}
           tracePolicy={tracePolicy}
           onGenerate={() => void handleFundAnalysis()}
@@ -873,6 +974,7 @@ export default function FundWorkbench() {
           messages={fundMessages}
           input={fundChatInput}
           loading={fundChatLoading}
+          blocked={datasourceGuard.blocked}
           onInputChange={setFundChatInput}
           onSubmit={(event) => void handleFundChatSubmit(event)}
           onStop={stopFundChat}
@@ -904,7 +1006,11 @@ export default function FundWorkbench() {
       return <FundDcaPanel />;
     }
     if (key === "news") {
-      return <FundNewsPanel />;
+      if (!code) {
+        return renderPendingModule("行业资讯");
+      }
+      // 行业资讯属于「当前标的」类模块：随当前基金切换，key 变化时重建面板避免残留旧结果。
+      return <FundNewsPanel key={code} code={code} />;
     }
     if (key === "style") {
       return <FundStylePanel />;
@@ -928,7 +1034,7 @@ export default function FundWorkbench() {
         >
           <div
             className={
-              "sticky top-[var(--app-header-h)] h-[calc(100vh_-_var(--app-header-h))] overflow-hidden border-r border-border bg-card/70 backdrop-blur-xl transition-[width] duration-300 ease-out " +
+              "sticky top-[var(--app-sticky-top)] h-[calc(100vh_-_var(--app-sticky-top))] overflow-hidden border-r border-border bg-card/70 backdrop-blur-xl transition-[width] duration-300 ease-out " +
               (sidebarOpen || sidebarPeek ? "w-80" : "w-10")
             }
           >
@@ -936,6 +1042,7 @@ export default function FundWorkbench() {
               <FundOptionsSidebar
                 input={input}
                 loading={loading}
+                blocked={datasourceGuard.blocked}
                 code={code}
                 onInputChange={setInput}
                 onSearch={handleSearch}
@@ -965,12 +1072,17 @@ export default function FundWorkbench() {
             <div>
               <h1 className="tech-title text-xl font-semibold tracking-tight">基金分析与 AI 学习台</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                在顶部功能模块菜单中勾选模块，按需查看档案、净值、风险、AI 分析与对话。
+                顶部模块菜单分两组：「当前标的」随基金切换，「持仓与全局工具」与标的无关（持有基金、对比、定投、预警、日报等）。
               </p>
             </div>
 
             <ModuleMenuBar
-              options={FUND_MODULE_OPTIONS}
+              scopes={FUND_MODULE_SCOPES}
+              activeScope={activeScope}
+              onScopeChange={setActiveScope}
+              scopeStats={scopeStats}
+              scopeNote={scopeNote}
+              options={scopedOptions}
               enabledModules={enabledModules}
               moduleOrder={moduleOrder}
               onToggleModule={toggleModule}
@@ -987,19 +1099,37 @@ export default function FundWorkbench() {
               </div>
             ) : null}
 
-            {Object.values(enabledModules).some(Boolean) ? (
+
+            {visibleModuleKeys.length > 0 ? (
               <div className="flex flex-col gap-6">
-                {moduleOrder.map((key) => (
+                {visibleModuleKeys.map((key) => (
                   <Fragment key={key}>{renderFundModule(key)}</Fragment>
                 ))}
               </div>
             ) : (
               <div className="flex min-h-[420px] items-center justify-center tech-panel tech-panel-dashed p-8 text-center">
                 <div>
-                  <h2 className="text-lg font-semibold">请选择功能模块</h2>
+                  <h2 className="text-lg font-semibold">
+                    {activeScope === "target"
+                      ? "「当前标的」分组还没有勾选模块"
+                      : "「持仓与全局工具」分组还没有勾选模块"}
+                  </h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    在顶部“功能模块”菜单中勾选需要展示的信息区；留空基金代码时默认展示 510300。
+                    {activeScope === "target"
+                      ? "本组模块随当前基金切换，勾选后即展示在当前代码下；留空代码时默认展示 510300。"
+                      : "本组与当前基金无关（账户级数据与自带代码输入的独立工具），可独立勾选、与标的互不影响。"}
                   </p>
+                  {primaryModule ? (
+                    <Button
+                      type="button"
+                      className="mt-4"
+                      onClick={() =>
+                        setEnabledModules((previous) => ({ ...previous, [primaryModule.key]: true }))
+                      }
+                    >
+                      启用「{primaryModule.label}」
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             )}

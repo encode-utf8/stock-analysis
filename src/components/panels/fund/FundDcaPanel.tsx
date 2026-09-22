@@ -3,6 +3,11 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import {
+  apiErrorFromPayload,
+  guardDatasourceError,
+  useDatasourceGuard,
+} from "@/lib/datasource-guard-client";
 import { Button } from "@/components/ui/button";
 import { sourceLabel } from "@/lib/format";
 import type { FundDcaFrequency, FundDcaPortfolioSnapshot, FundDcaSnapshot } from "@/lib/shared/types";
@@ -40,7 +45,7 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, { ...init, signal: controller.signal });
     const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new Error(payload?.error?.message ?? "基金定投请求失败。");
+      throw apiErrorFromPayload(payload);
     }
     return payload.data;
   } catch (error) {
@@ -104,6 +109,8 @@ export function FundDcaPanel() {
   const [snapshot, setSnapshot] = useState<FundDcaSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 数据源故障守卫：统一提示并禁用触发按钮 10 秒。
+  const datasourceGuard = useDatasourceGuard();
   const [page, setPage] = useState(0);
   const [showTable, setShowTable] = useState(false);
   const [showPortfolio, setShowPortfolio] = useState(false);
@@ -152,7 +159,9 @@ export function FundDcaPanel() {
       setSnapshot(data);
     } catch (nextError) {
       setSnapshot(null);
-      setError(nextError instanceof Error ? nextError.message : "基金定投回测加载失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "基金定投回测加载失败。");
+      }
     } finally {
       setLoading(false);
     }
@@ -275,7 +284,7 @@ export function FundDcaPanel() {
               ))}
             </select>
           </label>
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" disabled={loading || datasourceGuard.blocked}>
             {loading ? "回测中..." : "开始回测"}
           </Button>
         </form>
@@ -524,7 +533,7 @@ export function FundDcaPanel() {
                   ))}
                 </select>
               </label>
-              <Button type="submit" size="sm" disabled={portfolioLoading}>
+              <Button type="submit" size="sm" disabled={portfolioLoading || datasourceGuard.blocked}>
                 {portfolioLoading ? "回测中..." : "开始回测"}
               </Button>
             </div>

@@ -1,13 +1,12 @@
-// 基金数据编排：缓存命中优先，其次内存 Store，再次数据侧车，最后确定性回退。
+// 基金数据编排：缓存 → 内存 Store → 数据侧车官方数据 → 官方快照（标注降级）→ 抛数据源故障。
+// 约定：确定性降级数据不面向用户返回。
 
 import { cacheGet, cacheInvalidatePrefix, cacheSet } from "@/lib/cache";
-import {
-  buildDeterministicFundNav,
-  buildDeterministicFundProfile,
-} from "@/lib/fund-deterministic";
+import { DataSourceUnavailableError, markDegradedSnapshot } from "@/lib/datasource";
 import { fundDataStore } from "@/lib/fund-data-store";
 import { isUsableNavSource } from "@/lib/fund-nav-settlement";
 import { recordExternalCall } from "@/lib/observability";
+import { DATA_SOURCE_RETRY_AFTER_MS, isOfficialDataSource } from "@/lib/shared/types";
 import { beijingDateKey } from "@/lib/trading-calendar";
 import type { FundNavPoint, FundProfile } from "@/lib/shared/types";
 
@@ -211,7 +210,7 @@ export async function getFundProfile(
       const saved = fundProfileStore.get(storeKey);
       if (
         saved &&
-        saved.source !== "deterministic-fallback" &&
+        isOfficialDataSource(saved.source) &&
         isFresh(saved.fetched_at, PROFILE_TTL_MS)
       ) {
         return saved;
@@ -220,7 +219,7 @@ export async function getFundProfile(
       const persisted = await fundDataStore.profiles.getByCode(code);
       if (
         persisted &&
-        persisted.source !== "deterministic-fallback" &&
+        isOfficialDataSource(persisted.source) &&
         isFresh(persisted.fetched_at, PROFILE_TTL_MS)
       ) {
         fundProfileStore.set(storeKey, persisted);
@@ -229,17 +228,29 @@ export async function getFundProfile(
     }
 
     const sidecarProfile = await fetchFundProfileFromSidecar(code);
-    const profile = sidecarProfile ?? buildDeterministicFundProfile(code);
-    fundProfileStore.set(storeKey, profile);
-    await fundDataStore.profiles.upsert(profile);
-    return profile;
+    const official =
+      sidecarProfile && isOfficialDataSource(sidecarProfile.source) ? sidecarProfile : null;
+    if (official) {
+      fundProfileStore.set(storeKey, official);
+      await fundDataStore.profiles.upsert(official);
+      cacheSet(cacheKey, official, PROFILE_TTL_MS);
+      return official;
+    }
+
+    // 侧车不可达或只返回合成数据：回退到最近的官方快照并标注降级。
+    const snapshot =
+      fundProfileStore.get(storeKey) ?? (await fundDataStore.profiles.getByCode(code));
+    if (snapshot && isOfficialDataSource(snapshot.source)) {
+      const degraded = markDegradedSnapshot(snapshot);
+      fundProfileStore.set(storeKey, degraded);
+      cacheSet(cacheKey, degraded, DATA_SOURCE_RETRY_AFTER_MS);
+      return degraded;
+    }
+
+    throw new DataSourceUnavailableError(`基金 ${code} 档案`);
   };
 
-  const profile = await loader();
-  if (profile.source !== "deterministic-fallback") {
-    cacheSet(cacheKey, profile, PROFILE_TTL_MS);
-  }
-  return profile;
+  return loader();
 }
 
 /** 获取指定区间历史净值；接口始终返回单位与累计净值，便于前端无请求切换口径。 */
@@ -293,15 +304,39 @@ export async function getFundNav(
     }
 
     const sidecarNav = await fetchFundNavFromSidecar(code, startDate, endDate);
-    const nav = sidecarNav ?? buildDeterministicFundNav(code, startDate, endDate);
-    fundNavStore.set(cacheKey, nav);
-    await fundDataStore.navs.insertMany(nav);
-    return nav;
+    const official = sidecarNav ? sidecarNav.filter((item) => isOfficialDataSource(item.source)) : [];
+    if (official.length > 0) {
+      fundNavStore.set(cacheKey, official);
+      await fundDataStore.navs.insertMany(official);
+      cacheSet(cacheKey, official, resolveNavCacheTtlMs(official));
+      return official;
+    }
+
+    // 侧车不可达或只返回合成数据：回退到区间内最近的官方净值快照并标注降级。
+    const snapshotPersisted = (
+      await fundDataStore.navs.list(code)
+    ).filter(
+      (item) =>
+        item.nav_date >= startDate &&
+        item.nav_date <= endDate &&
+        isOfficialDataSource(item.source),
+    );
+    const snapshot =
+      snapshotPersisted.length > 0
+        ? snapshotPersisted
+        : (fundNavStore.get(cacheKey) ?? []).filter((item) => isOfficialDataSource(item.source));
+    if (snapshot.length > 0) {
+      const degraded = snapshot
+        .slice()
+        .sort((left, right) => left.nav_date.localeCompare(right.nav_date))
+        .map((item) => markDegradedSnapshot(item));
+      fundNavStore.set(cacheKey, degraded);
+      cacheSet(cacheKey, degraded, DATA_SOURCE_RETRY_AFTER_MS);
+      return degraded;
+    }
+
+    throw new DataSourceUnavailableError(`基金 ${code} 历史净值`);
   };
 
-  const nav = await loader();
-  if (nav.length > 0 && nav[0]?.source !== "deterministic-fallback") {
-    cacheSet(cacheKey, nav, resolveNavCacheTtlMs(nav));
-  }
-  return nav;
+  return loader();
 }

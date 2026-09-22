@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDateTime } from "@/lib/format";
+import { degradedSnapshotSuffix, formatDateTime } from "@/lib/format";
 import type { FundIntraday } from "@/lib/shared/types";
 
 interface FundIntradayPanelProps {
@@ -83,6 +83,7 @@ export function FundIntradayPanel({ intraday, loading }: FundIntradayPanelProps)
           <p className="text-xs text-muted-foreground">
             更新时间：{formatDateTime(intraday.ts)}，来源：
             {fundSourceLabel(intraday.source)}
+            {degradedSnapshotSuffix(intraday.degraded_snapshot)}
           </p>
         </div>
         {isEstimate ? (

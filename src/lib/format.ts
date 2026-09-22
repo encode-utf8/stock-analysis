@@ -40,6 +40,25 @@ export function sourceLabel(source: string): string {
   }
   return source;
 }
+/** 降级快照标注：数据源故障时复用本地官方快照的展示文案；非降级返回 null。 */
+export function degradedSnapshotLabel(
+  info?: { degraded?: boolean; degraded_at?: string } | null,
+): string | null {
+  if (!info?.degraded) {
+    return null;
+  }
+  const at = info.degraded_at ? formatDateTime(info.degraded_at) : null;
+  return at ? `降级快照（数据源故障，降级于 ${at}）` : "降级快照（数据源故障）";
+}
+
+/** 降级标注后缀：直接拼接到来源文案后；非降级返回空串。 */
+export function degradedSnapshotSuffix(
+  info?: { degraded?: boolean; degraded_at?: string } | null,
+): string {
+  const label = degradedSnapshotLabel(info);
+  return label ? ` · ${label}` : "";
+}
+
 const GARBLED_TEXT_PATTERNS = [
   /ï¿½|Ã|Â|â€|å|ç|æ|ä¸­å›½|è‚¡ç¥¨|æ²ª|æ·±/i,
   /[À-ÿ]{4,}/,

@@ -13,6 +13,7 @@ import {
 } from "@/lib/data-service";
 import { getFundNav } from "@/lib/fund-data";
 import { getFundIndustryNews } from "@/lib/fund-news";
+import { isDataSourceUnavailableError } from "@/lib/datasource";
 import { getFundIntraday } from "@/lib/fund-intraday";
 import { SAMPLE_FUND_CODES, resolveFundProfile } from "@/lib/fund-market";
 import { fundWatchlistRepository } from "@/lib/fund-watchlist";
@@ -294,35 +295,43 @@ async function collectStockHoldings(
           note: null,
         }));
 
-  const holdings = await Promise.all(
-    targets.map(async (target): Promise<DailyReportHolding> => {
-      if (isToday) {
-        const quote = await getMarketQuote(target.code);
+  const results = await Promise.all(
+    targets.map(async (target): Promise<DailyReportHolding | null> => {
+      // 数据源故障时跳过该标的，其余标的照常生成日报。
+      try {
+        if (isToday) {
+          const quote = await getMarketQuote(target.code);
+          return {
+            code: target.code,
+            name: target.name,
+            change_pct: quote.change_pct,
+            price: quote.price,
+            nav_date: null,
+            note: target.note,
+            source: quote.source,
+          };
+        }
+        const klines = await getKlines(target.code, "day", "qfq", 60);
+        const snapshot = changeFromKlines(klines, date);
         return {
           code: target.code,
           name: target.name,
-          change_pct: quote.change_pct,
-          price: quote.price,
+          change_pct: snapshot?.changePct ?? null,
+          price: snapshot?.price ?? null,
           nav_date: null,
           note: target.note,
-          source: quote.source,
+          source: klines[0]?.source ?? "unknown",
         };
+      } catch (error) {
+        if (isDataSourceUnavailableError(error)) {
+          return null;
+        }
+        throw error;
       }
-      const klines = await getKlines(target.code, "day", "qfq", 60);
-      const snapshot = changeFromKlines(klines, date);
-      return {
-        code: target.code,
-        name: target.name,
-        change_pct: snapshot?.changePct ?? null,
-        price: snapshot?.price ?? null,
-        nav_date: null,
-        note: target.note,
-        source: klines[0]?.source ?? "unknown",
-      };
     }),
   );
 
-  return holdings;
+  return results.filter((item): item is DailyReportHolding => item !== null);
 }
 
 /** 采集自选基金表现：当天取实时价/估算净值，历史日期取官方净值。 */
@@ -344,54 +353,62 @@ async function collectFundHoldings(
           note: null,
         }));
 
-  const holdings = await Promise.all(
-    targets.map(async (target): Promise<DailyReportHolding> => {
-      if (isToday) {
-        const intraday = await getFundIntraday(target.code);
-        return {
-          code: target.code,
-          name: target.name,
-          change_pct: intraday.change_pct,
-          price: intraday.price ?? intraday.estimated_nav,
-          nav_date: intraday.official_nav_date,
-          note: target.note,
-          source: intraday.source,
-        };
-      }
+  const results = await Promise.all(
+    targets.map(async (target): Promise<DailyReportHolding | null> => {
+      // 数据源故障时跳过该标的，其余标的照常生成日报。
+      try {
+        if (isToday) {
+          const intraday = await getFundIntraday(target.code);
+          return {
+            code: target.code,
+            name: target.name,
+            change_pct: intraday.change_pct,
+            price: intraday.price ?? intraday.estimated_nav,
+            nav_date: intraday.official_nav_date,
+            note: target.note,
+            source: intraday.source,
+          };
+        }
 
-      const navPoints = await getFundNav(target.code, "1y", "unit");
-      const position = navPoints.findIndex((point) => point.nav_date === date);
-      if (position < 0) {
+        const navPoints = await getFundNav(target.code, "1y", "unit");
+        const position = navPoints.findIndex((point) => point.nav_date === date);
+        if (position < 0) {
+          return {
+            code: target.code,
+            name: target.name,
+            change_pct: null,
+            price: null,
+            nav_date: null,
+            note: target.note,
+            source: navPoints[0]?.source ?? "unknown",
+          };
+        }
+        const current = navPoints[position];
+        const previous = position > 0 ? navPoints[position - 1] : null;
+        const changePct =
+          current.daily_change_pct ??
+          (previous && previous.unit_nav > 0
+            ? Number((((current.unit_nav - previous.unit_nav) / previous.unit_nav) * 100).toFixed(2))
+            : null);
         return {
           code: target.code,
           name: target.name,
-          change_pct: null,
-          price: null,
-          nav_date: null,
+          change_pct: changePct,
+          price: current.unit_nav,
+          nav_date: current.nav_date,
           note: target.note,
-          source: navPoints[0]?.source ?? "unknown",
+          source: current.source,
         };
+      } catch (error) {
+        if (isDataSourceUnavailableError(error)) {
+          return null;
+        }
+        throw error;
       }
-      const current = navPoints[position];
-      const previous = position > 0 ? navPoints[position - 1] : null;
-      const changePct =
-        current.daily_change_pct ??
-        (previous && previous.unit_nav > 0
-          ? Number((((current.unit_nav - previous.unit_nav) / previous.unit_nav) * 100).toFixed(2))
-          : null);
-      return {
-        code: target.code,
-        name: target.name,
-        change_pct: changePct,
-        price: current.unit_nav,
-        nav_date: current.nav_date,
-        note: target.note,
-        source: current.source,
-      };
     }),
   );
 
-  return holdings;
+  return results.filter((item): item is DailyReportHolding => item !== null);
 }
 
 /**

@@ -3,6 +3,7 @@
 import { cacheGet, cacheInvalidatePrefix, cacheSet } from "@/lib/cache";
 import { getFundNav, type FundNavRange } from "@/lib/fund-data";
 import { fundDataStore } from "@/lib/fund-data-store";
+import { DATA_SOURCE_RETRY_AFTER_MS } from "@/lib/shared/types";
 import type { FundNavPoint, FundRiskMetrics } from "@/lib/shared/types";
 
 export type FundMetricsRange = FundNavRange;
@@ -226,7 +227,7 @@ export function calculateFundRiskMetrics(
   };
 }
 
-/** 获取基金风险指标，带缓存与确定性净值回退。 */
+/** 获取基金风险指标；净值数据源不可用时向上抛出数据源故障。 */
 export async function getFundMetrics(
   code: string,
   range: FundMetricsRange,
@@ -261,11 +262,14 @@ export async function getFundMetrics(
     return null;
   }
 
-  const isFallback = nav[0]?.source === "deterministic-fallback";
+  // 降级快照算出的指标仍是真实历史数据，但只做短缓存，冷却结束后重试真实数据源。
+  const degraded = nav.some((item) => Boolean(item.degraded_snapshot));
   fundMetricsStore.set(cacheKey, metrics);
-  await fundDataStore.metrics.upsert(metrics);
-  if (!isFallback) {
+  if (!degraded) {
+    await fundDataStore.metrics.upsert(metrics);
     cacheSet(cacheKey, metrics, METRICS_TTL_MS);
+  } else {
+    cacheSet(cacheKey, metrics, DATA_SOURCE_RETRY_AFTER_MS);
   }
   return metrics;
 }

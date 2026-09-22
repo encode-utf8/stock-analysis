@@ -1,6 +1,7 @@
 // 对话助手编排：多轮上下文 + DeepSeek 流式输出 + function calling。
 import { createTraceRun, traceEvent, type TraceRunRecorder } from "@/lib/agent-trace";
 import { runAnalysis } from "@/lib/analysis";
+import { isDataSourceUnavailableError } from "@/lib/datasource";
 import { getIndicators, getKlines, getMarketQuote, getStock } from "@/lib/market-data";
 import { getNews } from "@/lib/news";
 import { store } from "@/lib/store";
@@ -631,6 +632,7 @@ async function buildFallbackReply(
   executions: ToolExecution[];
 }> {
   const executions: ToolExecution[] = [];
+  const skipped: string[] = [];
   const toolNames: ChatToolName[] = ["get_quote", "get_kline", "get_indicators", "search_news", "get_report"];
   const fallbackThinking = trace?.startStep({
     kind: "thinking",
@@ -640,7 +642,16 @@ async function buildFallbackReply(
   });
   fallbackThinking?.finish({ status: "skipped" });
   for (const name of toolNames) {
-    executions.push(await runTracedTool(trace, name, "{}", request, 1));
+    // 单一工具的数据源故障不终止整轮对话：跳过该部分并如实告知用户，
+    // 核心行情不可用时下方 getMarketQuote 仍会抛出数据源故障。
+    try {
+      executions.push(await runTracedTool(trace, name, "{}", request, 1));
+    } catch (error) {
+      if (!isDataSourceUnavailableError(error)) {
+        throw error;
+      }
+      skipped.push(TOOL_STEP_LABELS[name] ?? name);
+    }
   }
   if (/保存报告|生成报告|再分析|分析一下/.test(request.message)) {
     executions.push(
@@ -657,6 +668,13 @@ async function buildFallbackReply(
     `- 最新价：${quote.price.toFixed(2)}，涨跌幅 ${quote.change_pct.toFixed(2)}%。`,
     `- 行情来源：${quote.source}，获取时间 ${new Date(quote.fetched_at).toLocaleString("zh-CN")}。`,
     ...executions.map((item) => `- ${item.name}：${item.summary}`),
+    ...(skipped.length > 0
+      ? [
+          "",
+          "### 数据可用性",
+          `- 以下数据当前不可用（数据源故障，请稍后再试）：${skipped.join("、")}。`,
+        ]
+      : []),
     "",
     "### 风险提示",
     RISK_NOTE,
@@ -780,13 +798,25 @@ export async function* streamChat(request: ChatRequest, signal?: AbortSignal): A
       });
 
       for (const call of roundToolCalls) {
-        const execution = await runTracedTool(
-          trace,
-          call.function.name as ChatToolName,
-          call.function.arguments,
-          request,
-          round + 1,
-        );
+        const toolName = call.function.name as ChatToolName;
+        let execution: ToolExecution | null = null;
+        try {
+          execution = await runTracedTool(trace, toolName, call.function.arguments, request, round + 1);
+        } catch (error) {
+          if (!isDataSourceUnavailableError(error)) {
+            throw error;
+          }
+          // 单个工具的数据源故障按「该部分不可用」反馈给模型，不中断整轮对话。
+          llmMessages.push({
+            role: "tool",
+            content: JSON.stringify({
+              error: "SERVICE_UNAVAILABLE",
+              message: `${TOOL_STEP_LABELS[toolName] ?? toolName} 当前不可用：数据源故障，请稍后再试。`,
+            }),
+            tool_call_id: call.id,
+          });
+          continue;
+        }
         executions.push(execution);
         toolCalls.push({ name: execution.name, summary: execution.summary });
         yield traceEvent(trace.snapshot());

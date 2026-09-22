@@ -1,8 +1,10 @@
-// 基金当日行情数据编排：场内实时、场外盘中估算，缓存命中优先，其次侧车，最后确定性回退。
+// 基金当日行情数据编排：场内实时、场外盘中估算。
+// 读取顺序：缓存 → 内存 store → 侧车官方数据 → 官方快照（标注降级）→ 抛数据源故障。
 
 import { cacheGet, cacheInvalidatePrefix, cacheSet } from "@/lib/cache";
-import { buildDeterministicFundIntraday } from "@/lib/fund-deterministic";
+import { DataSourceUnavailableError, markDegradedSnapshot } from "@/lib/datasource";
 import { recordExternalCall } from "@/lib/observability";
+import { DATA_SOURCE_RETRY_AFTER_MS, isOfficialDataSource } from "@/lib/shared/types";
 import type { FundIntraday } from "@/lib/shared/types";
 
 const DEFAULT_DATA_SERVICE_URL = "http://127.0.0.1:8000";
@@ -77,34 +79,40 @@ export async function getFundIntraday(
       const saved = fundIntradayStore.get(code);
       if (
         saved &&
-        saved.source !== "deterministic-fallback" &&
+        isOfficialDataSource(saved.source) &&
         isFresh(saved.fetched_at, INTRADAY_TTL_MS)
       ) {
         return saved;
       }
     }
 
-    try {
-      const sidecar = await fetchJson<FundIntraday>(
-        `/fund/intraday?code=${encodeURIComponent(code)}`,
-      );
-      recordExternalCall(Boolean(sidecar));
-      const intraday =
-        sidecar && isFundIntraday(sidecar)
-          ? sidecar
-          : buildDeterministicFundIntraday(code);
-      fundIntradayStore.set(code, intraday);
-      return intraday;
-    } catch {
-      recordExternalCall(false);
-      const intraday = buildDeterministicFundIntraday(code);
-      fundIntradayStore.set(code, intraday);
-      return intraday;
+    const sidecar = await fetchJson<FundIntraday>(
+      `/fund/intraday?code=${encodeURIComponent(code)}`,
+    );
+    const official =
+      sidecar && isFundIntraday(sidecar) && isOfficialDataSource(sidecar.source)
+        ? sidecar
+        : null;
+    recordExternalCall(Boolean(official));
+    if (official) {
+      fundIntradayStore.set(code, official);
+      return official;
     }
+
+    // 侧车不可达或只返回合成数据：回退到最近的官方快照并标注降级。
+    const snapshot = fundIntradayStore.get(code);
+    if (snapshot && isOfficialDataSource(snapshot.source)) {
+      const degraded = markDegradedSnapshot(snapshot);
+      fundIntradayStore.set(code, degraded);
+      cacheSet(cacheKey, degraded, DATA_SOURCE_RETRY_AFTER_MS);
+      return degraded;
+    }
+
+    throw new DataSourceUnavailableError(`基金 ${code} 盘中行情`);
   };
 
   const intraday = await loader();
-  if (intraday.source !== "deterministic-fallback") {
+  if (isOfficialDataSource(intraday.source) && !intraday.degraded_snapshot) {
     cacheSet(cacheKey, intraday, INTRADAY_TTL_MS);
   }
   return intraday;

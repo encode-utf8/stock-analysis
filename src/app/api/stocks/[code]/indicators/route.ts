@@ -1,4 +1,4 @@
-import { apiFail, apiOk } from "@/lib/api-response";
+import { apiDatasource, apiFail } from "@/lib/api-response";
 import { getIndicators } from "@/lib/market-data";
 import { normalizeStockCode } from "@/lib/market";
 import type { KlinePeriod } from "@/lib/shared/types";
@@ -22,5 +22,5 @@ export async function GET(request: NextRequest, context: RouteContext) {
     ? (rawPeriod as KlinePeriod)
     : "day";
 
-  return apiOk(await getIndicators(code, period));
+  return apiDatasource(() => getIndicators(code, period));
 }

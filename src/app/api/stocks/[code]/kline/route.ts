@@ -1,4 +1,4 @@
-import { apiFail, apiOk } from "@/lib/api-response";
+import { apiDatasource, apiFail } from "@/lib/api-response";
 import { getKlines } from "@/lib/market-data";
 import { normalizeStockCode } from "@/lib/market";
 import type { AdjustType, KlinePeriod } from "@/lib/shared/types";
@@ -30,5 +30,5 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const limit = Math.min(Math.max(Number(rawLimit) || 30, 10), 240);
   const forceRefresh = request.nextUrl.searchParams.get("refresh") === "1";
 
-  return apiOk(await getKlines(code, period, adjust, limit, forceRefresh));
+  return apiDatasource(() => getKlines(code, period, adjust, limit, forceRefresh));
 }

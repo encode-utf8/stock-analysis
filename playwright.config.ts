@@ -17,6 +17,10 @@ const dataRoot =
   process.env.E2E_DATA_ROOT?.trim() ||
   mkdtempSync(path.join(os.tmpdir(), "stock-analysis-e2e-"));
 
+/** 端到端专用行情侧车替身端口：提供官方来源数据，并支持模拟上游故障。 */
+const SIDECAR_PORT = Number(process.env.E2E_SIDECAR_PORT ?? 3199);
+const SIDECAR_URL = `http://127.0.0.1:${SIDECAR_PORT}`;
+
 /** 继承父进程环境，并把数据库、邮件与外部密钥置空（空串等价于未配置）。 */
 const serverEnv: Record<string, string> = {};
 for (const [key, value] of Object.entries(process.env)) {
@@ -26,6 +30,8 @@ for (const [key, value] of Object.entries(process.env)) {
 }
 Object.assign(serverEnv, {
   DATA_ROOT: dataRoot,
+  // 指向端到端侧车替身：既有用例仍验证官方来源链路，故障用例通过开关构造 503。
+  DATA_SERVICE_URL: SIDECAR_URL,
   DATABASE_URL: "",
   SMTP_HOST: "",
   SMTP_USER: "",
@@ -57,13 +63,23 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
-    // 生产构建启动；未先执行 `pnpm build` 时会直接报错，提示明确。
-    // 直接调用仓库内的 next CLI，避免依赖 pnpm/npx 是否在 PATH 上。
-    command: `node ./node_modules/next/dist/bin/next start --port ${PORT}`,
-    url: `${baseURL}/api/health`,
-    timeout: 120_000,
-    reuseExistingServer: !process.env.CI,
-    env: serverEnv,
-  },
+  webServer: [
+    {
+      // 行情侧车替身：先用 `node tests/e2e/mock-sidecar.mjs` 起在固定端口上。
+      command: `node ./tests/e2e/mock-sidecar.mjs`,
+      url: `${SIDECAR_URL}/health`,
+      timeout: 30_000,
+      reuseExistingServer: !process.env.CI,
+      env: { E2E_SIDECAR_PORT: String(SIDECAR_PORT) },
+    },
+    {
+      // 生产构建启动；未先执行 `pnpm build` 时会直接报错，提示明确。
+      // 直接调用仓库内的 next CLI，避免依赖 pnpm/npx 是否在 PATH 上。
+      command: `node ./node_modules/next/dist/bin/next start --port ${PORT}`,
+      url: `${baseURL}/api/health`,
+      timeout: 120_000,
+      reuseExistingServer: !process.env.CI,
+      env: serverEnv,
+    },
+  ],
 });

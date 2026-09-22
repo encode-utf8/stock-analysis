@@ -1,4 +1,4 @@
-import { apiFail, apiOk } from "@/lib/api-response";
+import { apiDatasource, apiFail } from "@/lib/api-response";
 import {
   getFundDcaBacktest,
   getFundDcaPortfolioBacktest,
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     if (!amounts) {
       return apiFail("VALIDATION_ERROR", "组合定投金额数量需与基金数量一致，且每只基金金额需大于 0。", 400);
     }
-    return apiOk(await getFundDcaPortfolioBacktest(codes, range, frequency, amounts));
+    return apiDatasource(() => getFundDcaPortfolioBacktest(codes, range, frequency, amounts));
   }
 
   const code = normalizeFundDcaCode(params.get("code"));
@@ -36,5 +36,5 @@ export async function GET(request: NextRequest) {
     return apiFail("VALIDATION_ERROR", "每期定投金额需为大于 0 且不超过 1000 万的数字。", 400);
   }
 
-  return apiOk(await getFundDcaBacktest(code, range, frequency, amount));
+  return apiDatasource(() => getFundDcaBacktest(code, range, frequency, amount));
 }

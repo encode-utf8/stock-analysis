@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { formatDateTime } from "@/lib/format";
+import { degradedSnapshotSuffix, formatDateTime } from "@/lib/format";
 import type { NewsItem } from "@/lib/shared/types";
 
 interface NewsPanelProps {
@@ -15,6 +15,8 @@ interface NewsPanelProps {
   onSearch: () => void;
   onGenerateAnalysis: () => void;
   onStopAnalysis: () => void;
+  /** 数据源故障冷却中：禁用搜索与生成，避免连续点击。 */
+  blocked?: boolean;
 }
 
 const PAGE_SIZE = 4;
@@ -37,6 +39,7 @@ export function NewsPanel({
   onSearch,
   onGenerateAnalysis,
   onStopAnalysis,
+  blocked = false,
 }: NewsPanelProps) {
   const [page, setPage] = useState(0);
   const totalPages = Math.max(1, Math.ceil(news.length / PAGE_SIZE));
@@ -53,7 +56,7 @@ export function NewsPanel({
               停止生成
             </Button>
           ) : null}
-          <Button type="button" variant="outline" size="sm" onClick={onGenerateAnalysis} disabled={analysisLoading}>
+          <Button type="button" variant="outline" size="sm" onClick={onGenerateAnalysis} disabled={analysisLoading || blocked}>
             {analysisLoading ? "生成中..." : "生成 AI 分析"}
           </Button>
         </div>
@@ -70,7 +73,7 @@ export function NewsPanel({
             </option>
           ))}
         </select>
-        <Button type="button" variant="outline" size="sm" onClick={onSearch} disabled={loading}>
+        <Button type="button" variant="outline" size="sm" onClick={onSearch} disabled={loading || blocked}>
           {loading ? "搜索中..." : "搜索资讯"}
         </Button>
       </div>
@@ -97,7 +100,10 @@ export function NewsPanel({
             </div>
             <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.summary}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span>来源：{item.source}</span>
+              <span>
+                来源：{item.source}
+                {degradedSnapshotSuffix(item.degraded_snapshot)}
+              </span>
               <span>影响 {item.impact_days} 天</span>
               <span>到期 {formatDateTime(item.expire_at)}</span>
               <span>置信度 {(item.confidence * 100).toFixed(0)}%</span>
