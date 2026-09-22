@@ -2616,3 +2616,106 @@ Select-String -Path README.md -Pattern '^#{1,3} ' -Encoding utf8   # 章节结�
 - 环境变量由逐项说明改为「按组归纳 + 指向 `.env.example` 注释」，如需逐项文档可另补 `docs/configuration.md`
 - 纯文档改动不触发单测 / 端到端测试，未额外运行构建
 - 未提交，等待用户确认后再执行提交
+
+## 数据源故障处理与降级快照（2026-09-20，已完成）
+
+需求来源：数据源不可用时，系统会把确定性演示数据当作正常结果返回，用户无法分辨「真实行情」与「随机演示值」，据此决策会被误导；用户要求——存在官方可靠快照时基于快照继续服务并标注「降级快照」，没有快照时明确提示「数据源故障，请稍后再试」并自动禁用触发按钮 10 秒，确定性降级数据不再面向用户提供。
+
+- 关联方案：`docs/datasource-failure-plan.md`
+- 关联验收：`docs/checklists/10-feature-datasource-failure.md`
+- 分支：`feature/datasource-failure-ux`（基于 `main` 新建）
+
+### 任务目标与范围
+
+- 目标：R1 官方快照降级可用并标注来源与抓取时间；R2 无快照时统一提示并按功能入口禁用 10 秒；R3 移除面向用户的确定性演示数据；R4 后台任务保持既有跳过 / 记录策略；R5 统一错误契约与前端守卫。
+- 范围：数据编排层（`market-data.ts`、`fund-data.ts`、`fund-holdings.ts`、`fund-intraday.ts`、`news.ts`）、接口层（受影响路由与 SSE 事件）、客户端守卫（新增 Hook 与提示组件并接入触发按钮）、测试与文档。
+- 非目标：不改模型（DeepSeek）缺失时的既有本地报告兜底语义；不改自选代码校验的「上游不可用放行」策略；不改调度与实时推送的既有降级重连机制。
+
+### 验收项
+
+- [x] 服务端：官方快照回退 + 无快照抛 `DataSourceUnavailableError`（行情 / 基金 / 资讯）
+- [x] 接口层：503 `SERVICE_UNAVAILABLE` + `retry_after_ms = 10000`（含 SSE 错误事件）
+- [x] 客户端：统一提示「当前数据源故障，请稍后再试」并禁用触发按钮 10 秒（全站共享冷却）
+- [x] 降级快照：来源行标注「降级快照（数据源故障，降级于 …）」与抓取时间
+- [x] 后台任务：预警扫描、日报生成、调度刷新按跳过 / 记录原因处理，不中断其它任务
+- [x] 测试：单测 + 端到端（故障提示与 10 秒恢复）+ 回归全绿
+- [x] 文档：方案、验收清单、README 与 checklist 同步
+
+### 改动内容
+
+- 服务端新增 `src/lib/shared/types/datasource.ts`（来源判定 / 文案常量 / 降级标注类型）与 `src/lib/datasource.ts`（`DataSourceUnavailableError`、快照标注、503 响应体）。
+- 编排层 `market-data.ts`、`fund-data.ts`、`fund-holdings.ts`、`fund-intraday.ts`、`fund-metrics.ts`、`news.ts` 改为「缓存 → Store 官方数据 → 侧车官方数据 → 官方快照（标注降级，10 秒短缓存）→ 抛数据源故障」，不再返回确定性演示数据。
+- 接口层受影响路由统一经 `apiDatasource()` 返回 503 + `details.retry_after_ms`；`chat` / `fund-chat` / 个股与基金分析 SSE 的 `error` 事件带 `code` 与 `retryAfterMs`。
+- 客户端新增 `src/lib/datasource-guard-client.ts`（模块级共享冷却：任一入口失败后全站触发按钮同步禁用）与 `DatasourceUnavailableBanner`（吸顶提示 + 倒计时），接入查询 / 刷新、K 线周期、资讯搜索、AI 分析、对话、基金对比 / 组合 / 定投 / 持仓 / 风格 / 行业资讯、个股组合与回测、日报生成。
+- 对话链路中单一工具（如资讯检索）数据源故障时跳过该工具并在回答中说明「该部分不可用」，核心行情不可用时仍整体失败并进入冷却，避免整轮对话被非核心数据拖垮。
+
+### 验证方式与结果（2026-09-20）
+
+```powershell
+corepack pnpm typecheck   # 通过
+corepack pnpm lint        # 通过（0 error / 0 warning）
+corepack pnpm test        # 51 个文件 / 624 个用例全绿
+corepack pnpm build       # 通过
+corepack pnpm test:e2e    # 11 个用例全绿（含新增数据源故障用例）
+```
+
+- 新增单测：`tests/datasource.test.ts`（来源判定、降级标注、错误体映射）、`tests/datasource-guard-client.test.ts`（错误解析、10 秒冷却与自动恢复）、`tests/format.test.ts`（降级标注文案）。
+- 更新单测：`tests/market-data.test.ts`、`tests/news-client.test.ts` 改为验证「官方快照降级 / 无快照抛错 / 合成数据不入库」。
+- 端到端新增 `tests/e2e/datasource-failure.spec.ts`；`playwright.config.ts` 增加本地侧车替身 `tests/e2e/mock-sidecar.mjs`（官方来源数据 + `/__control` 故障开关），保证既有对话 / 分析 / 自选用例仍验证正常链路。
+
+### 风险与遗留
+
+- 快照可能较旧，界面已成对展示降级时间与抓取时间，避免被误读为实时值；
+- 无快照时功能直接不可用属产品取舍，优先保证不误导用户；
+- 端到端侧车替身覆盖「官方来源」链路，真实上游波动仍需本机联调验证；
+- 实时行情推送条保持既有「降级重连中」状态，不在按钮禁用范围内（无触发按钮）。
+
+
+## 持仓标的点击切换（2026-09-22，已完成，待用户确认）
+
+需求来源：当前查询的基金 / 股票应支持直接从用户持有的基金 / 股票点击切换，更符合使用习惯。
+
+- 关联方案：`docs/holdings-quick-switch-plan.md`
+- 关联验收：`docs/checklists/11-feature-holdings-quick-switch.md`
+- 分支：`feature/datasource-failure-ux`（沿用当前工作分支）
+
+### 任务目标与范围
+
+- 目标：个股「我的持仓组合」与基金「我的持有基金」的标的名称可点击，点击即切换当前查询标的；面板内标记当前查询标的；切换复用工作台既有主查询链路。
+- 范围：新增共享组件 `TargetSwitchCell`、改造两个持仓面板（新增可选 props）、两个工作台接线、单测与端到端、文档同步。
+- 非目标：不做持仓与自选的联动，不改取数 / 降级策略，不扩展到回测 / 日报 / 预警等其它含标的列表的面板。
+
+### 验收项
+
+- [x] 持仓 / 持有列表标的名称可点击，点击后切换当前查询（与自选点击共用同一入口）
+- [x] 当前查询标的在列表中带「当前」徽标与主色描边，面板提示行展示当前标的
+- [x] 未传入切换回调时保持静态文本，既有渲染结果不变
+- [x] 无障碍：按钮带「切换到 XXX（代码）」的 `aria-label` 与 `title`，可键盘聚焦
+- [x] 测试：单测（共享组件渲染、两个面板切换提示）+ 端到端（个股与基金点击切换后侧栏代码同步）
+- [x] 回归：`typecheck` / `lint` / `test` / `build` / `test:e2e` 全绿
+- [x] 文档：方案、验收清单、README「我的持仓」与端到端覆盖说明同步
+
+### 改动内容
+
+- 新增 `src/components/panels/TargetSwitchCell.tsx`：可点击 / 静态两种形态共用同一骨架（名称行 + 徽标 + 代码 + 补充说明）。
+- `StockPortfolioPanel`、`FundPositionsPanel` 新增可选 `activeCode` / `onSelectTarget`，标的单元格改用共享组件，并在标题下给出切换提示。
+- `StockWorkbench`、`FundWorkbench` 传入 `activeCode={code}` 与 `onSelectTarget={handleWatchlistSelect}`，与自选点击共用切换链路。
+
+### 验证方式与结果（2026-09-22）
+
+```powershell
+corepack pnpm typecheck   # 通过
+corepack pnpm lint        # 通过（0 error / 0 warning）
+corepack pnpm test        # 53 个文件 / 631 个用例全绿
+corepack pnpm build       # 通过
+corepack pnpm test:e2e    # 13 个用例全绿（含新增 2 个持仓点击切换用例）
+```
+
+- 新增单测：`tests/target-switch-cell.test.ts`、`tests/stock-portfolio-panel.test.ts`；`tests/fund-positions-panel.test.ts` 补切换提示用例。
+- 新增端到端：`tests/e2e/holdings-quick-switch.spec.ts`；`tests/e2e/mock-sidecar.mjs` 补充样本标的名称（600000 浦发银行）。
+
+### 风险与遗留
+
+- 持仓按代码唯一，按代码高亮是确定性的；
+- 仅启用持仓模块时，切换后的可见反馈为「当前」徽标与提示行，与自选点击的既有反馈口径一致；
+- 跨模块联动（盘面、K 线、资讯、AI、复盘）由既有主查询链路保证，端到端以侧栏代码与面板反馈断言。

@@ -1,7 +1,9 @@
-// 资讯读取与外部搜索封装：Tavily 可用时真实调用，否则确定性回退并落库。
+// 资讯读取与外部搜索封装：只返回真实检索结果或官方历史快照。
+// 约定：数据源不可用时抛出数据源故障，不再生成演示资讯。
 // 资讯按 URL 或“标题 + 来源 + 发布时间”去重，并用 DeepSeek 逐条判定情绪与影响周期。
 import { cacheGetOrSet, cacheInvalidatePrefix } from "@/lib/cache";
 import { recordExternalCall } from "@/lib/observability";
+import { DataSourceUnavailableError, markDegradedSnapshot } from "@/lib/datasource";
 import { saveNewsSnapshot } from "@/lib/r2";
 import { store } from "@/lib/store";
 import type { NewsItem, NewsSentiment, Stock } from "@/lib/shared/types";
@@ -19,12 +21,6 @@ const STOCK_SEARCH_ALIASES: Record<string, string[]> = {
 const STOCK_TAVILY_QUERIES: Record<string, string> = {
   "688256": '"Cambricon Technologies" "688256"',
 };
-
-/** Tavily 是否已配置真实密钥。 */
-function hasTavilyKey(): boolean {
-  const apiKey = process.env.TAVILY_API_KEY;
-  return Boolean(apiKey && apiKey !== "replace-me");
-}
 
 /** 判断资讯是否为本地演示降级数据。 */
 function isDemoNewsItem(item: NewsItem): boolean {
@@ -200,59 +196,21 @@ function dedupeNewsItems(items: NewsItem[]): NewsItem[] {
   return Array.from(seen.values());
 }
 
-/** 生成确定性资讯，保证无外部网络时也有可展示内容。 */
-function buildDeterministicNews(code: string, stock: Stock): NewsItem[] {
+/** 取本地已落库的官方资讯（过滤演示数据与过期数据）。 */
+async function listOfficialNews(code: string): Promise<NewsItem[]> {
+  const saved = await store.newsItems.listByCode(code);
   const now = Date.now();
-  const templates = [
-    {
-      title: `${stock.name}发布最新经营动态`,
-      summary: "公司披露近期经营与重点业务进展，内容为本地演示数据，仅用于链路验收。",
-      source: "演示资讯源",
-    },
-    {
-      title: `${stock.name}所在行业政策持续受到市场关注`,
-      summary: "行业政策与景气度变化可能影响市场预期，需要结合基本面与情绪综合判断。",
-      source: "演示资讯源",
-    },
-    {
-      title: `${stock.name}资金面出现结构性波动`,
-      summary: "盘面成交与资金流向呈现结构性变化，短线交易者关注量价配合情况。",
-      source: "演示行情摘要",
-    },
-    {
-      title: `${stock.name}机构研报更新风险提示`,
-      summary: "机构研报强调盈利预期、估值与外部环境等不确定性，投资者需独立评估。",
-      source: "演示研报摘要",
-    },
-  ];
+  return saved.filter((item) => {
+    if (item.status !== "active" || new Date(item.expire_at).getTime() < now) {
+      return false;
+    }
+    return !isDemoNewsItem(item);
+  }).map(sanitizeNewsItem);
+}
 
-  return templates.map((item, index) => {
-    const classification = classifyTitle(item.title);
-    const publishedAt = new Date(now - index * 6 * 60 * 60_000).toISOString();
-    const impactDays = classification.impactDays;
-    return {
-      id: `news-${code}-${shortHash(dedupeKey({
-        url: `https://example.com/news/${code}/${index + 1}`,
-        title: item.title,
-        source: item.source,
-        published_at: publishedAt,
-      }))}`,
-      code,
-      title: item.title,
-      summary: item.summary,
-      url: `https://example.com/news/${code}/${index + 1}`,
-      source: item.source,
-      published_at: publishedAt,
-      fetched_at: new Date(now).toISOString(),
-      sentiment: classification.sentiment,
-      confidence: 0.7 + index * 0.05,
-      impact_days: impactDays,
-      expire_at: new Date(now + impactDays * 24 * 60 * 60_000).toISOString(),
-      tags: classification.tags,
-      status: "active",
-      pinned: false,
-    };
-  });
+/** 标注降级快照：来源为官方、但来自历史落库而非本次实时检索。 */
+function markNewsSnapshot(items: NewsItem[]): NewsItem[] {
+  return items.map((item) => markDegradedSnapshot(item));
 }
 
 interface TavilyResult {
@@ -539,50 +497,35 @@ export async function getNews(code: string, forceRefresh = false): Promise<NewsI
 
   return cacheGetOrSet(cacheKey, NEWS_TTL_MS, async () => {
     if (!forceRefresh) {
-      const saved = await store.newsItems.listByCode(code);
-      const now = Date.now();
-      const active = saved.filter((item) => {
-        if (item.status !== "active" || new Date(item.expire_at).getTime() < now) {
-          return false;
-        }
-        return hasTavilyKey() ? !isDemoNewsItem(item) : true;
-      }).map(sanitizeNewsItem);
-      if (active.length > 0) {
-        return active;
+      const cachedOfficial = await listOfficialNews(code);
+      if (cachedOfficial.length > 0) {
+        return cachedOfficial;
       }
     }
 
     const stock = await import("@/lib/market-data").then((module) => module.getStock(code));
     const external = await fetchNewsFromTavily(code, stock);
-    const fallback = buildDeterministicNews(code, stock);
-    const candidate = external && external.length > 0 ? external : fallback;
-    const deduped = dedupeNewsItems(candidate);
-    const classifiedRaw =
-      external && external.length > 0
-        ? await classifyNewsWithDeepSeek(deduped, stock.name)
-        : deduped;
-    const classified = classifiedRaw.map(sanitizeNewsItem);
-
-    let news = classified;
-    if (forceRefresh) {
-      const saved = await store.newsItems.listByCode(code);
-      const now = Date.now();
-      const savedCandidates = saved.filter((item) => {
-        if (item.status !== "active" || new Date(item.expire_at).getTime() < now) {
-          return false;
-        }
-        return hasTavilyKey() ? !isDemoNewsItem(item) : true;
-      }).map(sanitizeNewsItem);
-      news = dedupeNewsItems([
-        ...classified,
-        ...savedCandidates,
-      ]);
+    if (external === null) {
+      // 检索服务未配置或调用失败：只用官方历史快照兜底，没有快照即按数据源故障处理。
+      const snapshot = await listOfficialNews(code);
+      if (snapshot.length > 0) {
+        return markNewsSnapshot(snapshot);
+      }
+      throw new DataSourceUnavailableError(`股票 ${code} 资讯检索`);
     }
+
+    const deduped = dedupeNewsItems(external);
+    const classified = deduped.length > 0
+      ? await classifyNewsWithDeepSeek(deduped, stock.name)
+      : deduped;
+    const news = dedupeNewsItems(classified.map(sanitizeNewsItem));
 
     for (const item of news) {
       await store.newsItems.insert(item);
     }
-    void saveNewsSnapshot(code, news);
+    if (news.length > 0) {
+      void saveNewsSnapshot(code, news);
+    }
     return news;
   });
 }
@@ -618,14 +561,17 @@ export async function searchNews(
       return savedReal;
     }
 
-    if (!hasTavilyKey()) {
-      return savedReal;
-    }
-
     const stock = await import("@/lib/market-data").then((module) => module.getStock(code));
     const external = await fetchNewsFromTavily(code, stock, days);
-    const real = external && external.length > 0 ? external : [];
-    const deduped = dedupeNewsItems(real.length > 0 ? real : savedReal);
+    if (external === null) {
+      // 检索服务未配置或调用失败：返回官方历史快照（标注降级），没有快照即按数据源故障处理。
+      if (savedReal.length > 0) {
+        return markNewsSnapshot(savedReal);
+      }
+      throw new DataSourceUnavailableError(`股票 ${code} 资讯检索`);
+    }
+
+    const deduped = dedupeNewsItems(external.length > 0 ? external : savedReal);
     const classified = deduped.length > 0
       ? await classifyNewsWithDeepSeek(deduped, stock.name)
       : deduped;
@@ -634,7 +580,9 @@ export async function searchNews(
     for (const item of cleaned) {
       await store.newsItems.insert(item);
     }
-    void saveNewsSnapshot(code, cleaned);
+    if (cleaned.length > 0) {
+      void saveNewsSnapshot(code, cleaned);
+    }
     return cleaned;
   });
 }

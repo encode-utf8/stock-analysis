@@ -1,6 +1,11 @@
 "use client";
 
-import { formatDateTime, freshnessText, sourceLabel } from "@/lib/format";
+import {
+  degradedSnapshotSuffix,
+  formatDateTime,
+  freshnessText,
+  sourceLabel,
+} from "@/lib/format";
 import type { MarketQuote, Stock } from "@/lib/shared/types";
 
 interface QuotePanelProps {
@@ -29,6 +34,7 @@ export function QuotePanel({ stock, quote }: QuotePanelProps) {
       <div className="tech-panel tech-lift px-4 py-3 text-xs text-muted-foreground">
         数据时间：{formatDateTime(quote.fetched_at)}（{freshnessText(quote.fetched_at)}），
         来源：{sourceLabel(quote.source)}
+        {degradedSnapshotSuffix(quote.degraded_snapshot)}
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {items.map((item) => (

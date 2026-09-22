@@ -1,4 +1,4 @@
-import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
+import { apiDatasourceFailure, apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
 import { runAnalysis } from "@/lib/analysis";
 import { normalizeStockCode } from "@/lib/market";
 
@@ -23,6 +23,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const report = await runAnalysis(code, body.prompt, body.news ?? []);
     return apiOk(report, { status: 202 });
   } catch (error) {
-    return apiUnexpected(error);
+    // 数据源故障返回 503（含冷却时长），其它异常按 500 处理。
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }

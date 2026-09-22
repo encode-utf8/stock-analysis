@@ -3,6 +3,11 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import {
+  datasourceErrorFromPayload,
+  guardDatasourceError,
+  useDatasourceGuard,
+} from "@/lib/datasource-guard-client";
 import { BacktestEquityChart } from "@/components/panels/stock/BacktestEquityChart";
 import { Button } from "@/components/ui/button";
 import { NoticeDialog } from "@/components/ui/notice-dialog";
@@ -52,7 +57,11 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
       error?: { code?: string; message?: string };
     } | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new ApiError(payload?.error?.code ?? "INTERNAL_ERROR", payload?.error?.message ?? "回测请求失败。");
+      // 数据源故障优先映射为可识别错误，由守卫统一提示与冷却。
+      throw (
+        datasourceErrorFromPayload(payload) ??
+        new ApiError(payload?.error?.code ?? "INTERNAL_ERROR", payload?.error?.message ?? "回测请求失败。")
+      );
     }
     return payload.data;
   } catch (error) {
@@ -139,6 +148,8 @@ export function StockBacktestPanel() {
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 数据源故障守卫：统一提示并禁用触发按钮 10 秒。
+  const datasourceGuard = useDatasourceGuard();
   const [notice, setNotice] = useState<string | null>(null);
   const [showAllTrades, setShowAllTrades] = useState(false);
 
@@ -219,7 +230,9 @@ export function StockBacktestPanel() {
       if (nextError instanceof ApiError && nextError.code === "CODE_NOT_FOUND") {
         setNotice(nextError.message);
       } else {
-        setError(nextError instanceof Error ? nextError.message : "回测失败。");
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "回测失败。");
+        }
       }
       setResult(null);
     } finally {
@@ -509,7 +522,7 @@ export function StockBacktestPanel() {
         </div>
 
         <div className="mt-3 flex justify-end">
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" disabled={loading || datasourceGuard.blocked}>
             {loading ? "回测中..." : "开始回测"}
           </Button>
         </div>

@@ -4,7 +4,7 @@ import {
   FUND_TRADING_MODE_LABELS,
   FUND_TYPE_LABELS,
 } from "@/lib/fund-market";
-import { formatDateTime } from "@/lib/format";
+import { degradedSnapshotSuffix, formatDateTime } from "@/lib/format";
 import type { FundProfile } from "@/lib/shared/types";
 
 interface FundProfilePanelProps {
@@ -62,6 +62,7 @@ export function FundProfilePanel({ profile, loading }: FundProfilePanelProps) {
       <div className="tech-panel tech-lift px-4 py-3 text-xs text-muted-foreground">
         数据时间：{formatDateTime(profile.fetched_at)}，
         来源：{fundSourceLabel(profile.source)}
+        {degradedSnapshotSuffix(profile.degraded_snapshot)}
       </div>
       <div className="tech-panel tech-lift p-4 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">

@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDateTime } from "@/lib/format";
+import { degradedSnapshotSuffix, formatDateTime } from "@/lib/format";
 import type { FundHoldings } from "@/lib/shared/types";
 
 interface FundHoldingsPanelProps {
@@ -55,7 +55,8 @@ export function FundHoldingsPanel({ holdings, loading }: FundHoldingsPanelProps)
           <h2 className="text-lg font-semibold">最新季度持仓</h2>
           <p className="text-xs text-muted-foreground">
             报告期：{holdings.report_date}，来源：
-            {fundSourceLabel(holdings.source)}，抓取时间：
+            {fundSourceLabel(holdings.source)}
+            {degradedSnapshotSuffix(holdings.degraded_snapshot)}，抓取时间：
             {formatDateTime(holdings.fetched_at)}
           </p>
         </div>

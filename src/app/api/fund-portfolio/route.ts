@@ -1,4 +1,4 @@
-import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
+import { apiDatasource, apiFail } from "@/lib/api-response";
 import {
   getFundPortfolio,
   normalizeFundPortfolioCodes,
@@ -31,11 +31,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         400,
       );
     }
-    try {
-      return apiOk(await getFundPortfolio(codes, range, { mode, weights: null, shares, ranges: null }));
-    } catch (error) {
-      return apiUnexpected(error);
-    }
+    return apiDatasource(() => getFundPortfolio(codes, range, { mode, weights: null, shares, ranges: null }));
   }
 
   if (mode === "range") {
@@ -51,11 +47,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         400,
       );
     }
-    try {
-      return apiOk(await getFundPortfolio(codes, range, { mode, weights: null, shares: null, ranges }));
-    } catch (error) {
-      return apiUnexpected(error);
-    }
+    return apiDatasource(() => getFundPortfolio(codes, range, { mode, weights: null, shares: null, ranges }));
   }
 
   const weights = normalizeFundPortfolioWeights(params.get("weights"), codes.length);
@@ -67,9 +59,5 @@ export async function GET(request: NextRequest): Promise<Response> {
     );
   }
 
-  try {
-    return apiOk(await getFundPortfolio(codes, range, { mode, weights, shares: null, ranges: null }));
-  } catch (error) {
-    return apiUnexpected(error);
-  }
+  return apiDatasource(() => getFundPortfolio(codes, range, { mode, weights, shares: null, ranges: null }));
 }

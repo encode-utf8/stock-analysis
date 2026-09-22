@@ -1,5 +1,5 @@
-// 资讯采集编排测试：缓存/本地库/外部搜索/确定性回退四层优先级，以及清洗、去重、
-// 相关性过滤与 DeepSeek 分类。store、R2、行情元数据与 fetch 全部用替身。
+// 资讯采集编排测试：缓存 → 本地官方库 → 外部搜索 → 官方历史快照降级 → 数据源故障，
+// 以及清洗、去重、相关性过滤与 DeepSeek 分类。store、R2、行情元数据与 fetch 全部用替身。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -33,6 +33,7 @@ vi.mock("@/lib/r2", () => ({ saveNewsSnapshot: mocks.saveNewsSnapshot }));
 
 vi.mock("@/lib/market-data", () => ({ getStock: mocks.getStock }));
 
+import { DataSourceUnavailableError } from "@/lib/datasource";
 import { cleanupExpiredNews, getNews, searchNews } from "@/lib/news";
 import { resolveStock } from "@/lib/market";
 import type { NewsItem } from "@/lib/shared/types";
@@ -107,16 +108,22 @@ afterEach(() => {
 });
 
 describe("getNews", () => {
-  it("无外部密钥时生成确定性资讯并落库", async () => {
-    const result = await getNews(CODE);
-
-    expect(result).toHaveLength(4);
-    expect(result.every((item) => item.code === CODE && item.status === "active")).toBe(true);
-    expect(result.every((item) => item.source.startsWith("演示"))).toBe(true);
-    expect(result.every((item) => new Date(item.expire_at).getTime() > Date.now())).toBe(true);
-    expect(mocks.insert).toHaveBeenCalledTimes(4);
-    expect(mocks.saveNewsSnapshot).toHaveBeenCalledWith(CODE, result);
+  it("无外部检索且无本地官方快照时抛数据源故障，不生成演示资讯", async () => {
+    await expect(getNews(CODE)).rejects.toBeInstanceOf(DataSourceUnavailableError);
+    expect(mocks.insert).not.toHaveBeenCalled();
     expect(mocks.cacheGetOrSet.mock.calls[0][1]).toBe(NEWS_TTL_MS);
+  });
+
+  it("无外部检索但有本地官方资讯时降级返回并标注来源", async () => {
+    const saved = [newsItem(), newsItem()];
+    mocks.listByCode.mockResolvedValue(saved);
+
+    const result = await getNews(CODE, true);
+
+    expect(result).toHaveLength(2);
+    expect(result.every((item) => item.degraded_snapshot?.degraded === true)).toBe(true);
+    expect(result.every((item) => !item.source.startsWith("演示"))).toBe(true);
+    expect(mocks.insert).not.toHaveBeenCalled();
   });
 
   it("本地有活跃真实资讯时直接返回，不再请求外部", async () => {
@@ -131,16 +138,13 @@ describe("getNews", () => {
     expect(mocks.insert).not.toHaveBeenCalled();
   });
 
-  it("本地数据过期或非活跃时重新生成", async () => {
+  it("本地数据过期或非活跃时视为无快照并抛数据源故障", async () => {
     mocks.listByCode.mockResolvedValue([
       newsItem({ expire_at: new Date(Date.now() - 86_400_000).toISOString() }),
       newsItem({ status: "expired" }),
     ]);
 
-    const result = await getNews(CODE);
-
-    expect(result).toHaveLength(4);
-    expect(result.every((item) => item.source.startsWith("演示"))).toBe(true);
+    await expect(getNews(CODE)).rejects.toBeInstanceOf(DataSourceUnavailableError);
   });
 
   it("Tavily 结果按相关性、时间范围与字段完整性过滤并清洗", async () => {
@@ -236,25 +240,32 @@ describe("getNews", () => {
     expect(result[0].tags).toEqual(["长期"]);
   });
 
-  it("Tavily 请求异常时回退确定性资讯", async () => {
+  it("Tavily 请求异常时改用本地官方快照并标注降级", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "tvly-test");
+    stubFetch({ "https://api.tavily.com/search": "throw" });
+    mocks.listByCode.mockResolvedValue([newsItem()]);
+
+    const result = await getNews(CODE, true);
+
+    expect(result).toHaveLength(1);
+    expect(result.every((item) => item.degraded_snapshot?.degraded === true)).toBe(true);
+  });
+
+  it("Tavily 请求异常且无本地官方快照时抛数据源故障", async () => {
     vi.stubEnv("TAVILY_API_KEY", "tvly-test");
     stubFetch({ "https://api.tavily.com/search": "throw" });
 
-    const result = await getNews(CODE);
-
-    expect(result).toHaveLength(4);
-    expect(result.every((item) => item.source.startsWith("演示"))).toBe(true);
+    await expect(getNews(CODE)).rejects.toBeInstanceOf(DataSourceUnavailableError);
   });
 
-  it("强制刷新会清缓存并合并本地未过期资讯", async () => {
+  it("强制刷新会清缓存并降级复用本地未过期官方资讯", async () => {
     mocks.listByCode.mockResolvedValue([newsItem({ url: "https://example.com/kept.html" })]);
 
     const result = await getNews(CODE, true);
 
     expect(mocks.cacheInvalidatePrefix).toHaveBeenCalledWith(`news:${CODE}`);
     expect(result.some((item) => item.url === "https://example.com/kept.html")).toBe(true);
-    // 确定性资讯 4 条 + 本地保留 1 条，按 URL 去重后不应丢数据。
-    expect(result).toHaveLength(5);
+    expect(result).toHaveLength(1);
   });
 });
 
@@ -272,8 +283,17 @@ describe("searchNews", () => {
     expect(result.map((item) => item.url)).toEqual([real.url]);
   });
 
-  it("无密钥且无本地数据时返回空数组", async () => {
-    expect(await searchNews(CODE, 30)).toEqual([]);
+  it("无密钥且无本地数据时抛数据源故障", async () => {
+    await expect(searchNews(CODE, 30)).rejects.toBeInstanceOf(DataSourceUnavailableError);
+  });
+
+  it("无密钥但有本地官方资讯时降级返回并标注", async () => {
+    mocks.listByCode.mockResolvedValue([newsItem()]);
+
+    const result = await searchNews(CODE, 30, true);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].degraded_snapshot?.degraded).toBe(true);
   });
 
   it("有密钥时调用外部搜索并落库", async () => {

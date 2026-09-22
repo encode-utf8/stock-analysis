@@ -1,4 +1,4 @@
-import { apiFail, apiOk } from "@/lib/api-response";
+import { apiDatasource, apiFail } from "@/lib/api-response";
 import {
   getFundStyle,
   normalizeFundStyleCode,
@@ -15,5 +15,5 @@ export async function GET(request: NextRequest) {
   }
 
   const range = normalizeFundStyleRange(request.nextUrl.searchParams.get("range"));
-  return apiOk(await getFundStyle(code, range));
+  return apiDatasource(() => getFundStyle(code, range));
 }

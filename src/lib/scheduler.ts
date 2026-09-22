@@ -7,6 +7,7 @@ import { normalizeStockCode, SAMPLE_CODES } from "@/lib/market";
 import { getKlines, getMarketQuote } from "@/lib/market-data";
 import { getNews } from "@/lib/news";
 import { cleanupExpiredFundNews } from "@/lib/fund-news";
+import { isDataSourceUnavailableError } from "@/lib/datasource";
 import { getFundHoldings } from "@/lib/fund-holdings";
 import { getFundIntraday } from "@/lib/fund-intraday";
 import { SAMPLE_FUND_CODES } from "@/lib/fund-market";
@@ -157,6 +158,19 @@ export async function runCleanupJob(options: CleanupJobOptions = {}): Promise<Jo
 }
 
 /** 执行一次行情或资讯刷新任务，返回写入完成的 JobRun。 */
+/** 后台任务里的单次数据读取：数据源不可用时记为跳过，其它异常照常抛出。 */
+export async function loadInJob<T>(run: () => Promise<T>): Promise<boolean> {
+  try {
+    await run();
+    return true;
+  } catch (error) {
+    if (isDataSourceUnavailableError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 export async function runRefreshJob(options: RefreshJobOptions = {}): Promise<JobRun> {
   const codes = options.codes?.length ? options.codes : [...SAMPLE_CODES];
   const target = options.target ?? "all";
@@ -167,18 +181,30 @@ export async function runRefreshJob(options: RefreshJobOptions = {}): Promise<Jo
     { source, codes, target },
     async () => {
       recordTaskRun("refresh");
+      const skipped: string[] = [];
       for (const code of codes) {
+        // 数据源不可用时跳过该标的，不中断其它标的的刷新。
+        const steps: Array<() => Promise<unknown>> = [];
         if (target === "quote" || target === "all") {
-          await getMarketQuote(code, true);
+          steps.push(() => getMarketQuote(code, true));
         }
         if (target === "kline" || target === "all") {
-          await getKlines(code, "day", "qfq", 120, true);
+          steps.push(() => getKlines(code, "day", "qfq", 120, true));
         }
         if (target === "news" || target === "all") {
-          await getNews(code, true);
+          steps.push(() => getNews(code, true));
+        }
+        let usable = true;
+        for (const step of steps) {
+          if (!(await loadInJob(step))) {
+            usable = false;
+          }
+        }
+        if (!usable) {
+          skipped.push(code);
         }
       }
-      return { refreshed_count: codes.length };
+      return { refreshed_count: codes.length - skipped.length, skipped_codes: skipped };
     },
   );
 }
@@ -196,26 +222,38 @@ export async function runFundRefreshJob(
     { source, codes, target },
     async () => {
       recordTaskRun("refresh");
+      const skipped: string[] = [];
       for (const code of codes) {
+        // 数据源不可用时跳过该标的，不中断其它基金的刷新。
+        const steps: Array<() => Promise<unknown>> = [];
         if (target === "profile" || target === "all") {
-          await getFundProfile(code, true);
+          steps.push(() => getFundProfile(code, true));
         }
         if (target === "intraday" || target === "all") {
-          await getFundIntraday(code, true);
+          steps.push(() => getFundIntraday(code, true));
         }
         if (target === "nav" || target === "all") {
-          await getFundNav(code, "1y", "unit", true);
-          await getFundNav(code, "all", "cumulative", true);
+          steps.push(() => getFundNav(code, "1y", "unit", true));
+          steps.push(() => getFundNav(code, "all", "cumulative", true));
         }
         if (target === "holdings" || target === "all") {
-          await getFundHoldings(code, true);
+          steps.push(() => getFundHoldings(code, true));
         }
         if (target === "metrics" || target === "all") {
-          await getFundMetrics(code, "1y", true);
-          await getFundMetrics(code, "all", true);
+          steps.push(() => getFundMetrics(code, "1y", true));
+          steps.push(() => getFundMetrics(code, "all", true));
+        }
+        let usable = true;
+        for (const step of steps) {
+          if (!(await loadInJob(step))) {
+            usable = false;
+          }
+        }
+        if (!usable) {
+          skipped.push(code);
         }
       }
-      return { refreshed_count: codes.length, target };
+      return { refreshed_count: codes.length - skipped.length, skipped_codes: skipped, target };
     },
   );
 }

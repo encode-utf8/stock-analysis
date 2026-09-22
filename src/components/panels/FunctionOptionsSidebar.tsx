@@ -44,6 +44,8 @@ interface FunctionOptionsSidebarProps {
   onWatchlistClearActive: () => void;
   pinned: boolean;
   onToggle: () => void;
+  /** 数据源故障冷却中：禁用查询与刷新，避免连续点击。 */
+  blocked?: boolean;
 }
 
 /**
@@ -63,6 +65,7 @@ export function FunctionOptionsSidebar({
   onWatchlistClearActive,
   pinned,
   onToggle,
+  blocked = false,
 }: FunctionOptionsSidebarProps) {
   return (
     <aside className="flex h-full w-full flex-col bg-card">
@@ -106,7 +109,7 @@ export function FunctionOptionsSidebar({
               type="button"
               className="shrink-0"
               onClick={onSearch}
-              disabled={loading}
+              disabled={loading || blocked}
             >
               {loading ? "查询中..." : "查询"}
             </Button>
@@ -117,7 +120,7 @@ export function FunctionOptionsSidebar({
               variant="outline"
               size="sm"
               onClick={onRefresh}
-              disabled={!code || loading}
+              disabled={!code || loading || blocked}
             >
               强制刷新
             </Button>

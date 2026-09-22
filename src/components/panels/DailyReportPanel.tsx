@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import {
+  apiErrorFromPayload,
+  guardDatasourceError,
+  useDatasourceGuard,
+} from "@/lib/datasource-guard-client";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/format";
 import type {
@@ -76,7 +81,7 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, { ...init, signal: controller.signal });
     const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new Error(payload?.error?.message ?? "请求失败。");
+      throw apiErrorFromPayload(payload);
     }
     return payload.data;
   } catch (error) {
@@ -110,6 +115,8 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
   const [backfillDays, setBackfillDays] = useState("5");
   const [backfillForce, setBackfillForce] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 数据源故障守卫：统一提示并禁用触发按钮 10 秒。
+  const datasourceGuard = useDatasourceGuard();
   const [notice, setNotice] = useState<string | null>(null);
 
   const today = useMemo(() => beijingToday(), []);
@@ -122,7 +129,9 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
       setReports(data.reports);
       setListStorage(data.storage);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "日报列表加载失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "日报列表加载失败。");
+      }
     } finally {
       setListLoading(false);
     }
@@ -142,7 +151,9 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
         setError(null);
       } catch (nextError) {
         setDetail(null);
-        setError(nextError instanceof Error ? nextError.message : "日报详情加载失败。");
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "日报详情加载失败。");
+        }
       } finally {
         setDetailLoading(false);
       }
@@ -174,7 +185,9 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
           setNotice(`未生成：${result.reason}`);
         }
       } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : "日报生成失败。");
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "日报生成失败。");
+        }
       } finally {
         setBusy(false);
       }
@@ -214,7 +227,9 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
       );
       await loadList();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "批量回补失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "批量回补失败。");
+      }
     } finally {
       setBusy(false);
     }
@@ -244,7 +259,9 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
         }
         await loadList();
       } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : "日报删除失败。");
+        if (!guardDatasourceError(nextError)) {
+          setError(nextError instanceof Error ? nextError.message : "日报删除失败。");
+        }
       } finally {
         setBusy(false);
       }
@@ -277,7 +294,7 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
             列表存储位置：{STORAGE_LABELS[listStorage]}　共 {reports.length} 篇
           </p>
         </div>
-        <Button type="button" onClick={() => void generate()} disabled={busy}>
+        <Button type="button" onClick={() => void generate()} disabled={busy || datasourceGuard.blocked}>
           {busy ? "生成中..." : todayGenerated ? "重新生成今日日报" : "立即生成今日日报"}
         </Button>
       </div>
@@ -300,7 +317,7 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
             variant="outline"
             size="sm"
             onClick={handleHistoryGenerate}
-            disabled={busy}
+            disabled={busy || datasourceGuard.blocked}
           >
             生成该日日报
           </Button>
@@ -324,7 +341,7 @@ export function DailyReportPanel({ kind }: DailyReportPanelProps) {
             onChange={(event) => setBackfillDays(event.target.value)}
             className="w-20 rounded-md border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-primary"
           />
-          <Button type="button" variant="outline" size="sm" onClick={() => void backfill()} disabled={busy}>
+          <Button type="button" variant="outline" size="sm" onClick={() => void backfill()} disabled={busy || datasourceGuard.blocked}>
             开始回补
           </Button>
           <label className="flex items-center gap-1 text-xs text-muted-foreground">

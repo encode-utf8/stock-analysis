@@ -3,6 +3,11 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import {
+  apiErrorFromPayload,
+  guardDatasourceError,
+  useDatasourceGuard,
+} from "@/lib/datasource-guard-client";
 import { Button } from "@/components/ui/button";
 import type { FundPortfolioMode, FundPortfolioSummary } from "@/lib/shared/types";
 import { PortfolioDrawdownChart } from "@/components/panels/fund/PortfolioDrawdownChart";
@@ -38,7 +43,7 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, { ...init, signal: controller.signal });
     const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new Error(payload?.error?.message ?? "基金组合请求失败。");
+      throw apiErrorFromPayload(payload);
     }
     return payload.data;
   } catch (error) {
@@ -106,6 +111,8 @@ export function FundPortfolioPanel() {
   const [summary, setSummary] = useState<FundPortfolioSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 数据源故障守卫：统一提示并禁用触发按钮 10 秒。
+  const datasourceGuard = useDatasourceGuard();
 
   const addRow = () => {
     setRows((previous) =>
@@ -200,7 +207,9 @@ export function FundPortfolioPanel() {
       setSummary(data);
     } catch (nextError) {
       setSummary(null);
-      setError(nextError instanceof Error ? nextError.message : "基金组合计算失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "基金组合计算失败。");
+      }
     } finally {
       setLoading(false);
     }
@@ -294,7 +303,7 @@ export function FundPortfolioPanel() {
                 </option>
               ))}
             </select>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || datasourceGuard.blocked}>
               {loading ? "分析中…" : "开始分析"}
             </Button>
           </div>

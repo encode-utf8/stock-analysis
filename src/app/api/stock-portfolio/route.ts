@@ -1,4 +1,4 @@
-﻿import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
+import { apiDatasourceFailure, apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
 import { resolveVerifyVerdict } from "@/lib/code-verify";
 import { verifyStockCode } from "@/lib/data-service";
 import {
@@ -27,7 +27,8 @@ export async function GET(): Promise<Response> {
     const holdings = await stockPortfolioRepository.list();
     return apiOk(buildPortfolioSnapshot(await valueHoldings(holdings)));
   } catch (error) {
-    return apiUnexpected(error);
+    // 估值依赖实时行情：数据源故障返回 503，前端据此提示并禁用刷新按钮。
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }
 
@@ -61,6 +62,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     const [valuation] = await valueHoldings([holding]);
     return apiOk(valuation, { status: 201 });
   } catch (error) {
-    return apiUnexpected(error);
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }

@@ -1,3 +1,4 @@
+import { isDataSourceUnavailableError } from "@/lib/datasource";
 import { apiFail } from "@/lib/api-response";
 import { streamFundAnalysis } from "@/lib/fund-analysis";
 import { normalizeFundCode } from "@/lib/fund-market";
@@ -33,9 +34,14 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
           send(event);
         }
       } catch (error) {
+        // 数据源故障时携带错误码与冷却时长，前端据此提示并禁用生成按钮。
         send({
           type: "error",
-          data: { message: error instanceof Error ? error.message : "基金分析生成失败。" },
+          data: {
+            message: error instanceof Error ? error.message : "基金分析生成失败。",
+            code: isDataSourceUnavailableError(error) ? "SERVICE_UNAVAILABLE" : undefined,
+            retryAfterMs: isDataSourceUnavailableError(error) ? error.retryAfterMs : undefined,
+          },
         });
       } finally {
         controller.close();

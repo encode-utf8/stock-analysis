@@ -2,6 +2,7 @@
 // 后续分支如需扩展，先在本模块新增并注明 TODO，不得破坏已冻结字段语义。
 
 import type { AgentTraceRun } from "./agent-trace";
+import type { DegradedSnapshotInfo } from "./datasource";
 import type { MessageRole, NewsItem } from "./models";
 
 /** 基金类型。 */
@@ -35,6 +36,8 @@ export interface FundProfile {
   risk_level: string | null;
   source: string;
   fetched_at: string;
+  /** 数据源故障、回退本地官方快照时的降级标注。 */
+  degraded_snapshot?: DegradedSnapshotInfo;
 }
 
 /** 历史净值数据点。 */
@@ -46,6 +49,8 @@ export interface FundNavPoint {
   daily_change_pct: number | null;
   source: string;
   fetched_at: string;
+  /** 数据源故障、回退本地官方快照时的降级标注。 */
+  degraded_snapshot?: DegradedSnapshotInfo;
 }
 
 /** 基金当日行情：场内实时价或场外估算净值。 */
@@ -67,6 +72,8 @@ export interface FundIntraday {
   official_nav_date: string | null;
   source: string;
   fetched_at: string;
+  /** 数据源故障、回退本地官方快照时的降级标注。 */
+  degraded_snapshot?: DegradedSnapshotInfo;
 }
 
 /** 基金前十大持仓单项。 */
@@ -90,6 +97,8 @@ export interface FundHoldings {
   top1_weight_pct: number | null;
   source: string;
   fetched_at: string;
+  /** 数据源故障、回退本地官方快照时的降级标注。 */
+  degraded_snapshot?: DegradedSnapshotInfo;
 }
 
 /** 基于历史净值本地计算的基金风险指标。 */
@@ -156,6 +165,10 @@ export interface FundAnalysisStreamEvent {
     reportId?: string;
     message?: string;
     report?: FundAnalysisReport;
+    /** 数据源故障时的错误码；用于前端识别并进入冷却。 */
+    code?: "SERVICE_UNAVAILABLE";
+    /** 数据源故障时的建议冷却时长（毫秒）。 */
+    retryAfterMs?: number;
     /** 运行期执行轨迹快照；仅运行中出现，不随报告落库。 */
     trace?: AgentTraceRun;
   };

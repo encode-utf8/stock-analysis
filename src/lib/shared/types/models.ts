@@ -1,5 +1,7 @@
-﻿// 数据模型共享类型：冻结自 docs/design.md 第 6 节。
+// 数据模型共享类型：冻结自 docs/design.md 第 6 节。
 // 后续分支如需扩展，先在本模块新增并注明 TODO，不得破坏已有字段语义。
+
+import type { DegradedSnapshotInfo } from "./datasource";
 
 /** 股票市场标识。 */
 export type ExchangeCode = "SH" | "SZ" | "BJ";
@@ -50,6 +52,8 @@ export interface MarketQuote {
   float_cap: number | null;
   source: string;
   fetched_at: string;
+  /** 数据源故障、回退本地官方快照时的降级标注。 */
+  degraded_snapshot?: DegradedSnapshotInfo;
 }
 
 /** K 线数据点。 */
@@ -68,6 +72,8 @@ export interface Kline {
   source?: string;
   /** 抓取时间；旧数据或降级数据可能缺失。 */
   fetched_at?: string;
+  /** 数据源故障、回退本地官方快照时的降级标注。 */
+  degraded_snapshot?: DegradedSnapshotInfo;
 }
 
 /** 资讯条目。 */
@@ -87,6 +93,8 @@ export interface NewsItem {
   tags: string[];
   status: NewsStatus;
   pinned: boolean;
+  /** 数据源故障、回退本地官方资讯快照时的降级标注。 */
+  degraded_snapshot?: DegradedSnapshotInfo;
 }
 
 /** AI 分析报告。 */

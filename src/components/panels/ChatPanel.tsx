@@ -33,6 +33,8 @@ interface ChatPanelProps {
   trace?: AgentTraceViewState;
   /** 轨迹留存策略，默认结束后清除。 */
   tracePolicy?: AgentTracePolicy;
+  /** 数据源故障冷却中：禁用发送，避免连续点击。 */
+  blocked?: boolean;
 }
 
 /** 对话助手面板。 */
@@ -47,6 +49,7 @@ export function ChatPanel({
   onStop,
   trace,
   tracePolicy,
+  blocked = false,
 }: ChatPanelProps) {
   const traceState = trace ?? IDLE_TRACE_STATE;
   const policy = tracePolicy ?? "ephemeral";
@@ -148,7 +151,7 @@ export function ChatPanel({
           className="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
           disabled={!code || loading}
         />
-        <Button type="submit" disabled={!code || loading || !input.trim()}>
+        <Button type="submit" disabled={!code || loading || !input.trim() || blocked}>
           {loading ? "回复中..." : "发送"}
         </Button>
         {loading ? (

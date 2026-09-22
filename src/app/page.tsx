@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AgentTraceSettingsEntry } from "@/components/panels/AgentTraceSettingsEntry";
 import { BackgroundSettingsEntry } from "@/components/panels/BackgroundSettingsEntry";
 import { DataConsistencyEntry } from "@/components/panels/DataConsistencyEntry";
+import { DatasourceUnavailableBanner } from "@/components/panels/DatasourceUnavailableBanner";
 import FundWorkbench from "@/components/workbench/FundWorkbench";
 import StockWorkbench from "@/components/workbench/StockWorkbench";
 import {
@@ -33,6 +34,9 @@ export default function Home() {
           className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent"
         />
       </div>
+
+      {/* 数据源故障提示：全站统一文案与 10 秒冷却倒计时。 */}
+      <DatasourceUnavailableBanner />
 
       <div className={workbench === "stock" ? "" : "hidden"}>
         <StockWorkbench />

@@ -1,4 +1,4 @@
-import { apiFail, apiOk } from "@/lib/api-response";
+import { apiDatasource, apiFail } from "@/lib/api-response";
 import {
   getFundNav,
   type FundNavRange,
@@ -31,5 +31,5 @@ export async function GET(request: NextRequest, context: RouteContext) {
     : "unit";
   const forceRefresh = request.nextUrl.searchParams.get("refresh") === "1";
 
-  return apiOk(await getFundNav(code, range, type, forceRefresh));
+  return apiDatasource(() => getFundNav(code, range, type, forceRefresh));
 }

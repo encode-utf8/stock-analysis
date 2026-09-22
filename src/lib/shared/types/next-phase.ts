@@ -56,6 +56,10 @@ export interface ChatStreamEvent {
     riskNote?: string;
     toolCalls?: ChatStreamToolCall[];
     aiInvoked?: boolean;
+    /** 数据源故障时的错误码；用于前端识别并进入冷却。 */
+    code?: "SERVICE_UNAVAILABLE";
+    /** 数据源故障时的建议冷却时长（毫秒）。 */
+    retryAfterMs?: number;
     /** 运行期执行轨迹快照；仅运行中出现，不随消息落库。 */
     trace?: AgentTraceRun;
   };
@@ -72,6 +76,10 @@ export interface AnalysisStreamEvent {
     reportId?: string;
     message?: string;
     report?: AnalysisReport;
+    /** 数据源故障时的错误码；用于前端识别并进入冷却。 */
+    code?: "SERVICE_UNAVAILABLE";
+    /** 数据源故障时的建议冷却时长（毫秒）。 */
+    retryAfterMs?: number;
     /** 运行期执行轨迹快照；仅运行中出现，不随报告落库。 */
     trace?: AgentTraceRun;
   };

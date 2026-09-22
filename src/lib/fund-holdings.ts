@@ -1,9 +1,10 @@
-// 基金最新季度持仓编排：缓存命中优先，其次侧车，最后确定性回退。
+// 基金最新季度持仓编排：缓存 → 内存 store → 侧车官方数据 → 官方快照（标注降级）→ 抛数据源故障。
 
 import { cacheGet, cacheInvalidatePrefix, cacheSet } from "@/lib/cache";
-import { buildDeterministicFundHoldings } from "@/lib/fund-deterministic";
+import { DataSourceUnavailableError, markDegradedSnapshot } from "@/lib/datasource";
 import { fundDataStore } from "@/lib/fund-data-store";
 import { recordExternalCall } from "@/lib/observability";
+import { DATA_SOURCE_RETRY_AFTER_MS, isOfficialDataSource } from "@/lib/shared/types";
 import type { FundHoldings } from "@/lib/shared/types";
 
 const DEFAULT_DATA_SERVICE_URL = "http://127.0.0.1:8000";
@@ -88,7 +89,7 @@ export async function getFundHoldings(
       const saved = fundHoldingsStore.get(code);
       if (
         saved &&
-        saved.source !== "deterministic-fallback" &&
+        isOfficialDataSource(saved.source) &&
         isFresh(saved.fetched_at, HOLDINGS_TTL_MS)
       ) {
         return saved;
@@ -97,7 +98,7 @@ export async function getFundHoldings(
       const persisted = await fundDataStore.holdings.getLatest(code);
       if (
         persisted &&
-        persisted.source !== "deterministic-fallback" &&
+        isOfficialDataSource(persisted.source) &&
         isFresh(persisted.fetched_at, HOLDINGS_TTL_MS)
       ) {
         fundHoldingsStore.set(code, persisted);
@@ -105,29 +106,35 @@ export async function getFundHoldings(
       }
     }
 
-    try {
-      const sidecar = await fetchJson<FundHoldings>(
-        `/fund/holdings?code=${encodeURIComponent(code)}`,
-      );
-      recordExternalCall(Boolean(sidecar));
-      const holdings =
-        sidecar && isFundHoldings(sidecar)
-          ? sidecar
-          : buildDeterministicFundHoldings(code);
-      fundHoldingsStore.set(code, holdings);
-      await fundDataStore.holdings.upsert(holdings);
-      return holdings;
-    } catch {
-      recordExternalCall(false);
-      const holdings = buildDeterministicFundHoldings(code);
-      fundHoldingsStore.set(code, holdings);
-      await fundDataStore.holdings.upsert(holdings);
-      return holdings;
+    const sidecar = await fetchJson<FundHoldings>(
+      `/fund/holdings?code=${encodeURIComponent(code)}`,
+    );
+    const official =
+      sidecar && isFundHoldings(sidecar) && isOfficialDataSource(sidecar.source)
+        ? sidecar
+        : null;
+    recordExternalCall(Boolean(official));
+    if (official) {
+      fundHoldingsStore.set(code, official);
+      await fundDataStore.holdings.upsert(official);
+      return official;
     }
+
+    // 侧车不可达或只返回合成数据：回退到最近的官方快照并标注降级。
+    const snapshot =
+      fundHoldingsStore.get(code) ?? (await fundDataStore.holdings.getLatest(code));
+    if (snapshot && isOfficialDataSource(snapshot.source)) {
+      const degraded = markDegradedSnapshot(snapshot);
+      fundHoldingsStore.set(code, degraded);
+      cacheSet(cacheKey, degraded, DATA_SOURCE_RETRY_AFTER_MS);
+      return degraded;
+    }
+
+    throw new DataSourceUnavailableError(`基金 ${code} 持仓`);
   };
 
   const holdings = await loader();
-  if (holdings.source !== "deterministic-fallback") {
+  if (isOfficialDataSource(holdings.source) && !holdings.degraded_snapshot) {
     cacheSet(cacheKey, holdings, HOLDINGS_TTL_MS);
   }
   return holdings;

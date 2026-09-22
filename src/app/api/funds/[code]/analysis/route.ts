@@ -1,4 +1,4 @@
-import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
+import { apiDatasourceFailure, apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
 import { listFundReports, runFundAnalysis } from "@/lib/fund-analysis";
 import { normalizeFundCode } from "@/lib/fund-market";
 
@@ -30,6 +30,7 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
     const report = await runFundAnalysis(code, body.prompt);
     return apiOk(report, { status: 202 });
   } catch (error) {
-    return apiUnexpected(error);
+    // 数据源故障返回 503（含冷却时长），其它异常按 500 处理。
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }

@@ -1,5 +1,6 @@
-import { apiFail } from "@/lib/api-response";
+import { apiDatasourceFailure, apiFail } from "@/lib/api-response";
 import { streamFundChat } from "@/lib/fund-chat";
+import { isDataSourceUnavailableError } from "@/lib/datasource";
 import { normalizeFundCode } from "@/lib/fund-market";
 import { recordTaskRun } from "@/lib/observability";
 
@@ -42,9 +43,15 @@ export async function POST(request: NextRequest): Promise<Response> {
           send(event);
         }
       } catch (error) {
+        // 数据源故障时携带错误码与冷却时长，前端据此提示并禁用发送按钮。
+        const failure = apiDatasourceFailure(error);
         send({
           type: "error",
-          data: { message: error instanceof Error ? error.message : "基金对话生成失败。" },
+          data: {
+            message: error instanceof Error ? error.message : "基金对话生成失败。",
+            code: failure ? "SERVICE_UNAVAILABLE" : undefined,
+            retryAfterMs: isDataSourceUnavailableError(error) ? error.retryAfterMs : undefined,
+          },
         });
       } finally {
         controller.close();

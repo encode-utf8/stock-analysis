@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 
-import { formatDateTime, freshnessText } from "@/lib/format";
+import {
+  degradedSnapshotSuffix,
+  formatDateTime,
+  freshnessText,
+  sourceLabel,
+} from "@/lib/format";
 import type {
   AdjustType,
   Kline,
@@ -18,19 +23,10 @@ interface ChartPanelProps {
   period: KlinePeriod;
   adjust: AdjustType;
   loading: boolean;
+  /** 数据源故障冷却中：禁用周期与复权切换，避免连续点击。 */
+  blocked?: boolean;
   onPeriodChange: (period: KlinePeriod) => void;
   onAdjustChange: (adjust: AdjustType) => void;
-}
-
-/** 将来源标识转换为中文展示文案。 */
-function sourceLabel(source: string): string {
-  if (source === "akshare") {
-    return "AkShare 实时行情";
-  }
-  if (source === "deterministic-fallback") {
-    return "确定性降级数据";
-  }
-  return source;
 }
 
 function CandlestickChart({ klines }: { klines: Kline[] }) {
@@ -268,6 +264,7 @@ export function ChartPanel({
   period,
   adjust,
   loading,
+  blocked = false,
   onPeriodChange,
   onAdjustChange,
 }: ChartPanelProps) {
@@ -279,12 +276,14 @@ export function ChartPanel({
           <p className="text-xs text-muted-foreground">
             数据时间：{formatDateTime(quote.fetched_at)}（{freshnessText(quote.fetched_at)}），
             来源：{sourceLabel(quote.source)}
+            {degradedSnapshotSuffix(quote.degraded_snapshot)}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <select
             value={period}
             onChange={(event) => onPeriodChange(event.target.value as KlinePeriod)}
+            disabled={blocked}
             className="rounded-md border px-2 py-1.5 text-sm"
             aria-label="K 线周期"
           >
@@ -296,6 +295,7 @@ export function ChartPanel({
           <select
             value={adjust}
             onChange={(event) => onAdjustChange(event.target.value as AdjustType)}
+            disabled={blocked}
             className="rounded-md border px-2 py-1.5 text-sm"
             aria-label="复权方式"
           >

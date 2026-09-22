@@ -41,6 +41,8 @@ interface FundOptionsSidebarProps {
   onSearch: () => void;
   onWatchlistSelect: (code: string) => void;
   onWatchlistClearActive: () => void;
+  /** 数据源故障冷却中：禁用查询按钮，避免连续点击。 */
+  blocked?: boolean;
   pinned: boolean;
   onToggle: () => void;
 }
@@ -57,6 +59,7 @@ export function FundOptionsSidebar({
   onSearch,
   onWatchlistSelect,
   onWatchlistClearActive,
+  blocked = false,
   pinned,
   onToggle,
 }: FundOptionsSidebarProps) {
@@ -102,7 +105,7 @@ export function FundOptionsSidebar({
               type="button"
               className="shrink-0"
               onClick={onSearch}
-              disabled={loading}
+              disabled={loading || blocked}
             >
               {loading ? "查询中..." : "查询"}
             </Button>

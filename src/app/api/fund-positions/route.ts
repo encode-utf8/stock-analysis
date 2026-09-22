@@ -1,4 +1,4 @@
-import { apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
+import { apiDatasourceFailure, apiFail, apiOk, apiUnexpected } from "@/lib/api-response";
 import { resolveVerifyVerdict } from "@/lib/code-verify";
 import { verifyFundCode } from "@/lib/data-service";
 import {
@@ -32,7 +32,7 @@ export async function GET(): Promise<Response> {
     const positions = await fundPositionRepository.list();
     return apiOk(buildFundPositionSnapshot(await valueFundPositions(positions)));
   } catch (error) {
-    return apiUnexpected(error);
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }
 
@@ -112,6 +112,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     const [valuation] = await valueFundPositions([updated]);
     return apiOk(valuation);
   } catch (error) {
-    return apiUnexpected(error);
+    return apiDatasourceFailure(error) ?? apiUnexpected(error);
   }
 }

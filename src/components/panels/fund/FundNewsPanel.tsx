@@ -3,8 +3,13 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import {
+  apiErrorFromPayload,
+  guardDatasourceError,
+  useDatasourceGuard,
+} from "@/lib/datasource-guard-client";
 import { Button } from "@/components/ui/button";
-import { formatDateTime } from "@/lib/format";
+import { degradedSnapshotSuffix, formatDateTime } from "@/lib/format";
 import type { FundIndustryNewsSnapshot, FundNewsItem } from "@/lib/shared/types";
 
 const PAGE_SIZE = 4;
@@ -23,7 +28,7 @@ async function apiFetch<T>(url: string): Promise<T> {
     const response = await fetch(url, { signal: controller.signal });
     const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
     if (!payload?.success || payload.data === undefined) {
-      throw new Error(payload?.error?.message ?? "行业资讯查询失败。");
+      throw apiErrorFromPayload(payload);
     }
     return payload.data;
   } catch (error) {
@@ -52,6 +57,8 @@ export function FundNewsPanel() {
   const [snapshot, setSnapshot] = useState<FundIndustryNewsSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 数据源故障守卫：统一提示并禁用触发按钮 10 秒。
+  const datasourceGuard = useDatasourceGuard();
   const [page, setPage] = useState(0);
 
   const news = snapshot?.news ?? [];
@@ -70,7 +77,9 @@ export function FundNewsPanel() {
       setPage(0);
     } catch (nextError) {
       setSnapshot(null);
-      setError(nextError instanceof Error ? nextError.message : "行业资讯查询失败。");
+      if (!guardDatasourceError(nextError)) {
+        setError(nextError instanceof Error ? nextError.message : "行业资讯查询失败。");
+      }
     } finally {
       setLoading(false);
     }
@@ -103,7 +112,7 @@ export function FundNewsPanel() {
             </p>
           </div>
           {snapshot?.code ? (
-            <Button type="button" variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
+            <Button type="button" variant="outline" size="sm" onClick={handleRefresh} disabled={loading || datasourceGuard.blocked}>
               {loading ? "分析中..." : "刷新资讯"}
             </Button>
           ) : null}
@@ -124,7 +133,7 @@ export function FundNewsPanel() {
               className="w-36 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
             />
           </label>
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" disabled={loading || datasourceGuard.blocked}>
             {loading ? "查询中..." : "查询行业资讯"}
           </Button>
         </form>
@@ -184,7 +193,10 @@ export function FundNewsPanel() {
               </div>
               <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{item.summary}</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <span>来源：{item.source}</span>
+                <span>
+                  来源：{item.source}
+                  {degradedSnapshotSuffix(item.degraded_snapshot)}
+                </span>
                 <span>发布时间：{formatDateTime(item.published_at)}</span>
                 <span>置信度 {(item.confidence * 100).toFixed(0)}%</span>
                 {item.tags.length > 0 ? <span>标签：{item.tags.join("、")}</span> : null}
