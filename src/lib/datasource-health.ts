@@ -31,6 +31,23 @@ const DATA_SERVICE_URL = (
 
 const TAVILY_URL = "https://api.tavily.com/search";
 
+/**
+ * 单个探测的硬超时：外部依赖不可达时也必须在上界内返回状态，避免面板请求超时。
+ * 单测 / 端到端可通过环境变量调小，缩短用例耗时。
+ */
+function positiveMs(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const PROBE_TIMEOUT_MS = positiveMs(process.env.DATA_SOURCE_PROBE_TIMEOUT_MS, 8_000);
+
+/** 整份健康快照的总预算：任一探测突破上界时按「探测超时」兜底返回。 */
+const SNAPSHOT_BUDGET_MS = positiveMs(process.env.DATA_SOURCE_SNAPSHOT_BUDGET_MS, 12_000);
+
+/** 健康快照的数据源顺序：整体超预算时按此顺序生成兜底状态。 */
+const PROBE_SOURCES = ["AkShare/Tencent", "AkShare/基金", "Tavily", "DeepSeek", "R2"] as const;
+
 /** 各数据源最近成功时间，进程内存记录，单机 MVP 足够。 */
 const lastSuccessAt = new Map<string, string>();
 
@@ -76,7 +93,7 @@ function buildStatus(
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
-  timeoutMs: number,
+  timeoutMs: number = PROBE_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -84,6 +101,43 @@ async function fetchWithTimeout(
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * 给任意探测加硬超时：SDK 调用（如 S3 HeadObject）无法从应用侧注入 requestHandler，
+ * 只能在此用 Promise.race 兜住，保证依赖不可达时也在预算内返回状态。
+ */
+async function withProbeTimeout<T>(
+  task: Promise<T>,
+  label: string,
+  timeoutMs: number = PROBE_TIMEOUT_MS,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      task,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label} 探测超时（${Math.round(timeoutMs / 1000)} 秒未响应）`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== null) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+/** 给整份快照加总预算：超预算时返回 null，由调用方生成兜底状态。 */
+async function withSnapshotBudget<T>(task: Promise<T>): Promise<T | null> {
+  try {
+    return await withProbeTimeout(task, "数据源健康", SNAPSHOT_BUDGET_MS);
+  } catch (error) {
+    console.warn("[datasource-health] 健康探测超出总预算：", error);
+    return null;
   }
 }
 
@@ -97,7 +151,6 @@ async function probeMarketData(): Promise<DataSourceStatus> {
     const response = await fetchWithTimeout(
       `${DATA_SERVICE_URL}/quote?code=${encodeURIComponent(code)}`,
       { headers: { Accept: "application/json" }, cache: "no-store" },
-      8_000,
     );
 
     if (!response.ok) {
@@ -142,7 +195,6 @@ async function probeFundData(): Promise<DataSourceStatus> {
     const response = await fetchWithTimeout(
       `${DATA_SERVICE_URL}/fund/profile?code=${encodeURIComponent(code)}`,
       { headers: { Accept: "application/json" }, cache: "no-store" },
-      8_000,
     );
 
     if (!response.ok) {
@@ -205,7 +257,6 @@ async function probeTavily(): Promise<DataSourceStatus> {
           include_answer: false,
         }),
       },
-      8_000,
     );
 
     if (!response.ok) {
@@ -249,7 +300,6 @@ async function probeDeepSeek(): Promise<DataSourceStatus> {
           Authorization: `Bearer ${apiKey}`,
         },
       },
-      8_000,
     );
 
     if (!response.ok) {
@@ -280,7 +330,7 @@ async function probeR2(): Promise<DataSourceStatus> {
 
   const startedAt = Date.now();
   try {
-    await objectExists("__health_check__");
+    await withProbeTimeout(objectExists("__health_check__"), "R2");
     markSuccess(source);
     return buildStatus(source, "online", Date.now() - startedAt);
   } catch (error) {
@@ -354,19 +404,27 @@ export async function getSchedulerJobViews(): Promise<SchedulerJobView[]> {
   ];
 }
 
-/** 并发执行四类数据源健康探测，并汇总调度任务视图。 */
+/**
+ * 并发执行数据源健康探测，并汇总调度任务视图。
+ * 整体受 SNAPSHOT_BUDGET_MS 约束：任一探测突破上界时，未返回的数据源统一标记为「离线 · 探测超时」，
+ * 保证接口不会因为某个外部依赖挂住而让前端一直等到请求超时。
+ */
 export async function getDataSourceHealthSnapshot(): Promise<DataSourceHealthSnapshot> {
-  const [market, fund, tavily, deepSeek, r2] = await Promise.all([
-    probeMarketData(),
-    probeFundData(),
-    probeTavily(),
-    probeDeepSeek(),
-    probeR2(),
-  ]);
+  const probes = await withSnapshotBudget(
+    Promise.all([probeMarketData(), probeFundData(), probeTavily(), probeDeepSeek(), probeR2()]),
+  );
+  const sources =
+    probes ??
+    PROBE_SOURCES.map((source) => {
+      markFailure(source);
+      return buildStatus(
+        source,
+        "offline",
+        null,
+        `健康探测超过 ${Math.round(SNAPSHOT_BUDGET_MS / 1000)} 秒未返回，请稍后重试。`,
+      );
+    });
   const jobs = await getSchedulerJobViews();
 
-  return {
-    sources: [market, fund, tavily, deepSeek, r2],
-    jobs,
-  };
+  return { sources, jobs };
 }

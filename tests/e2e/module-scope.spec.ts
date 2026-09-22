@@ -37,7 +37,7 @@ test.describe("工作台模块分组", () => {
     // 切到「持仓与全局工具」：chips 换成账户级 / 独立工具，内容区给出分组空态。
     await globalTab.click();
     await expect(globalTab).toHaveAttribute("aria-selected", "true");
-    await expect(globalTab).toContainText("0/6");
+    await expect(globalTab).toContainText("0/5");
     await expect(moduleChip(page, "我的持仓组合")).toBeVisible();
     await expect(moduleChip(page, "AI 股市日报")).toBeVisible();
     await expect(moduleChip(page, "行情概览")).toHaveCount(0);
@@ -48,7 +48,7 @@ test.describe("工作台模块分组", () => {
 
     // 空态一键启用默认模块：持仓组合面板出现，分组计数更新。
     await page.getByRole("button", { name: "启用「我的持仓组合」" }).click();
-    await expect(globalTab).toContainText("1/6");
+    await expect(globalTab).toContainText("1/5");
     await expect(page.getByRole("heading", { name: "我的持仓组合" })).toBeVisible();
 
     // 切回「当前标的」：本组仍是空的，另一组的勾选不受影响。
@@ -58,12 +58,12 @@ test.describe("工作台模块分组", () => {
       page.getByRole("heading", { name: "「当前标的」分组还没有勾选模块" }),
     ).toBeVisible();
     await expect(page.getByRole("heading", { name: "我的持仓组合" })).toHaveCount(0);
-    await expect(globalTab).toContainText("1/6");
+    await expect(globalTab).toContainText("1/5");
 
     // 勾选本组模块后只影响本组计数，盘面模块正常渲染。
     await moduleChip(page, "行情概览").click();
     await expect(targetTab).toContainText("1/8");
-    await expect(globalTab).toContainText("1/6");
+    await expect(globalTab).toContainText("1/5");
     await expect(page.getByText(/数据时间：/).filter({ visible: true }).first()).toBeVisible();
   });
 
@@ -74,11 +74,11 @@ test.describe("工作台模块分组", () => {
     await moduleChip(page, "行情概览").click();
     await page.getByRole("tab", { name: "持仓与全局工具" }).click();
     await moduleChip(page, "AI 股市日报").click();
-    await expect(page.getByRole("tab", { name: "持仓与全局工具" })).toContainText("1/6");
+    await expect(page.getByRole("tab", { name: "持仓与全局工具" })).toContainText("1/5");
 
     // 清空本组：只清空全局工具分组。
     await page.getByRole("button", { name: "清空本组" }).click();
-    await expect(page.getByRole("tab", { name: "持仓与全局工具" })).toContainText("0/6");
+    await expect(page.getByRole("tab", { name: "持仓与全局工具" })).toContainText("0/5");
     await expect(page.getByRole("tab", { name: "当前标的" })).toContainText("1/8");
   });
 });

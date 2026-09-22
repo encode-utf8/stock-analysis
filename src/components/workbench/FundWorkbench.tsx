@@ -1006,7 +1006,11 @@ export default function FundWorkbench() {
       return <FundDcaPanel />;
     }
     if (key === "news") {
-      return <FundNewsPanel />;
+      if (!code) {
+        return renderPendingModule("行业资讯");
+      }
+      // 行业资讯属于「当前标的」类模块：随当前基金切换，key 变化时重建面板避免残留旧结果。
+      return <FundNewsPanel key={code} code={code} />;
     }
     if (key === "style") {
       return <FundStylePanel />;
@@ -1030,7 +1034,7 @@ export default function FundWorkbench() {
         >
           <div
             className={
-              "sticky top-[var(--app-header-h)] h-[calc(100vh_-_var(--app-header-h))] overflow-hidden border-r border-border bg-card/70 backdrop-blur-xl transition-[width] duration-300 ease-out " +
+              "sticky top-[var(--app-sticky-top)] h-[calc(100vh_-_var(--app-sticky-top))] overflow-hidden border-r border-border bg-card/70 backdrop-blur-xl transition-[width] duration-300 ease-out " +
               (sidebarOpen || sidebarPeek ? "w-80" : "w-10")
             }
           >

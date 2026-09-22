@@ -13,6 +13,7 @@ export const FUND_MODULE_OPTIONS = [
   { key: "nav", label: "净值走势", scope: "target" },
   { key: "intraday", label: "当日行情", scope: "target" },
   { key: "holdings", label: "持仓分析", scope: "target" },
+  { key: "news", label: "行业资讯", scope: "target" },
   { key: "risk", label: "回撤与风险指标", scope: "target" },
   { key: "analysis", label: "AI 分析", scope: "target" },
   { key: "chat", label: "对话助手", scope: "target" },
@@ -21,7 +22,6 @@ export const FUND_MODULE_OPTIONS = [
   { key: "comparison", label: "基金对比", scope: "global" },
   { key: "portfolio", label: "基金组合分析", scope: "global" },
   { key: "dca", label: "定投回测", scope: "global" },
-  { key: "news", label: "行业资讯", scope: "global" },
   { key: "style", label: "风格因子分析", scope: "global" },
   { key: "alerts", label: "预警中心", scope: "global" },
   { key: "daily-report", label: "AI 基金日报", scope: "global" },
@@ -31,8 +31,8 @@ export type FundModuleKey = (typeof FUND_MODULE_OPTIONS)[number]["key"];
 
 /** 基金工作台的分组说明（tab 悬浮提示）。 */
 export const FUND_MODULE_SCOPES = createModuleScopes({
-  target: "随当前基金切换：档案、净值、当日行情、持仓、风险、AI 分析、对话与复盘",
-  global: "与当前基金无关：持有基金、对比 / 组合 / 定投 / 风格 / 行业资讯（自带代码输入）与预警、日报",
+  target: "随当前基金切换：档案、净值、当日行情、持仓、行业资讯、风险、AI 分析、对话与复盘",
+  global: "与当前基金无关：持有基金、对比 / 组合 / 定投 / 风格（自带代码输入）与预警、日报",
 });
 
 const createFundModuleVisibility = (enabled: boolean) =>

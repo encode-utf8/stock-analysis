@@ -51,7 +51,10 @@ export function ModuleMenuBar<K extends string>({
   const selectedCount = options.filter((option) => enabledModules[option.key]).length;
 
   return (
-    <div className="sticky top-[var(--app-header-h)] z-20 rounded-xl border bg-card/80 px-3 py-2 shadow-sm backdrop-blur">
+    <div
+      data-testid="module-menu-bar"
+      className="sticky top-[var(--app-sticky-top)] z-20 rounded-xl border bg-card/80 px-3 py-2 shadow-sm backdrop-blur"
+    >
       {/* 分组切换：两类内容分离，避免持仓 / 日报等与标的视图混排。 */}
       <div className="flex flex-wrap items-center gap-2 border-b pb-2">
         <div

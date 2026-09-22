@@ -1,19 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import type { FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import {
   apiErrorFromPayload,
   guardDatasourceError,
   useDatasourceGuard,
 } from "@/lib/datasource-guard-client";
-import { Button } from "@/components/ui/button";
 import { degradedSnapshotSuffix, formatDateTime } from "@/lib/format";
 import type { FundIndustryNewsSnapshot, FundNewsItem } from "@/lib/shared/types";
 
 const PAGE_SIZE = 4;
-const DEFAULT_CODE = "510300";
+
+interface FundNewsPanelProps {
+  /** 当前查询的基金代码：由工作台注入，随「当前标的」一起切换。 */
+  code: string;
+}
 
 interface ApiEnvelope<T> {
   success?: boolean;
@@ -51,9 +54,11 @@ function sentimentLabel(value: FundNewsItem["sentiment"]): string {
   return "中性";
 }
 
-/** 基金行业资讯查询面板：独立输入基金代码，按需查询 AI/持仓识别出的行业与真实资讯。 */
-export function FundNewsPanel() {
-  const [input, setInput] = useState(DEFAULT_CODE);
+/**
+ * 基金行业资讯面板：属于「当前标的」类模块，跟随当前基金代码取数。
+ * 按持仓识别强相关行业后检索真实资讯；无法获取真实数据时不展示降级内容。
+ */
+export function FundNewsPanel({ code }: FundNewsPanelProps) {
   const [snapshot, setSnapshot] = useState<FundIndustryNewsSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +71,8 @@ export function FundNewsPanel() {
   const currentPage = Math.min(page, totalPages - 1);
   const visibleNews = news.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
-  const loadNews = async (nextCode: string, refresh: boolean) => {
+  /** 拉取指定基金的行业资讯；refresh 为真时要求服务端绕过缓存重新检索。 */
+  const loadNews = useCallback(async (nextCode: string, refresh: boolean) => {
     setLoading(true);
     setError(null);
     try {
@@ -83,60 +89,43 @@ export function FundNewsPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const normalizedCode = input.trim();
-    if (!/^\d{6}$/.test(normalizedCode)) {
-      setError("请输入 6 位基金代码。");
-      return;
-    }
-    void loadNews(normalizedCode, false);
-  };
+  // 跟随当前基金：代码变化时重新检索，避免展示上一只基金的行业资讯。
+  useEffect(() => {
+    const timer = setTimeout(() => void loadNews(code, false), 0);
+    return () => clearTimeout(timer);
+  }, [code, loadNews]);
 
   const handleRefresh = () => {
-    if (snapshot?.code) {
-      void loadNews(snapshot.code, true);
-    }
+    void loadNews(code, true);
   };
 
   return (
-    <section className="tech-panel tech-lift p-5 shadow-sm">
+    <section data-testid="fund-news-panel" className="tech-panel tech-lift p-5 shadow-sm">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold">行业资讯查询</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold">行业资讯</h2>
+              <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                当前基金 {code}
+              </span>
+            </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              根据持仓识别强相关行业后检索真实资讯；无法获取真实数据时不展示降级内容。
+              按当前基金的持仓识别强相关行业后检索真实资讯；无法获取真实数据时不展示降级内容。
             </p>
           </div>
-          {snapshot?.code ? (
-            <Button type="button" variant="outline" size="sm" onClick={handleRefresh} disabled={loading || datasourceGuard.blocked}>
-              {loading ? "分析中..." : "刷新资讯"}
-            </Button>
-          ) : null}
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/50 p-3"
-        >
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            基金代码
-            <input
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="如 510300"
-              maxLength={6}
-              inputMode="numeric"
-              className="w-36 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </label>
-          <Button type="submit" disabled={loading || datasourceGuard.blocked}>
-            {loading ? "查询中..." : "查询行业资讯"}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={loading || datasourceGuard.blocked}
+          >
+            {loading ? "分析中..." : "刷新资讯"}
           </Button>
-        </form>
+        </div>
       </div>
 
       {error ? (
@@ -207,9 +196,7 @@ export function FundNewsPanel() {
       ) : snapshot ? (
         <p className="mt-3 text-sm text-muted-foreground">暂无行业资讯。</p>
       ) : (
-        <p className="mt-3 text-sm text-muted-foreground">
-          输入 6 位基金代码后点击“查询行业资讯”。
-        </p>
+        <p className="mt-3 text-sm text-muted-foreground">正在加载行业资讯...</p>
       )}
 
       {news.length > 0 ? (

@@ -2737,7 +2737,7 @@ corepack pnpm test:e2e    # 13 个用例全绿（含新增 2 个持仓点击切�
 
 ### 验收项
 
-- [x] 分组划分：个股「当前标的」8 项 + 「持仓与全局工具」6 项；基金 8 + 8，无重复无遗漏
+- [x] 分组划分：个股「当前标的」8 项 + 「持仓与全局工具」5 项（数据源状态移至右上角入口）；基金 9 + 7（行业资讯归「当前标的」），无重复无遗漏
 - [x] `ModuleMenuBar` 分组 tablist（`aria-selected`）与「本组已启用 / 总数」计数
 - [x] 模块 chips 只展示当前分组；全选 / 清空只作用于当前分组
 - [x] 内容区只渲染当前分组模块，另一分组勾选状态保留
@@ -2753,6 +2753,18 @@ corepack pnpm test:e2e    # 13 个用例全绿（含新增 2 个持仓点击切�
 - `MODULE_OPTIONS`、`FUND_MODULE_OPTIONS` 每项新增 `scope`，并导出 `MODULE_SCOPES` / `FUND_MODULE_SCOPES` 分组说明。
 - `ModuleMenuBar` 改为两行：分组 tab + 分组说明 + 全选 / 清空本组；chips 行只呈现当前分组。
 - 两个工作台新增 `activeScope`，按分组过滤 chips、模块渲染与全选 / 清空；`focusTargetScope()` 统一「看某只标的」的入口（自选点击、持仓 / 持有列表点击、代码查询）。
+
+### 修订：基金「行业资讯」归入「当前标的」（2026-09-22 第二轮）
+
+- 问题：`行业资讯` 原本自带代码输入、被归入「持仓与全局工具」，但它依据当前基金持仓推导强相关行业，属于针对特定基金的功能。
+- 调整：`FUND_MODULE_OPTIONS` 中 `news` 由 `global` 改为 `target`（基金分组 8 + 8 → 9 + 7，排序调至「持仓分析」之后）；`FundNewsPanel` 去掉独立代码输入，改为接收工作台注入的当前基金代码，切换标的时自动重新检索（`key={code}` 重建面板，避免残留上一只基金的结果）。
+- 测试：单测更新基金分组划分与 scope 断言；端到端「基金：点击持有基金名称切换当前查询基金」追加「行业资讯面板跟随当前基金代码」断言。
+
+### 修订：数据源状态移出工作台模块（2026-09-22 第三轮）
+
+- 问题：`数据源与调度` 描述的是站点级数据源健康，却挂在个股工作台的「持仓与全局工具」组里，需要勾选模块才能看到。
+- 调整：抽出为页面右上角「数据源状态」入口（与背景与光效 / 轨迹显示 / 数据一致性并列），删除 `DataSourcePanel.tsx`；`MODULE_OPTIONS` 移除 `datasource`，个股全局分组 6 → 5。
+- 详见 `docs/datasource-status-panel-plan.md` 与 `docs/checklists/14-feature-datasource-status-entry.md`。
 
 ### 验证方式与结果（2026-09-22）
 
@@ -2771,4 +2783,107 @@ corepack pnpm test:e2e    # 15 个用例全绿（含新增 2 个分组用例、�
 
 - 分组状态与模块勾选一致，不跨会话持久化；
 - 实时行情条（自选池推送）与免责声明常驻，不随分组切换；
-- 分类以「面板是否依赖当前标的代码」为准：自带代码输入的策略回测、基金对比 / 组合 / 定投 / 风格 / 行业资讯归入工具组，行为保持不变。
+- 分类以「面板是否依赖当前标的代码」为准：自带代码输入的策略回测、基金对比 / 组合 / 定投 / 风格归入工具组，行为保持不变；`行业资讯` 依据当前基金持仓推导行业，已归入「当前标的」并改为跟随当前基金取数。
+## 数据源故障提示条 UI 修复（2026-09-22，已完成，待用户确认）
+
+需求来源：故障提醒前端体验不佳——提示框淡黄色不够醒目；悬浮置顶失效，滚动时与页内元素交替遮挡。
+
+- 关联方案：`docs/datasource-banner-ux-plan.md`
+- 关联验收：`docs/checklists/13-feature-datasource-banner-ux.md`
+- 分支：`feature/datasource-failure-ux`（沿用当前工作分支）
+
+### 任务目标与范围
+
+- 目标：故障提示条改为高对比错误色（红色实底 + 警告图标 + 倒计时药丸），并改为固定在顶栏下方的唯一悬浮层；滚动时提示条始终在最上层，模块菜单栏与侧栏吸顶偏移随提示条高度下移，彻底消除同层交替遮挡。
+- 范围：提示条组件配色与层级、CSS 变量（`--app-banner-h` / `--app-sticky-top`）、页面占位块、模块菜单栏与两个工作台侧栏的吸顶偏移、端到端用例与文档。
+- 非目标：不改故障判定、官方快照降级、10 秒冷却与提示文案；不新增手动关闭按钮。
+
+### 验收项
+
+- [x] 提示条改为错误语义配色（红色实底 + 白字 + 阴影），深色页面上足够醒目
+- [x] 增加警告图标与「N 秒后可重试」药丸，与常态信息提示一眼可辨
+- [x] 提示条改为 `fixed` 悬浮层，固定在 `--app-header-h` 下方，层级高于页内吸顶元素
+- [x] 滚动页面的多个位置下，提示条与模块菜单栏各自命中自身，不再交替遮挡
+- [x] 提示条高度写入 `--app-banner-h`，内容区占位让位，隐藏时归零无残留空档
+- [x] 模块菜单栏、个股 / 基金工作台侧栏吸顶偏移改用 `--app-sticky-top`
+- [x] 端到端新增悬浮层级用例；既有数据源故障用例保持通过
+- [x] 回归：`typecheck` / `lint` / `test` / `build` / `test:e2e` 全绿
+- [x] 文档：方案、验收清单、根清单同步
+
+### 改动内容
+
+- `DatasourceUnavailableNotice`：错误语义配色 + 内联警告图标 + 倒计时药丸；保留 `role="status"` / `aria-live="polite"`。
+- `DatasourceUnavailableBanner`：改为 `fixed top-[var(--app-header-h)] z-[60]`；`ResizeObserver` 量取高度写入 `--app-banner-h`。
+- `globals.css`：新增 `--app-banner-h`（默认 0px）与 `--app-sticky-top: calc(var(--app-header-h) + var(--app-banner-h))`。
+- `page.tsx`：提示条下方新增高度为 `var(--app-banner-h)` 的占位块。
+- `ModuleMenuBar`、`StockWorkbench`、`FundWorkbench`：吸顶偏移 / 高度改用 `--app-sticky-top`。
+
+### 验证方式与结果（2026-09-22）
+
+```powershell
+corepack pnpm typecheck   # 通过
+corepack pnpm lint        # 通过（0 error / 0 warning）
+corepack pnpm test        # 54 个文件 / 639 个用例全绿
+corepack pnpm build       # 通过
+corepack pnpm test:e2e    # 16 个用例全绿（新增 1 个悬浮层级用例）
+```
+
+- 新增端到端：`tests/e2e/datasource-failure.spec.ts` 追加「故障提示固定悬浮在两栏内容之上且滚动时不互相遮挡」。
+- 人工核对：个股 / 基金工作台各截图核对悬浮与让位效果，确认提示条紧贴顶栏、正文从提示条下方通过。
+
+### 风险与遗留
+
+- 提示条高度实时测量：极长文案会让占位高度变大（预期行为）；
+- 提示仍由请求成功后自动清除，不提供手动关闭；
+- 端到端「无快照」用例依赖故障专用标的 300750 未被其它用例加载，新增用例改用默认标的 600519 以保持该前提。
+## 数据源状态入口上移与探测超时修复（2026-09-22，已完成，待用户确认）
+
+需求来源：数据源状态应从个股工作台抽离到页面右上角功能区；且数据源面板「怎么刷新都是请求超时」。
+
+- 关联方案：`docs/datasource-status-panel-plan.md`
+- 关联验收：`docs/checklists/14-feature-datasource-status-entry.md`
+- 分支：`feature/datasource-failure-ux`
+
+### 任务目标与范围
+
+- 目标：数据源健康与调度状态改为页面右上角「数据源状态」入口（与背景与光效 / 轨迹显示 / 数据一致性并列，弹窗打开时懒加载）；修复 `/api/admin/datasources` 因 R2 探测无超时而长期挂起导致的「请求超时」。
+- 范围：新增入口组件、删除原面板组件、移除个股工作台模块、健康探测硬超时与快照总预算、任务触发超时、单测与端到端、文档。
+- 非目标：不改探测判定语义；不处理 R2 上传路径（日报 / 资讯快照）在 R2 不可达时的长时间等待。
+
+### 验收项
+
+- [x] 右上角新增「数据源状态」入口，打开后展示 5 张数据源卡片 + 调度任务 + 四个操作按钮
+- [x] 快照懒加载（进页面不触发探测），加载后按钮显示最差状态点
+- [x] 个股工作台模块栏移除「数据源与调度」，全局分组计数 6 → 5
+- [x] 五个探测全部有硬超时（R2 用 `Promise.race` 加界），快照整体有总预算兜底
+- [x] 超时原因在卡片上可见（区分网络不可达与上游异常）
+- [x] 三个任务触发请求改用 180 秒超时，并说明任务可能仍在执行
+- [x] 单测：R2 挂起时快照仍在预算内返回离线 + 超时原因；分组划分更新
+- [x] 端到端：入口可打开并展示数据源卡片与调度任务；分组计数更新
+- [x] 回归：`typecheck` / `lint` / `test` / `build` / `test:e2e` 全绿
+- [x] 文档：方案、验收清单、分组方案与根清单同步
+
+### 根因与改动内容
+
+- 根因（实测）：本机到 Cloudflare R2 不可达（`TimeoutError: read ECONNRESET`），`probeR2` 的 `objectExists()` 没有任何超时约束，单次探测 **51.3 秒**才失败，`/api/admin/datasources` 因此超过客户端 20 秒超时；面板四个按钮在动作后都会重新拉快照，于是「怎么刷新都是请求超时」。次要问题：`刷新基金数据` 任务实测 49.3 秒，超过 20 秒客户端超时，任务成功却被判为失败。
+- `src/lib/datasource-health.ts`：探测统一超时 `PROBE_TIMEOUT_MS`（默认 8 秒，`DATA_SOURCE_PROBE_TIMEOUT_MS` 可覆盖）+ 快照总预算 `SNAPSHOT_BUDGET_MS`（默认 12 秒，`DATA_SOURCE_SNAPSHOT_BUDGET_MS` 可覆盖，非法值回退默认）；R2 探测用 `withProbeTimeout` 加硬超时；超预算时按 `PROBE_SOURCES` 生成「离线 · 健康探测超过 N 秒未返回」兜底。
+- 新增 `src/components/panels/DataSourceStatusEntry.tsx`（入口按钮 + 弹窗 + 懒加载 + 任务独立超时），删除 `DataSourcePanel.tsx`；`page.tsx` 右上角功能区接入；`MODULE_OPTIONS` 与 `StockWorkbench` 移除 `datasource` 模块。
+
+### 验证方式与结果（2026-09-22）
+
+```powershell
+corepack pnpm typecheck   # 通过
+corepack pnpm lint        # 通过（0 error / 0 warning）
+corepack pnpm test        # 55 个文件 / 640 个用例全绿（新增 datasource-health 用例）
+corepack pnpm build       # 通过
+corepack pnpm test:e2e    # 17 个用例全绿（新增首页外壳「数据源状态入口」用例）
+```
+
+- 实测修复效果：真实 `.env`（R2 不可达）下 `getDataSourceHealthSnapshot()` 由 **> 60 秒**降至 **8.3 秒**返回，R2 显示「离线 · R2 探测超时（8 秒未响应）」，其余四类数据源在线。
+- 新增单测 `tests/datasource-health.test.ts`：mock R2 永不返回，断言五个数据源齐全、R2 为离线且文案含「探测超时」、整体耗时在预算内。
+
+### 风险与遗留
+
+- R2 探测超时后底层请求仍会在后台自行结束（最长约 50 秒），仅占用连接，不影响接口响应；
+- R2 上传路径（日报 / 资讯快照）在 R2 不可达时仍会长时间等待，属既有行为，未在本次处理；
+- 未打开弹窗前右上角不显示状态点（首次打开后才出现）。

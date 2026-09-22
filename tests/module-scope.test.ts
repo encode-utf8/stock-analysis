@@ -27,7 +27,7 @@ import {
 const keysOf = <K extends string>(options: readonly { key: K }[]): K[] => options.map((option) => option.key);
 
 describe("模块分组划分", () => {
-  it("个股工作台：随标的切换 8 项，与标的无关 6 项", () => {
+  it("个股工作台：随标的切换 8 项，与标的无关 5 项（数据源状态已移至右上角入口）", () => {
     expect(keysOf(moduleOptionsForScope(MODULE_OPTIONS, "target"))).toEqual([
       "quote",
       "chart",
@@ -41,19 +41,19 @@ describe("模块分组划分", () => {
     expect(keysOf(moduleOptionsForScope(MODULE_OPTIONS, "global"))).toEqual([
       "portfolio",
       "backtest",
-      "datasource",
       "alerts",
       "daily-report",
       "observability",
     ]);
   });
 
-  it("基金工作台：随标的切换 8 项，与标的无关 8 项", () => {
+  it("基金工作台：随标的切换 9 项（含行业资讯），与标的无关 7 项", () => {
     expect(keysOf(moduleOptionsForScope(FUND_MODULE_OPTIONS, "target"))).toEqual([
       "profile",
       "nav",
       "intraday",
       "holdings",
+      "news",
       "risk",
       "analysis",
       "chat",
@@ -64,11 +64,12 @@ describe("模块分组划分", () => {
       "comparison",
       "portfolio",
       "dca",
-      "news",
       "style",
       "alerts",
       "daily-report",
     ]);
+    // 行业资讯属于「当前标的」类：跟随当前基金取数，不再归入工具组。
+    expect(FUND_MODULE_OPTIONS.find((option) => option.key === "news")?.scope).toBe("target");
   });
 
   it("分组无重复、无遗漏，且分组标签固定", () => {

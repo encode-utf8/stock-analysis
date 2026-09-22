@@ -28,7 +28,6 @@ import {
   sanitizeChatText,
 } from "@/lib/format";
 import { DailyReportPanel } from "@/components/panels/DailyReportPanel";
-import { DataSourcePanel } from "@/components/panels/DataSourcePanel";
 import { DisclaimerFooter } from "@/components/panels/DisclaimerFooter";
 import { Button } from "@/components/ui/button";
 import {
@@ -893,9 +892,6 @@ export default function StockWorkbench() {
     if (key === "backtest") {
       return enabledModules.backtest ? <StockBacktestPanel /> : null;
     }
-    if (key === "datasource") {
-      return enabledModules.datasource ? <DataSourcePanel /> : null;
-    }
     if (key === "alerts") {
       return enabledModules.alerts ? <AlertPanel target="stock" /> : null;
     }
@@ -915,7 +911,7 @@ export default function StockWorkbench() {
         >
           <div
             className={
-              "sticky top-[var(--app-header-h)] h-[calc(100vh_-_var(--app-header-h))] overflow-hidden border-r border-border bg-card/70 backdrop-blur-xl transition-[width] duration-300 ease-out " +
+              "sticky top-[var(--app-sticky-top)] h-[calc(100vh_-_var(--app-sticky-top))] overflow-hidden border-r border-border bg-card/70 backdrop-blur-xl transition-[width] duration-300 ease-out " +
               (sidebarOpen || sidebarPeek ? "w-80" : "w-10")
             }
           >

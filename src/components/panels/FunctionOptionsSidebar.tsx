@@ -19,7 +19,6 @@ export const MODULE_OPTIONS = [
   { key: "replay", label: "历史复盘", scope: "target" },
   { key: "portfolio", label: "我的持仓组合", scope: "global" },
   { key: "backtest", label: "策略回测", scope: "global" },
-  { key: "datasource", label: "数据源与调度", scope: "global" },
   { key: "alerts", label: "预警中心", scope: "global" },
   { key: "daily-report", label: "AI 股市日报", scope: "global" },
   { key: "observability", label: "系统可观测性", scope: "global" },
@@ -30,7 +29,7 @@ export type ModuleKey = (typeof MODULE_OPTIONS)[number]["key"];
 /** 个股工作台的分组说明（tab 悬浮提示）。 */
 export const MODULE_SCOPES = createModuleScopes({
   target: "随当前股票切换：行情、K 线、指标、资讯、AI 分析、对话与复盘",
-  global: "与当前股票无关：持仓、回测、预警、日报、数据源与可观测性",
+  global: "与当前股票无关：持仓、回测、预警、日报与可观测性（数据源状态在右上角入口）",
 });
 
 const createModuleVisibility = (enabled: boolean) =>

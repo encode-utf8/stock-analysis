@@ -120,5 +120,11 @@ test.describe("持仓列表点击切换", () => {
     await expect(moduleChip(page, "基金档案")).toHaveAttribute("aria-pressed", "true");
     // 档案面板已按新代码取数：标题带基金代码。
     await expect(page.getByRole("heading", { name: /110022/ })).toBeVisible();
+
+    // 行业资讯属于「当前标的」类模块：在本组启用后面板跟随当前基金代码，不再是独立代码输入。
+    await enableModule(page, "行业资讯");
+    const newsPanel = page.getByTestId("fund-news-panel");
+    await expect(newsPanel).toBeVisible();
+    await expect(newsPanel).toContainText(`当前基金 ${FUND_CODE}`);
   });
 });
